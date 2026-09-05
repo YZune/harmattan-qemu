@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080f18">
+  <title>Nokia N9 Emulator for Apple Silicon Mac | Harmattan QEMU</title>
+  <meta name="description" content="Run original Nokia N9 / MeeGo Harmattan software on an Apple Silicon Mac. Explore the experimental QEMU port, download the macOS preview and follow English or Chinese setup guides.">
+  <link rel="canonical" href="https://yzune.github.io/harmattan-qemu/">
+  <link rel="alternate" hreflang="en" href="https://yzune.github.io/harmattan-qemu/">
+  <link rel="alternate" hreflang="zh-CN" href="https://yzune.github.io/harmattan-qemu/zh/">
+  <link rel="alternate" hreflang="x-default" href="https://yzune.github.io/harmattan-qemu/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Harmattan QEMU">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:title" content="Nokia N9 Emulator for Apple Silicon Mac | Harmattan QEMU">
+  <meta property="og:description" content="Run original Nokia N9 / MeeGo Harmattan software on an Apple Silicon Mac. Explore the experimental QEMU port, download the macOS preview and follow English or Chinese setup guides.">
+  <meta property="og:url" content="https://yzune.github.io/harmattan-qemu/">
+  <meta property="og:image" content="https://i.ytimg.com/vi/GArapJ3rOIo/maxresdefault.jpg">
+  <meta property="og:image:alt" content="Harmattan QEMU English trailer cover">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header wrap">
+  <a class="brand" href="./" aria-label="Harmattan QEMU home"><span class="brand-mark" aria-hidden="true">H</span>Harmattan QEMU</a>
+  <nav aria-label="Main navigation">
+    <a href="./" aria-current="page">Overview</a>
+    <a href="watch/" >Video demo</a>
+    <a href="https://github.com/YZune/harmattan-qemu">GitHub <span aria-hidden="true">↗</span></a>
+    <a class="language" href="zh/" lang="zh-CN" hreflang="zh-CN">中文</a>
+  </nav>
+</header>
+<main id="main">
+<section class="hero wrap" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <p class="eyebrow">NOKIA N9 · MEEGO HARMATTAN · QEMU</p>
+    <h1 id="hero-title">Remember<br>the <span>swipe?</span></h1>
+    <p class="intro">The original Nokia N9 experience.<br>Running again on your Mac.</p>
+    <p class="hero-detail">Harmattan QEMU is an experimental Nokia N9 / MeeGo Harmattan emulator for Apple Silicon. Explore the original ARM software and help preserve a piece of mobile computing history.</p>
+    <div class="actions"><a class="button primary" href="https://github.com/YZune/harmattan-qemu/releases">Get the macOS preview <span aria-hidden="true">↗</span></a><a class="button secondary" href="watch/">Watch the 60-second demo <span aria-hidden="true">→</span></a></div>
+    <p class="requirements">Apple Silicon · macOS 26+ · APFS<br>Experimental preview. Guest disk and kernel required separately.</p>
+  </div>
+  <figure class="hero-device">
+    <div class="phone"><div class="speaker" aria-hidden="true"></div><img src="screenshots/home.png" width="480" height="864" alt="Original Harmattan Home running in QEMU, with the classic application grid" fetchpriority="high"></div>
+    <figcaption>Original Home · unedited guest capture</figcaption>
+  </figure>
+</section>
+<section class="section wrap" aria-labelledby="experience-title">
+  <div class="section-heading"><p class="eyebrow">THE ORIGINAL EXPERIENCE</p><h2 id="experience-title">Familiar, down to the details.</h2><p>Home scrolling, edge return, arithmetic and text entry — all running in the original software.</p></div>
+  <div class="capture-grid">
+    <figure class="capture"><img src="screenshots/notes-keyboard.png" width="480" height="864" loading="lazy" alt="Original Notes and Maliit on-screen keyboard with Qemu diagnostic text"><figcaption><h3>Notes + Maliit</h3><p>The original notes app and on-screen keyboard.</p></figcaption></figure>
+    <figure class="capture"><img src="screenshots/calculator.png" width="480" height="864" loading="lazy" alt="Original Calculator displaying 5 after calculating 2 plus 3"><figcaption><h3>Calculator</h3><p>2 + 3 = 5. Just like before.</p></figcaption></figure>
+  </div>
+  <p class="caption-note">Static captures do not demonstrate animation frame rate. <a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/screenshots/README.md">Capture provenance and attribution</a></p>
+</section>
+<section class="section getting-started" aria-labelledby="start-title"><div class="wrap">
+  <div class="section-heading"><p class="eyebrow">START EXPLORING</p><h2 id="start-title">Bring Harmattan to your desktop.</h2></div>
+  <ol class="steps">
+    <li><span class="step-number" aria-hidden="true">01</span><h3>Download the app</h3><p>The macOS preview bundles its runtime, with a matching source kit. Check the requirements and checksums before running.</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/releases.md">Read the preview guide →</a></li>
+    <li><span class="step-number" aria-hidden="true">02</span><h3>Prepare the guest inputs</h3><p>Follow the exact download links, SHA-256 checksums and preparation script. The guest system and kernel are supplied separately.</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/guest-inputs.md">Get the disk and kernel →</a></li>
+    <li><span class="step-number" aria-hidden="true">03</span><h3>Launch and explore</h3><p>Open the app and select the prepared disk and matching kernel. Guest changes, including Notes, are discarded when the session ends.</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/status.md">Check compatibility →</a></li>
+  </ol>
+</div></section>
+<section class="section wrap faq" aria-labelledby="faq-title"><div class="section-heading"><p class="eyebrow">BEFORE YOU BEGIN</p><h2 id="faq-title">What works today?</h2></div>
+<details><summary>Is this a complete Nokia N9 emulator?</summary><p>This is an experimental N00/QEMU port combining a PR1.0-era emulator kernel and adaptation layer with PR1.3 retail userspace. Selected original interfaces and apps work; complete N9 hardware, GPU and universal app compatibility remain unfinished.</p></details>
+<details><summary>Which computers can run it?</summary><p>The current prebuilt preview requires Apple Silicon, macOS 26 or later and APFS. Full Linux and Windows runtimes are not available yet. The app is ad-hoc signed, without Developer ID signing or notarization.</p></details>
+<details><summary>Is the download ready to boot?</summary><p>You still need the specified prepared PR1.3 disk and matching emulator kernel. Follow the input guide. Firmware, guest kernels, fonts and third-party device artwork are not included in the repository or app.</p></details>
+<details><summary>Can I contribute without a system image?</summary><p>Yes. Start by reading patches, improving documentation or running host tests that need no firmware. English and Chinese contribution guides and AGENTS.md support working with a coding agent.</p></details>
+</section>
+<section class="section wrap contribute" aria-labelledby="contribute-title"><p class="eyebrow">PRESERVE IT. BUILD IT TOGETHER.</p><h2 id="contribute-title">Keep the swipe alive.</h2><p>Test on another Mac. Reproduce an issue. Improve compatibility or help with the guides. There is room for every kind of contribution.</p><div class="actions"><a class="button primary" href="https://github.com/YZune/harmattan-qemu/blob/main/CONTRIBUTING.md">Find your first contribution →</a><a class="button secondary" href="https://github.com/YZune/harmattan-qemu/blob/main/AGENTS.md">Work with a coding agent →</a></div></section>
+</main>
+<footer class="site-footer wrap"><div><a class="footer-brand" href="./">Harmattan QEMU</a><p>An independent open-source preservation project. Not affiliated with Nokia. Original interface assets and names retain their attribution.</p></div><nav aria-label="Footer navigation"><a href="https://github.com/YZune/harmattan-qemu">GitHub</a><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/sources.md">Sources & licenses</a><a href="https://github.com/YZune/harmattan-qemu/issues">Report an issue</a></nav></footer>
+</body>
+</html>

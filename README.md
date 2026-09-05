@@ -1,8 +1,10 @@
-# Harmattan QEMU
+# Harmattan QEMU — Nokia N9 / MeeGo Emulator
 
 [简体中文](README.zh-CN.md) · [Build](docs/building.md) · [Status](docs/status.md) · [Contribute](CONTRIBUTING.md)
 
-**Run, study, and preserve the Nokia N9's original Harmattan experience on Apple Silicon.**
+**An experimental Nokia N9 / MeeGo Harmattan emulator for Apple Silicon Macs. Run the original ARM software and help keep the swipe alive.**
+
+[Project website](https://yzune.github.io/harmattan-qemu/) · [60-second video demo](https://yzune.github.io/harmattan-qemu/watch/) · [YouTube](https://youtu.be/GArapJ3rOIo) · [Download preview](https://github.com/YZune/harmattan-qemu/releases) · [Get the disk and kernel](docs/guest-inputs.md)
 
 Harmattan QEMU brings Nokia's experimental N00 board support forward to QEMU 9.1.3 and connects its legacy graphics protocol to a native macOS backend. It runs original Harmattan ARM software: the Home screen, selected applications, the compositor, and the on-screen keyboard.
 
@@ -86,6 +88,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are welco
 | Local development workflow | [Workflow](docs/development.md) | [本地管理](docs/development.zh-CN.md) |
 | Coding agent instructions | [AGENTS.md](AGENTS.md) | [Agent 说明](AGENTS.zh-CN.md) |
 | Runtime screenshots | [Provenance](docs/screenshots/README.md) | [采集说明](docs/screenshots/README.zh-CN.md) |
+| Website and search maintenance | [Guide](docs/website.md) | [说明](docs/website.zh-CN.md) |
 
 ## License and acknowledgements
 

@@ -1,8 +1,10 @@
-# Harmattan QEMU
+# Harmattan QEMU — Nokia N9 / MeeGo 模拟器
 
 [English](README.md) · [构建](docs/building.zh-CN.md) · [状态](docs/status.zh-CN.md) · [参与贡献](CONTRIBUTING.zh-CN.md)
 
-**在 Apple Silicon 上运行、研究和保存 Nokia N9 的原版 Harmattan 体验。**
+**面向 Apple Silicon Mac 的实验性 Nokia N9 / MeeGo Harmattan 模拟器。运行原版 ARM 软件，一起保存熟悉的滑动体验。**
+
+[项目主页](https://yzune.github.io/harmattan-qemu/zh/) · [60 秒视频演示](https://yzune.github.io/harmattan-qemu/zh/watch/) · [YouTube](https://youtu.be/GArapJ3rOIo) · [下载预览版](https://github.com/YZune/harmattan-qemu/releases) · [准备镜像与内核](docs/guest-inputs.zh-CN.md)
 
 Harmattan QEMU 将 Nokia 的实验性 N00 板级支持移植到 QEMU 9.1.3，并将旧图形协议接到原生 macOS 后端。它运行原版 Harmattan ARM 软件，包括 Home 桌面、部分应用、合成器和屏幕键盘。
 
@@ -76,7 +78,7 @@ flowchart TB
 
 | 主题 | 简体中文 | English |
 | --- | --- | --- |
-| macOS 预编译预览版 | [Guide](docs/releases.md) | [指南](docs/releases.zh-CN.md) |
+| macOS 预编译预览版 | [指南](docs/releases.zh-CN.md) | [Guide](docs/releases.md) |
 | 构建与运行 | [指南](docs/building.zh-CN.md) | [Guide](docs/building.md) |
 | 架构与补丁 | [架构](docs/architecture.zh-CN.md) | [Architecture](docs/architecture.md) |
 | 兼容性与验证 | [状态](docs/status.zh-CN.md) | [Status](docs/status.md) |
@@ -86,6 +88,7 @@ flowchart TB
 | 本地开发管理 | [流程](docs/development.zh-CN.md) | [Workflow](docs/development.md) |
 | Coding agent 工作说明 | [中文版](AGENTS.zh-CN.md) | [AGENTS.md](AGENTS.md) |
 | 运行截图 | [采集说明](docs/screenshots/README.zh-CN.md) | [Provenance](docs/screenshots/README.md) |
+| 项目网站与搜索维护 | [说明](docs/website.zh-CN.md) | [Guide](docs/website.md) |
 
 ## 许可与致谢
 
