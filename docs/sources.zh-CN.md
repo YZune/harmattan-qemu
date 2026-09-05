@@ -12,6 +12,7 @@
 | 项目新增实现 | 2026-09-05 从研究基线 `621c7f7` 提取 | 无更具体声明时采用 GPL-2.0-or-later |
 | 宿主外壳视图 | `n00-n9-skin.h` | 明确标记 MIT 的代码；不含素材 |
 | 文档与发布工具 | 本仓库 | GPL-2.0-or-later |
+| 运行截图 | 2026-09-05 干净构建的 QMP 截图 | 画面中的原界面保留各权利人的权利；见[采集说明](screenshots/README.zh-CN.md) |
 
 Nokia 快照为 [swh:1:snp:1642de2ac147a906f0ffd726121b0e15fcdef01e](https://archive.softwareheritage.org/swh:1:snp:1642de2ac147a906f0ffd726121b0e15fcdef01e/)。恢复的源码与保存的 SDK 二进制构建标识不同，本仓库不宣称二者是逐字节对应的源码及二进制发行物。
 
@@ -54,7 +55,7 @@ Harmattan 源码 DVD 是源码包集合，本身不提供完整固件构建或�
 
 ## 不包含的内容
 
-不包含 SDK 安装器、固件容器、内核二进制、QCOW/raw/ext4 镜像、专有包、Nokia Pure 字体、量产主题资源、Livven PNG/PSD。新仓库历史只包含选定源码，不导入研究仓库中的下载物、日志、私人路径或客体状态。
+不包含 SDK 安装器、固件容器、内核二进制、QCOW/raw/ext4 镜像、专有包、独立的 Nokia Pure 字体或量产主题资源、Livven PNG/PSD。仓库包含选定源码、文档及三张经过审阅的运行截图，不导入研究仓库中的下载物、日志、私人路径或客体状态。截图展示原版界面，项目 GPL 声明不会重新许可其中的界面内容。
 
 可选外壳集成引用的 Nokia N9 PSD 由 Livven / Liwen Guo 创作。研究记录描述了个人使用及商业捐赠建议，并未确认其采用开源素材许可。用户应自行确认使用及再分发权限。正常构建和几何测试无需该素材，参见[可选外壳说明](../ports/qemu-n00/skins/README.zh-CN.md)。
 
@@ -62,4 +63,4 @@ Harmattan 源码 DVD 是源码包集合，本身不提供完整固件构建或�
 
 [QEMU 官方许可说明](https://www.qemu.org/docs/master/about/license.html)明确 GPLv2 及文件级条款。这里的 Nokia 原文件同时存在“GPL 第 2 或第 3 版”与“GPL 第 2 或后续版本”等声明，应保留区别。明确标记 MIT 的新增实现仍采用 MIT。不要将组合后的 QEMU 代码整体改为宽松许可，也不要将整个 DGLES 归档视作 MIT。
 
-源码发布附根目录 GPLv2 正文、[NOTICE](../NOTICE) 及 [MIT 正文](../LICENSES/MIT.txt)。分发构建后的 QEMU 时，应按对应条款提供声明及相应源码，包括选定基线和修改。本次仅源码发布不授予外部客体软件或素材的权利。
+本次发布附根目录 GPLv2 正文、[NOTICE](../NOTICE) 及 [MIT 正文](../LICENSES/MIT.txt)。分发构建后的 QEMU 时，应按对应条款提供声明及相应源码，包括选定基线和修改。本次发布不授予外部客体软件或素材的权利。

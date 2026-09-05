@@ -12,6 +12,7 @@
 | Project additions | Extracted from research baseline `621c7f7` on 2026-09-05 | GPL-2.0-or-later unless a more specific notice applies |
 | Host skin view | `n00-n9-skin.h` | Explicit MIT code notice; no artwork included |
 | Documentation and publication tools | This repository | GPL-2.0-or-later |
+| Runtime screenshots | QMP captures from the clean build, 2026-09-05 | Depicted original UI retains its rights holders; see [capture provenance](screenshots/README.md) |
 
 The Nokia snapshot is [swh:1:snp:1642de2ac147a906f0ffd726121b0e15fcdef01e](https://archive.softwareheritage.org/swh:1:snp:1642de2ac147a906f0ffd726121b0e15fcdef01e/). Recovered sources and the preserved SDK binary have different build identifiers; this repository does not claim they are byte-for-byte corresponding source and binary releases.
 
@@ -54,7 +55,7 @@ These SHA-1 values identify preserved historical artifacts; they are not modern 
 
 ## What is deliberately absent
 
-No SDK installer, firmware container, kernel binary, QCOW/raw/ext4 image, proprietary package, Nokia Pure font, retail theme asset, or Livven PNG/PSD is included. The fresh repository history contains only the selected source distribution; it does not import the research repository's downloads, logs, private paths, or guest state.
+No SDK installer, firmware container, kernel binary, QCOW/raw/ext4 image, proprietary package, standalone Nokia Pure font or retail theme asset, or Livven PNG/PSD is included. The repository contains selected source, documentation, and three reviewed runtime screenshots. It does not import the research repository's downloads, logs, private paths, or guest state. The screenshots show the original interface; the project GPL notice does not relicense the depicted content.
 
 Livven / Liwen Guo authored the Nokia N9 PSD referenced by the optional skin integration. The research record describes personal-use terms and a commercial donation suggestion, not an established open-source artwork license. Users must establish permission for their own use and any redistribution. The normal build and geometry test do not need that artwork. See [optional skin information](../ports/qemu-n00/skins/README.md).
 
@@ -62,4 +63,4 @@ Livven / Liwen Guo authored the Nokia N9 PSD referenced by the optional skin int
 
 The [QEMU license documentation](https://www.qemu.org/docs/master/about/license.html) describes GPLv2 with file-specific terms. Original Nokia files here include both `GPL version 2 or version 3` and `GPL version 2 or later` declarations. Preserve those distinctions. Explicit MIT additions retain MIT. Do not apply a blanket permissive license to the combined QEMU code or treat the whole DGLES archive as MIT.
 
-The root GPLv2 text, [NOTICE](../NOTICE), and [MIT text](../LICENSES/MIT.txt) accompany this source release. When distributing a built QEMU, provide its applicable notices and corresponding source under the relevant terms, including the selected baseline and modifications. This source-only release does not grant rights over separately supplied guest software or artwork.
+The root GPLv2 text, [NOTICE](../NOTICE), and [MIT text](../LICENSES/MIT.txt) accompany this release. When distributing a built QEMU, provide its applicable notices and corresponding source under the relevant terms, including the selected baseline and modifications. This release does not grant rights over separately supplied guest software or artwork.

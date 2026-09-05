@@ -1,6 +1,6 @@
 # Contributing
 
-[简体中文](CONTRIBUTING.zh-CN.md) · [Roadmap](docs/roadmap.md)
+[简体中文](CONTRIBUTING.zh-CN.md) · [Roadmap](docs/roadmap.md) · [Local workflow](docs/development.md)
 
 Contributions in English or Chinese are welcome. You do not need a firmware image to improve host tests, documentation, build scripts, or device-model source.
 
@@ -29,7 +29,7 @@ Do not weaken a validator merely to make a run pass. Explain any changed expecta
 - Update both language editions when documentation changes. If translation needs help, say so in the PR.
 - Preserve inherited copyright and license notices. Identify the source of imported code.
 - Include validation and remaining limitations.
-- Submit only source and reviewed, minimal diagnostic excerpts. Never upload firmware, SDK packages, personal guest databases, credentials, full memory dumps, or private paths.
+- Submit source, documentation, and reviewed minimal diagnostics. Runtime screenshots need capture provenance and visual review; the publication check permits only the explicitly listed captures. Never upload firmware, SDK packages, personal guest databases, credentials, full memory dumps, or private paths.
 
 By submitting code, you confirm you have the right to contribute it under the applicable file license. A separate contributor agreement is not required by this project.
 

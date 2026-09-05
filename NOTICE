@@ -1,4 +1,4 @@
-Harmattan QEMU — source distribution
+Harmattan QEMU — source and documentation distribution
 
 Copyright holders retain ownership of their respective work.
 Project additions without a more specific notice: Copyright (C) 2026 YZune
@@ -26,7 +26,16 @@ Nokia Pure font, theme asset, third-party application package, or Livven
 device artwork is included. Their availability in an archive does not grant
 redistribution rights. Local import or export tools do not grant those rights.
 
+docs/screenshots/*.png contains selected runtime captures for documenting
+the emulator. The depicted Harmattan interface, icons, fonts and trademarks
+remain the work of Nokia and their respective rights holders. The project's
+GPL notice does not relicense that depicted content. These captures are not
+standalone theme/font assets or a guest software distribution. Capture
+provenance is recorded in docs/screenshots/README.md.
+
 中文说明：各权利人保留各自作品的权利。无更具体声明的新增代码与文档采用
 GPL-2.0-or-later；继承文件及 MIT 标记代码保留原声明。外部固件、镜像、
-字体和素材不在本仓库许可范围内，也未包含在源码发布中。
+字体和素材不在本仓库许可范围内，也未作为独立资源包含在源码发布中。
+docs/screenshots/ 下的运行截图用于说明模拟器实际行为，画面中的原界面、
+图标、字体和商标仍归 Nokia 及各自权利人，不因项目 GPL 声明而重新许可。
 详细来源与许可边界见 docs/sources.zh-CN.md。

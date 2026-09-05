@@ -8,6 +8,14 @@ Harmattan QEMU 将 Nokia 的实验性 N00 板级支持移植到 QEMU 9.1.3，并
 
 这是一个实验性的系统保存项目。宿主为原生 ARM64 macOS；客体仍通过 TCG 执行 ARM32 代码，组合 PR1.0 时期的模拟器内核、适配层和 PR1.3 量产用户态。它不是 Nokia 官方模拟器，也尚未完整模拟 N9 硬件。
 
+## 运行画面
+
+| 原版 Home | Calculator：2 + 3 = 5 | Notes 与 Maliit 键盘 |
+| --- | --- | --- |
+| ![在 QEMU 中运行的原版 Harmattan Home](docs/screenshots/home.png) | ![原版 Calculator 计算 2 加 3 后显示结果 5](docs/screenshots/calculator.png) | ![原版 Notes 使用 Maliit 键盘输入 Qemu](docs/screenshots/notes-keyboard.png) |
+
+2026-09-05，在 Apple Silicon 上使用公开移植版本的干净构建采集。图片为无窗口客体运行中直接导出的 QMP 截图，保留原始字节；Notes 文字是诊断输入。[采集说明](docs/screenshots/README.zh-CN.md)记录环境、来源和原界面署名。静态画面不能展示动画流畅度或 macOS 窗口交互。
+
 ## 仓库内容
 
 - OMAP3/N00 板级、内存、存储、显示、电源和触摸设备补丁。
@@ -64,6 +72,8 @@ flowchart TB
 | 来源、输入和许可 | [来源](docs/sources.zh-CN.md) | [Sources](docs/sources.md) |
 | 后续工作 | [路线图](docs/roadmap.zh-CN.md) | [Roadmap](docs/roadmap.md) |
 | 参与贡献 | [指南](CONTRIBUTING.zh-CN.md) | [Guide](CONTRIBUTING.md) |
+| 本地开发管理 | [流程](docs/development.zh-CN.md) | [Workflow](docs/development.md) |
+| 运行截图 | [采集说明](docs/screenshots/README.zh-CN.md) | [Provenance](docs/screenshots/README.md) |
 
 ## 许可与致谢
 

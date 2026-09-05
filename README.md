@@ -8,6 +8,14 @@ Harmattan QEMU brings Nokia's experimental N00 board support forward to QEMU 9.1
 
 This is an experimental preservation project. The host is native ARM64 macOS; the guest remains ARM32 under TCG, using a PR1.0-era emulator kernel and adaptation layer with PR1.3 retail userspace. It is not an official Nokia emulator or a complete N9 hardware model.
 
+## Running Harmattan
+
+| Original Home | Calculator: 2 + 3 = 5 | Notes and Maliit keyboard |
+| --- | --- | --- |
+| ![Original Harmattan Home running in QEMU](docs/screenshots/home.png) | ![Original Calculator displaying 5 after calculating 2 plus 3](docs/screenshots/calculator.png) | ![Original Notes with Qemu entered using the Maliit keyboard](docs/screenshots/notes-keyboard.png) |
+
+Captured on Apple Silicon from the published port's clean build on 2026-09-05. These are unedited QMP screendumps from a headless guest run. The Notes text is diagnostic input. [Capture provenance and scope](docs/screenshots/README.md) explains the setup and the original UI's attribution. Static captures do not demonstrate animation smoothness or macOS window interaction.
+
 ## What is here
 
 - OMAP3/N00 board, memory, storage, display, power, and touch-device patches.
@@ -64,6 +72,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are welco
 | Sources, inputs, and licensing | [Sources](docs/sources.md) | [来源](docs/sources.zh-CN.md) |
 | Roadmap | [Roadmap](docs/roadmap.md) | [路线图](docs/roadmap.zh-CN.md) |
 | Contributing | [Guide](CONTRIBUTING.md) | [指南](CONTRIBUTING.zh-CN.md) |
+| Local development workflow | [Workflow](docs/development.md) | [本地管理](docs/development.zh-CN.md) |
+| Runtime screenshots | [Provenance](docs/screenshots/README.md) | [采集说明](docs/screenshots/README.zh-CN.md) |
 
 ## License and acknowledgements
 

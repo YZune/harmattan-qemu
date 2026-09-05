@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Check the source publication allowlist and local Markdown file links."""
+"""Check published source, reviewed screenshots, and local Markdown links."""
 from pathlib import Path
+import hashlib
 import re
 import subprocess
 from urllib.parse import unquote, urlsplit
@@ -12,6 +13,12 @@ ALLOWED_FILES = {'README.md', 'README.zh-CN.md', 'CONTRIBUTING.md', 'CONTRIBUTIN
 IGNORED = {'.git', 'downloads', 'extracted', 'artifacts', '.venv', '__pycache__'}
 FORBIDDEN_SUFFIXES = {'.png', '.jpg', '.psd', '.raw', '.qcow2', '.ext4', '.bin', '.dmg',
                       '.iso', '.exe', '.dylib', '.so', '.zip', '.gz', '.xz', '.log', '.pyc'}
+# Individually reviewed, unedited QMP screendumps; no general media exception.
+SCREENSHOTS = {
+    'docs/screenshots/home.png': 'dcc8eb1d087635acb377d40414cce762904840b26dca43dc777fbfbeb7204309',
+    'docs/screenshots/calculator.png': 'ee39b240b6e1c71674d52f0bdf3376245c24ae5db24d991bdd0f628a7b3235d1',
+    'docs/screenshots/notes-keyboard.png': '78b93cd37721d7b89bb322bbbc9efd419ed17729f75f5c3d40a72f2dfc7e7d17',
+}
 
 
 def main():
@@ -28,8 +35,15 @@ def main():
         relative = path.relative_to(ROOT)
         if relative.parts[0] not in ALLOWED_ROOTS and str(relative) not in ALLOWED_FILES:
             errors.append(f'outside source allowlist: {relative}')
-        if path.is_symlink() or path.suffix.lower() in FORBIDDEN_SUFFIXES or path.stat().st_size > 2_000_000:
+        if path.is_symlink() or path.stat().st_size > 2_000_000:
             errors.append(f'non-source or oversized file: {relative}')
+            continue
+        if str(relative) in SCREENSHOTS:
+            if hashlib.sha256(path.read_bytes()).hexdigest() != SCREENSHOTS[str(relative)]:
+                errors.append(f'screenshot differs from reviewed capture: {relative}')
+            continue
+        if path.suffix.lower() in FORBIDDEN_SUFFIXES:
+            errors.append(f'non-source file: {relative}')
             continue
         try:
             content = path.read_text(encoding='utf-8')
@@ -60,7 +74,7 @@ def main():
         errors.append('no source files selected')
     for error in errors:
         print('FAIL:', error)
-    print(f'Checked {len(files)} source files; {len(errors)} errors. '
+    print(f'Checked {len(files)} publication files; {len(errors)} errors. '
           'This bounded check supplements human review; it is not a complete secret/license audit.')
     return bool(errors)
 
