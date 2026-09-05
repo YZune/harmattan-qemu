@@ -37,6 +37,12 @@ python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'
 python3 scripts/check-public-tree.py
 ```
 
+## 使用 coding agent 参与
+
+在仓库根目录打开工程，让 agent 读取 [AGENTS.md](AGENTS.md)；贡献者也可以阅读[中文版](AGENTS.zh-CN.md)。其中说明无需镜像的检查、干净构建、客体前提、补丁归属和贡献边界。如果工具不会自动发现该文件，请将它显式加入任务上下文，参见 [AGENTS.md 格式说明](https://agents.md/)。
+
+初次可以这样描述任务：“阅读 AGENTS.md，检查当前 checkout，运行不需要固件的检查。单独列出构建或客体运行缺少的前提，再汇总实际结果。”
+
 ## 运行 Harmattan
 
 完整客体运行需要**用户自行提供历史输入文件**。本仓库不分发固件、内核二进制、系统镜像、字体或机身素材；克隆仓库不会直接得到可启动虚拟机。
@@ -73,6 +79,7 @@ flowchart TB
 | 后续工作 | [路线图](docs/roadmap.zh-CN.md) | [Roadmap](docs/roadmap.md) |
 | 参与贡献 | [指南](CONTRIBUTING.zh-CN.md) | [Guide](CONTRIBUTING.md) |
 | 本地开发管理 | [流程](docs/development.zh-CN.md) | [Workflow](docs/development.md) |
+| Coding agent 工作说明 | [中文版](AGENTS.zh-CN.md) | [AGENTS.md](AGENTS.md) |
 | 运行截图 | [采集说明](docs/screenshots/README.zh-CN.md) | [Provenance](docs/screenshots/README.md) |
 
 ## 许可与致谢

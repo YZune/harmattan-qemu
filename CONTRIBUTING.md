@@ -4,6 +4,8 @@
 
 Contributions in English or Chinese are welcome. You do not need a firmware image to improve host tests, documentation, build scripts, or device-model source.
 
+When using a coding agent, start with [AGENTS.md](AGENTS.md). Review the resulting changes and verification evidence with the same expectations as any other contribution.
+
 ## Before changing code
 
 Read the [architecture](docs/architecture.md) and [status](docs/status.md). Choose a bounded problem. For substantial graphics or board changes, describe the intended behavior in an issue first so implementation and review can stay focused.

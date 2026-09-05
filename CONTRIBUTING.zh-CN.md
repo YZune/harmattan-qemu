@@ -4,6 +4,8 @@
 
 欢迎使用中文或英文参与。改进主机测试、文档、构建脚本和设备模型源码不需要固件镜像。
 
+使用 coding agent 时，从 [AGENTS.md](AGENTS.md) 或[中文说明](AGENTS.zh-CN.md)开始；对其产生的改动和验证证据，采用与其他贡献相同的审阅要求。
+
 ## 修改之前
 
 先阅读[架构](docs/architecture.zh-CN.md)与[状态](docs/status.zh-CN.md)，选择范围明确的问题。较大的图形或板级修改，建议先在 Issue 中说明目标行为，便于集中实施和审查。

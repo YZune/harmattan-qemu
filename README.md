@@ -37,6 +37,12 @@ python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'
 python3 scripts/check-public-tree.py
 ```
 
+## Work with a coding agent
+
+Open this repository root and have your agent read [AGENTS.md](AGENTS.md), with a [Chinese edition](AGENTS.zh-CN.md) for contributors. It covers source-only checks, clean builds, guest prerequisites, patch ownership and contribution boundaries. If your tool does not discover the file automatically, include it explicitly in the task context; see the [AGENTS.md format](https://agents.md/).
+
+An initial task can be: “Read AGENTS.md, inspect this checkout, and run the checks available without firmware. Report missing build or guest prerequisites separately, then summarize the actual results.”
+
 ## Run Harmattan
 
 Full guest execution requires **user-supplied historical inputs**. Firmware, kernel binaries, system images, fonts, and device artwork are not distributed here. A fresh clone is not a ready-to-boot virtual machine.
@@ -73,6 +79,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are welco
 | Roadmap | [Roadmap](docs/roadmap.md) | [路线图](docs/roadmap.zh-CN.md) |
 | Contributing | [Guide](CONTRIBUTING.md) | [指南](CONTRIBUTING.zh-CN.md) |
 | Local development workflow | [Workflow](docs/development.md) | [本地管理](docs/development.zh-CN.md) |
+| Coding agent instructions | [AGENTS.md](AGENTS.md) | [Agent 说明](AGENTS.zh-CN.md) |
 | Runtime screenshots | [Provenance](docs/screenshots/README.md) | [采集说明](docs/screenshots/README.zh-CN.md) |
 
 ## License and acknowledgements
