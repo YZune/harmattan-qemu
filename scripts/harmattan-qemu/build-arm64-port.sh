@@ -37,7 +37,7 @@ if [ "$actual_sha" != 480a77a0ed13a9b39415f639aa020b4eb0d7cc5a52569510dfd830b3af
 fi
 "$python_bin" --version
 "$ninja_bin" --version
-pkg-config --exists glib-2.0 pixman-1
+pkg-config --exists glib-2.0 pixman-1 slirp
 mkdir -p "$work_root"
 work_root=$(CDPATH= cd -- "$work_root" && pwd)
 source_root="$work_root/qemu-9.1.3"
@@ -83,6 +83,11 @@ fi
     shutdown_patch="$port_root/qemu-9.1.3-n00-cocoa-shutdown.patch"
     frame_patch="$port_root/qemu-9.1.3-n00-n9-frame.patch"
     boot_patch="$port_root/qemu-9.1.3-n00-boot-animation.patch"
+    network_patch="$port_root/qemu-9.1.3-n00-network.patch"
+
+    if git apply --reverse --check "$network_patch" >/dev/null 2>&1; then
+        git apply --reverse "$network_patch"
+    fi
 
     if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$boot_patch" >/dev/null 2>&1; then
         git apply --reverse "$boot_patch"
@@ -260,6 +265,8 @@ fi
         git apply "$boot_patch"
         cp "$port_root/n00-boot-animation.h" ui/n00-boot-animation.h
     fi
+    git apply --check "$network_patch"
+    git apply "$network_patch"
 )
 
 build_name=build-arm64-headless
@@ -308,11 +315,12 @@ if [ ! -f build.ninja ]; then
     ../configure --python="$python_bin" --ninja="$ninja_bin" \
         --target-list=arm-softmmu --enable-tcg --disable-werror \
         --disable-docs --enable-tools --disable-guest-agent \
-        --disable-slirp "$display_flag" --disable-sdl --disable-gtk \
+        --enable-slirp "$display_flag" --disable-sdl --disable-gtk \
         --disable-vnc "$@"
-elif [ "$mode" != --headless ]; then
-    # An existing build must not silently keep a different DGLES library path.
-    ./pyvenv/bin/meson configure "$@" .
+else
+    # Reconfigure old builds too: SLIRP must be enabled, and Cocoa must retain
+    # the selected DGLES path rather than silently using a previous library.
+    ./pyvenv/bin/meson configure -Dslirp=enabled "$@" .
 fi
 "$ninja_bin" -j "$jobs" qemu-system-arm qemu-img
 if [ "$mode" = --cocoa-interaction ]; then

@@ -33,10 +33,12 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 ## 尚未完成
 
+原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。
+
 - Linux/Windows 运行时移植、另一台 Mac 独立验证，以及 Developer ID 签名和公证。打包运行时及仍需提供的客体输入见[预编译预览版](releases.zh-CN.md)。
 - 新增原始材料准备流程的独立复现、更多介质版本的支持，以及可再分发的客体基线。
 - 完整 EGL/GLES、SGX 仿真及任意 ARMEL 包兼容。
-- 完整 Upstart/Aegis/设备服务、蜂窝、相机、音频、网络和准确物理传感器。
+- 完整 Upstart/Aegis/设备服务、蜂窝、相机、音频、Wi-Fi/连接管理器集成和准确物理传感器。
 - 通用保存/恢复、机器复位、挂起与唤醒兼容性。
 - 全部应用、键盘语言、旋转方向、无障碍及长时间会话。
 - splash 与所有交接模式的组合；正常路径仍关闭 splash。

@@ -54,6 +54,9 @@ PERF_SPEC.loader.exec_module(performance)
 KEYBOARD_SPEC = importlib.util.spec_from_file_location('keyboard', Path(__file__).with_name('arm64-keyboard.py'))
 keyboard = importlib.util.module_from_spec(KEYBOARD_SPEC)
 KEYBOARD_SPEC.loader.exec_module(keyboard)
+NETWORK_SPEC = importlib.util.spec_from_file_location('network', Path(__file__).with_name('arm64-network.py'))
+network = importlib.util.module_from_spec(NETWORK_SPEC)
+NETWORK_SPEC.loader.exec_module(network)
 PHASES = ("bootstrap", "theme", "compositor", "home", "settled", "final")
 LIBRARIES = {
     "/usr/bin/mcompositor": "52d29f7f90d03277ded463ebc3c5f33d",
@@ -209,6 +212,7 @@ def desktop_frame(data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--network", choices=("off", "user"), default="off")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--verify-desktop", action="store_true", help="require mapped Home, WM ownership and stable nonempty rendering; not input")
@@ -397,6 +401,9 @@ def main():
             display.wait_serial(serial, process, log,
                 lambda data: b"shell ready" in data and b"/ # " in data, deadline)
             timings['boot_to_serial_shell_seconds'] = time.monotonic() - started
+            if args.network == 'user':
+                network_result = network.configure(serial, process, log, deadline, display)
+                (out / 'network-result.json').write_text(json.dumps(network_result, indent=2) + '\n')
             serial.sendall(b"dmesg -n 1; stty -echo; PS2=''; printf '\\nN00_SHELL_UPLOAD_READY\\n'\n")
             wait_line(b"N00_SHELL_UPLOAD_READY")
             if os.environ.get('HARMATTAN_UI_IDLE_PROFILE', '').startswith('wfi'):

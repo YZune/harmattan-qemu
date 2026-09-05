@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +31,10 @@ def main():
         selected = os.environ.get(override, name) if override else name
         found = shutil.which(selected)
         report(name, found is not None, found or selected)
+    for package in ('glib-2.0', 'pixman-1', 'slirp'):
+        available = shutil.which('pkg-config') is not None and subprocess.run(
+            ['pkg-config', '--exists', package], check=False).returncode == 0
+        report(package, available, 'pkg-config development dependency')
     manifest = json.loads((ROOT / 'docs/inputs.json').read_text())
     for item in manifest['inputs']:
         if item['group'] != 'source' and not args.guest:

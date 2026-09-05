@@ -15,10 +15,10 @@ For the supported original SDK installer and PR1.3 firmware, [Get guest inputs](
 
 ## 1. Host tools
 
-Install Xcode Command Line Tools and provide Python 3.12, Ninja, pkg-config, GLib, Pixman, and a native C compiler. Homebrew users can install missing tools with:
+Install Xcode Command Line Tools and provide Python 3.12, Ninja, pkg-config, GLib, Pixman, libslirp, and a native C compiler. Homebrew users can install missing tools with:
 
 ```sh
-brew install python@3.12 ninja pkgconf glib pixman
+brew install python@3.12 ninja pkgconf glib pixman libslirp
 export PATH="$(brew --prefix python@3.12)/libexec/bin:$PATH"
 ```
 
@@ -141,6 +141,7 @@ Useful overrides:
 
 | Variable | Values / use |
 | --- | --- |
+| `HARMATTAN_UI_NETWORK` | `off` (default) / `user`; [SDK Ethernet, DHCP and user networking](networking.md) |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`; activity releases after 8 seconds without input |
 | `HARMATTAN_UI_SKIN` | `off` (source default) / `frame` (code-drawn, release default) / `black` (requires separately obtained artwork and rebuild) |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
