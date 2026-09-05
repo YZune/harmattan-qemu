@@ -123,6 +123,11 @@ class SplashTests(unittest.TestCase):
                                     reply[0] = 0; reply[1] = 3
                                     connection.sendall(reply)
                                 continue
+                            elif op == 43 and mode == 'error':
+                                # Drain the client's fence after rejecting ChangeProperty.
+                                # An unused success reply can make Linux reset the socket
+                                # when the client exits on the intentional X11 error.
+                                return
                             elif op != 43:
                                 raise AssertionError(f'unexpected opcode {op}')
                             connection.sendall(reply)
@@ -146,6 +151,9 @@ class SplashTests(unittest.TestCase):
                 self.assertNotIn(b'N00_SPLASH_PUBLISHED', result.stdout)
                 if mode != 'error':
                     self.assertEqual(received, [])
+                else:
+                    self.assertEqual(len(received), 1)
+                    self.assertIn(b'X11 error:', result.stderr)
                 return
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(len(received), 1)
