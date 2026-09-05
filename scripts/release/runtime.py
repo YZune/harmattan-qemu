@@ -100,7 +100,7 @@ def check(state):
     return kernel, disk
 
 
-def run(state, contents, mode, skin):
+def run(state, contents, mode, skin, boot_animation=True):
     kernel, disk = check(state)
     state.mkdir(parents=True, exist_ok=True)
     # flock avoids overlapping launchers while preserving the user's source run.
@@ -124,6 +124,7 @@ def run(state, contents, mode, skin):
                HARMATTAN_KERNEL=str(kernel), HARMATTAN_GUEST_IMAGE=str(disk),
                HARMATTAN_PREBUILT_HELPERS=str(contents / 'Resources/helpers'),
                HARMATTAN_UI_SKIN=skin,
+               HARMATTAN_UI_BOOT_ANIMATION='on' if boot_animation else 'off',
                # Bundled scripts deliberately fail if a builder path is reached.
                HARMATTAN_ARMEL_CLANG='/nonexistent/release-does-not-compile',
                HARMATTAN_DEBUGFS='/nonexistent/release-does-not-extract-link-inputs')
@@ -142,6 +143,7 @@ def main():
     runner = commands.add_parser('run')
     runner.add_argument('--diagnostic', action='store_true')
     runner.add_argument('--no-frame', action='store_true')
+    runner.add_argument('--no-boot-animation', action='store_true')
     args = parser.parse_args()
     state = data_home()
     try:
@@ -153,7 +155,7 @@ def main():
         else:
             return run(state, args.contents.resolve(),
                        '--usability-headless-diagnostic' if args.diagnostic else 'interactive',
-                       'off' if args.no_frame else 'frame')
+                       'off' if args.no_frame else 'frame', not args.no_boot_animation)
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         print(str(error), file=sys.stderr)
         return 1

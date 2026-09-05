@@ -29,6 +29,8 @@ The macOS prebuilt preview has a separate [validation record](release-preview-va
 
 The [original-media preparation record](guest-preparation-validation.json) covers a complete fresh run from the two pinned SDK/firmware inputs, unchanged original hashes, a clean read-only filesystem check, 246 host tests and the published app's combined headless Home/Notes/keyboard/Calculator/transition regression. See [Get guest inputs](guest-inputs.md) for the supported preparation route.
 
+The source now supports [original boot presentation](boot-animation.md) over unchanged startup checks. Its [validation record](boot-animation-validation.json) covers a clean native build, 257 host tests and visible Cocoa startup/input/exit. Existing downloaded preview apps require rebuilding to include it.
+
 ## Open limitations
 
 - Linux/Windows runtime ports, independent second-Mac validation and Developer ID signing/notarization. See the [prebuilt preview](releases.md) for the packaged runtime and its remaining guest-input requirement.

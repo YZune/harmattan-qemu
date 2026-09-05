@@ -37,6 +37,7 @@ The prefix below is `qemu-9.1.3-n00`. The builder selects only the appropriate o
 | 14 | `-n9-skin.patch` | Optional host view and edge input geometry |
 | 15 | `-cocoa-shutdown.patch` | Asynchronous AppKit termination and cleanup |
 | 16 | `-n9-frame.patch` | Original code-drawn frame for prebuilt distribution |
+| 17 | `-boot-animation.patch` | Host presentation of the user's original boot movie |
 
 The normal `--cocoa-interaction` build includes the idle/input activity path and the host view/shutdown code. It does not require artwork. The DGLES patch applies to a different source archive; never apply it to the QEMU tree.
 
@@ -45,6 +46,8 @@ The normal `--cocoa-interaction` build includes the idle/input activity path and
 Original guest EGL/GLES libraries call the old kernel graphics interface. The QEMU bridge decodes the supported call subset, copies bounded guest memory, and executes host graphics work through DGLES. This is not a full PowerVR SGX implementation or complete EGL/GLES conformance.
 
 Original Xorg, Qt, Home, and compositor remain in the guest. Small helpers adapt verified matrix, pixmap, stacking, handoff, and orientation behavior. ABI-sensitive helpers pin the guest library hashes; a different image requires new source/ABI verification. The normal path retains original animation transforms and timing, while splash remains disabled.
+
+The [boot presentation](boot-animation.md) is a separate Cocoa overlay. It reads the original movie from the private disk clone and leaves guest pixels, QMP captures and startup validators intact. It does not enable application splash composition or restore the complete retail boot/service graph.
 
 ## Changes made for the public source distribution
 

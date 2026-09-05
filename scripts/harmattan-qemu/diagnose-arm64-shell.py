@@ -41,6 +41,9 @@ SPLASH_SPEC.loader.exec_module(splash)
 STARTUP_SPEC = importlib.util.spec_from_file_location("startup", Path(__file__).with_name("arm64-startup.py"))
 startup = importlib.util.module_from_spec(STARTUP_SPEC)
 STARTUP_SPEC.loader.exec_module(startup)
+BOOT_SPEC = importlib.util.spec_from_file_location("boot_animation", Path(__file__).with_name("arm64-boot-animation.py"))
+boot_animation = importlib.util.module_from_spec(BOOT_SPEC)
+BOOT_SPEC.loader.exec_module(boot_animation)
 TRANSITION_SPEC = importlib.util.spec_from_file_location("transitions", Path(__file__).with_name("probe-arm64-transitions.py"))
 transitions = importlib.util.module_from_spec(TRANSITION_SPEC)
 TRANSITION_SPEC.loader.exec_module(transitions)
@@ -213,6 +216,7 @@ def main():
     parser.add_argument("--verify-input", action="store_true", help="require real Xorg MXT input, changed Home pixels and exact drag restoration")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--interactive", action="store_true", help="validate startup, then keep the native window running until closed")
+    parser.add_argument('--boot-animation', type=Path, help='private raw clone containing the original boot movie; interactive Cocoa only')
     parser.add_argument("--device-orientation", choices=('display', 'disabled', 'top', 'left', 'bottom', 'right'),
                         help="virtual ContextKit pose; default follows display in interactive mode, disabled in historical diagnostics")
     parser.add_argument("--exercise-orientation", action="store_true", help="Calendar portrait/landscape/portrait and Home regression")
@@ -229,6 +233,8 @@ def main():
     parser.add_argument("--measure-performance", action="store_true", help="bounded CPU and guest framebuffer observations using the Calculator workflow; not FPS")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.boot_animation and not args.interactive:
+        parser.error('boot presentation is only used by interactive Cocoa startup')
     if args.exercise_keyboard and (args.interactive or args.rotation != 270 or args.measure_performance or not args.exercise_transitions):
         parser.error('keyboard regression requires its own upright transition diagnostic')
     if args.exercise_startup_input:
@@ -319,6 +325,10 @@ def main():
         guard_info.update(metadata)
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
+    boot_info = {'enabled': False}
+    boot_environment = {}
+    if args.boot_animation:
+        boot_environment, boot_info = boot_animation.prepare(args.boot_animation, out / 'boot', args.rotation)
     guest = Path(__file__).with_name("diagnose-shell-guest.sh").read_bytes()
     inspector = Path(__file__).with_name("inspect-shell-x11.pl").read_bytes()
     qemu_digest = hashlib.sha256(Path(command[0]).read_bytes()).hexdigest()
@@ -347,7 +357,7 @@ def main():
             process = subprocess.Popen(command + control + ["-qmp", "stdio", "-chardev",
                 f"socket,id=n00serial,fd={child.fileno()}", "-serial", "chardev:n00serial", "-monitor", "none"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors,
-                env=display.qemu_environment(), pass_fds=(child.fileno(),), bufsize=0)
+                env=display.qemu_environment() | boot_environment, pass_fds=(child.fileno(),), bufsize=0)
             child.close()
             qmp = display.QMP(process, deadline)
 
@@ -442,6 +452,8 @@ def main():
                 serial.sendall(b"export N00_SHELL_INPUT=1\n")
             for phase in PHASES:
                 phase_started = time.monotonic()
+                if phase == 'home' and args.boot_animation:
+                    boot_animation.signal(out / 'boot', 'play')
                 serial.sendall(f"printf '\\nN00_SHELL_BEGIN_{phase}\\n'; sh /tmp/n00-shell-guest.sh {phase}; printf '\\nN00_SHELL_PHASE_{phase}_%s\\n' $?\n".encode())
                 pattern = rb"(?:^|\n)N00_SHELL_PHASE_" + phase.encode() + rb"_(\d+)\n"
                 if args.measure_performance and phase == 'home':
@@ -579,6 +591,9 @@ def main():
                         animation_info['handoff_runtime'] = animations.validate_handoff((out / 'serial.log').read_bytes())
                 if splash_on:
                     splash_info['runtime'] = splash.validate_serial((out / 'serial.log').read_bytes(), splash_info)
+                if args.boot_animation:
+                    boot_animation.reveal(out / 'boot', drain)
+                    boot_info['desktop_revealed'] = True
                 guard_info['released'] = startup.validate(startup.collect(serial, wait_line, out, release=True), released=True)
                 ready = {'state': 'ready', 'scope': 'verified original Home startup with real input; manual use is not app/performance acceptance',
                     'command': command, 'qemu_pid': process.pid, 'controller_pid': os.getpid(),
@@ -593,6 +608,7 @@ def main():
                     'compositor_animations': animation_info,
                     'splash': splash_info,
                     'startup_input': guard_info,
+                    'boot_animation': boot_info,
                     'guest': guest_result, 'native_frame': settled,
                     'host_startup': host_startup,
                     'startup_wall_seconds': round(time.monotonic() - started, 3)}

@@ -133,13 +133,18 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 
 启动器按需构建辅助程序，创建独立 APFS 克隆和 qcow2 层，使用 `-snapshot`。客体写入在退出时丢弃。每次运行产物保留在唯一命名、已忽略的目录中供检查；这不代表 Notes 内容可跨启动持久保存。克隆前应关闭来源主盘的写入进程。
 
-正常交互开启 WFI、输入驱动活动声明、原版键盘与动画及显示交接；splash 保持关闭。常用变量：
+正常交互开启 WFI、输入驱动活动声明、原版键盘与动画及显示交接；splash 保持关闭。
+
+重新构建的 Cocoa interaction 默认以[原版开机视频](boot-animation.zh-CN.md)覆盖启动检查过程。素材来自已准备的系统磁盘，源码与应用不包含开机图片或视频。诊断模式继续显示真实 framebuffer。这项显示改动不会缩短现有客体等待。
+
+常用变量：
 
 | 变量 | 值与用途 |
 | --- | --- |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |
 | `HARMATTAN_UI_SKIN` | `off`（源码默认）/ `frame`（代码绘制，发行版默认）/ `black`（需自行取得素材并重新构建） |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
+| `HARMATTAN_UI_BOOT_ANIMATION` | `on`（交互默认）/ `off`（直接显示启动过程）；需要重新构建 Cocoa interaction |
 | `HARMATTAN_UI_HANDOFF` | `on` / `off` |
 | `HARMATTAN_UI_RUNTIME` | `responsive`（默认）/ `legacy`（诊断对照） |
 

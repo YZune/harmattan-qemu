@@ -37,6 +37,8 @@ APP='./Harmattan QEMU.app/Contents/MacOS/harmattan'
 
 `import --replace` 创建新配置并保留旧配置。`--configure` 重新打开文件选择界面；`run --no-frame` 使用无外框窗口。`HARMATTAN_DATA_HOME` 可为验证指定独立状态目录。`run --diagnostic` 是有时间边界的联合无窗口客体回归，不代表鼠标或可见窗口验证。辅助程序哈希、内核标识或客体组件校验失败会停止运行，不会回退到编译。
 
+包含[开机画面](boot-animation.zh-CN.md)改动的源码重新打包后，应用会在启动检查期间显示导入磁盘里的原版视频。`run --no-boot-animation` 可直接显示启动中间画面以便诊断。源码改动不会自动更新已经下载的预览应用。
+
 ## 源码保存与重新构建
 
 每个二进制发行版都必须附上对应源码包及许可材料，不能只提供上游下载链接。源码包包含本项目源码、补丁与脚本，固定版本 QEMU/DGLES 归档，原先需要联网获取的 DTC 源码，Python 源码，所打包动态库的源码，安装时的 Homebrew 配方及 GLib 补丁，以及应用补丁后的 QEMU/DGLES 源码树。校验值记录在 `docs/inputs.json` 和 `docs/release-sources.json`。

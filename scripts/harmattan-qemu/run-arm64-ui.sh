@@ -42,6 +42,8 @@ animations=${HARMATTAN_UI_ANIMATIONS:-on}
 case "$animations" in on|off) ;; *) echo 'HARMATTAN_UI_ANIMATIONS must be on or off' >&2; exit 2 ;; esac
 splash=${HARMATTAN_UI_SPLASH:-off}
 case "$splash" in on|off) ;; *) echo 'HARMATTAN_UI_SPLASH must be on or off' >&2; exit 2 ;; esac
+boot_animation=${HARMATTAN_UI_BOOT_ANIMATION:-on}
+case "$boot_animation" in on|off) ;; *) echo 'HARMATTAN_UI_BOOT_ANIMATION must be on or off' >&2; exit 2 ;; esac
 default_handoff=off
 if [ "$mode" = interactive ] && [ "$animations" = on ] && [ "$splash" = off ]; then default_handoff=on; fi
 handoff=${HARMATTAN_UI_HANDOFF:-$default_handoff}
@@ -153,6 +155,11 @@ if [ "$runtime" = responsive ]; then
     }
 fi
 qemu_binary="$bin_root/qemu-system-arm"
+if [ "$mode" = interactive ] && [ "$boot_animation" = on ]; then
+    strings "$qemu_binary" | grep -q N00_COCOA_BOOT_ANIMATION || {
+        echo 'Boot animation requires a fresh --cocoa-interaction build (or HARMATTAN_UI_BOOT_ANIMATION=off).' >&2; exit 1;
+    }
+fi
 if [ "$N00_COCOA_N9_SKIN" = black ]; then
     strings "$bin_root/qemu-system-arm" | grep -q N00_COCOA_N9_SKIN || {
         echo 'N9 frame requires rebuilding with build-arm64-port.sh --cocoa-interaction (or use HARMATTAN_UI_SKIN=off).' >&2; exit 1;
@@ -254,6 +261,9 @@ case "$mode" in
         echo 'Original System UI provides the statusbar pixmap; device services are still incomplete.'
         if [ "$clock" = host ]; then echo 'Host UTC and local timezone are synchronized into this disposable guest.'; fi
         echo 'Guest input is held during startup checks; release buttons/keys and wait for READY.'
+        if [ "$boot_animation" = on ]; then
+            echo 'Original boot movie covers startup; the verified desktop appears when ready.'
+        fi
         if [ "$splash" = on ]; then echo 'WARNING: experimental splash visuals and remaining transition flashes are not fully accepted; off is the normal default.'; fi
         if [ "$handoff" = on ]; then echo 'Real-pixel compositor handoff enabled.'; fi
         echo "Runtime: $runtime; CPU idle: $idle; input activity: $runtime_activity; original keyboard: $keyboard."
@@ -261,7 +271,8 @@ case "$mode" in
         echo 'Left-button drag scrolls Home.'
         if [ "$keyboard" = on ]; then echo 'Focused text fields use the original on-screen keyboard.'; fi
         echo 'Close QEMU or press Ctrl-C here to exit; all guest writes are discarded.'
-        set -- --interactive --compositor-animations "$animations" --splash "$splash" --display-handoff "$handoff" -- "$@" ;;
+        set -- --interactive --compositor-animations "$animations" --splash "$splash" --display-handoff "$handoff" -- "$@"
+        if [ "$boot_animation" = on ]; then set -- --boot-animation "$run_root/pr13-backing.raw" "$@"; fi ;;
     *) set -- --verify-input -- "$@" ;;
 esac
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
