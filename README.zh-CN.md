@@ -92,3 +92,5 @@ flowchart TB
 无更具体声明的项目新增代码及文档使用 **GPL-2.0-or-later**。继承自 QEMU/Nokia 的文件保留原许可选择，其中部分范围更窄；明确标记 MIT 的代码仍采用 MIT。请阅读 [NOTICE](NOTICE) 与[来源及权限清单](docs/sources.zh-CN.md)。根目录 [LICENSE](LICENSE) 为 GPLv2 正文，不会改变外部客体软件或素材的许可。
 
 项目建立在 QEMU、Nokia N00/DGLES、Harmattan 源码发布，以及保存这些材料的社区与档案机构的工作之上。Nokia、MeeGo、Harmattan、QEMU 名称用于标识原项目，不表示官方关联或背书。
+
+特别感谢 OpenAI 的 **GPT 与 Codex** 在整个项目中的持续协作：从历史源码研究、模拟器移植、图形与交互调试，到验证工具、中英文文档和发布准备。仅凭我一个人的力量，无法把这个项目推进到今天。它们的帮助，让我对 Nokia N9 的好奇最终成为了一个重新运行起来的模拟器，也成为了一个可以与社区分享的项目。
