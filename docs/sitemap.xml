@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url><loc>https://yzune.github.io/harmattan-qemu/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yzune.github.io/harmattan-qemu/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://yzune.github.io/harmattan-qemu/zh/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yzune.github.io/harmattan-qemu/"/>
+  </url>
+  <url><loc>https://yzune.github.io/harmattan-qemu/zh/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yzune.github.io/harmattan-qemu/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://yzune.github.io/harmattan-qemu/zh/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yzune.github.io/harmattan-qemu/"/>
+  </url>
+  <url><loc>https://yzune.github.io/harmattan-qemu/watch/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yzune.github.io/harmattan-qemu/watch/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://yzune.github.io/harmattan-qemu/zh/watch/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yzune.github.io/harmattan-qemu/watch/"/>
+  </url>
+  <url><loc>https://yzune.github.io/harmattan-qemu/zh/watch/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yzune.github.io/harmattan-qemu/watch/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://yzune.github.io/harmattan-qemu/zh/watch/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yzune.github.io/harmattan-qemu/watch/"/>
+  </url>
+</urlset>
