@@ -51,6 +51,16 @@ if [ ! -d "$source_root" ]; then
     tar -xf "$archive" --strip-components=1 -C "$source_root"
 fi
 
+# The complete release source kit preserves this otherwise network-fetched
+# Meson subproject, exported from the exact revision in QEMU's dtc.wrap.
+dtc_archive=${HARMATTAN_DTC_TARBALL:-"$repo_root/downloads/tools/qemu-dtc-b6910bec.tar"}
+if [ -f "$dtc_archive" ] && [ ! -f "$source_root/subprojects/dtc/meson.build" ]; then
+    test "$(shasum -a 256 "$dtc_archive" | cut -d ' ' -f 1)" = 9e37560fd55be30d991118ba8dad60c5c0cb924227cb2671a7543bd6dec3d547 || {
+        echo 'Pinned DTC source archive SHA-256 mismatch.' >&2; exit 1;
+    }
+    tar -xf "$dtc_archive" -C "$source_root/subprojects"
+fi
+
 # Do not let git discover the parent Harmattan repository. These paths are
 # relative to the generated, standalone QEMU source tree, not this checkout.
 (
@@ -71,7 +81,11 @@ fi
     interaction_patch="$port_root/qemu-9.1.3-n00-interaction-activity.patch"
     skin_patch="$port_root/qemu-9.1.3-n00-n9-skin.patch"
     shutdown_patch="$port_root/qemu-9.1.3-n00-cocoa-shutdown.patch"
+    frame_patch="$port_root/qemu-9.1.3-n00-n9-frame.patch"
     # Unwind the newest recognized increment before checking earlier ones.
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$frame_patch" >/dev/null 2>&1; then
+        git apply --reverse "$frame_patch"
+    fi
     if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$shutdown_patch" >/dev/null 2>&1; then
         git apply --reverse "$shutdown_patch"
     fi
@@ -235,6 +249,8 @@ fi
         cp "$port_root/n00-n9-skin.h" ui/n00-n9-skin.h
         git apply --check "$shutdown_patch"
         git apply "$shutdown_patch"
+        git apply --check "$frame_patch"
+        git apply "$frame_patch"
     fi
 )
 

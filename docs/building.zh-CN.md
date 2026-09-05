@@ -67,7 +67,7 @@ DGLES 执行需要 macOS 图形会话。仅构建通过不代表渲染通过。�
 
 QEMU 首次配置可能按发行包 Meson wrap 文件中的上游地址获取固定版本的子项目。依赖缺席时需要网络访问。若获取中断留下不完整子项目，请在新工作目录重试；源码归档摘要通过不代表依赖 checkout 完整。
 
-本地 `.app` 仍引用选定的 DGLES 和 Homebrew 动态库，移动依赖后需要重新构建。本次不提供可任意移动的二进制应用包。
+本地 `.app` 仍引用选定的 DGLES 和 Homebrew 动态库，移动依赖后需要重新构建。需要包含依赖且可移动的应用时，请使用独立的[发行打包流程和预编译说明](releases.zh-CN.md)。
 
 ## 4. 用户自行提供客体输入
 
@@ -123,7 +123,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 | 变量 | 值与用途 |
 | --- | --- |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |
-| `HARMATTAN_UI_SKIN` | `off`（默认）/ `black`（需自行取得素材并重新构建） |
+| `HARMATTAN_UI_SKIN` | `off`（源码默认）/ `frame`（代码绘制，发行版默认）/ `black`（需自行取得素材并重新构建） |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
 | `HARMATTAN_UI_HANDOFF` | `on` / `off` |
 | `HARMATTAN_UI_RUNTIME` | `responsive`（默认）/ `legacy`（诊断对照） |

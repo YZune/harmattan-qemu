@@ -61,3 +61,5 @@ Commit, push the feature branch, and open a pull request to `main`. Require a su
 ## Moving the checkout later
 
 Keeping the checkout under `publish/` is currently usable. A sibling research directory and public source directory can be easier to navigate long term, but moving the current build tree can break its absolute DGLES/Homebrew library references. Recreate the checkout, supply its inputs, rebuild QEMU/DGLES at the final paths, and verify startup before retiring the old build. Moving a `.app` alone is not sufficient.
+
+The independent [prebuilt release](releases.md) bundles its runtime dependencies and can be moved without rebuilding. Its imported inputs live in Application Support, separate from the source checkout. The source-build path above still uses its selected build locations.

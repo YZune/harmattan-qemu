@@ -11,3 +11,5 @@
 将获准使用的本地结果放到 `ports/qemu-n00/skins/n9-black-livven.png`，重新构建 `--cocoa-interaction`，再为启动器显式设置 `HARMATTAN_UI_SKIN=black`。构建会将本署名说明与提供的图像一同放入应用包。默认值为 `HARMATTAN_UI_SKIN=off`。
 
 视图代码标记为 MIT，不代表素材采用 MIT；合成测试图也不验证原 PSD 的渲染或真实性。
+
+`HARMATTAN_UI_SKIN=frame` 选择项目原创代码绘制的外框，是预编译发行版的默认选项，不需要 PNG 或 PSD。

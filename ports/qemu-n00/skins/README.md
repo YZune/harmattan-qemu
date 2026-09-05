@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-No PNG or PSD is distributed here. The default runtime and the native geometry tests work without artwork.
+No PNG or PSD is distributed here. `HARMATTAN_UI_SKIN=frame` selects an original code-drawn fallback and is the prebuilt release default. The default runtime and the native geometry tests work without artwork.
 
 The optional integration was developed against Liwen Guo / Livven's Nokia N9 PSD (2011). The recorded original page is [Nokia N9 PSD](http://livven.me/psds/nokia-n9-psd/). Its recorded usage terms are separate from this repository's code licenses and do not establish an open-source artwork license. Establish permission before use or redistribution.
 

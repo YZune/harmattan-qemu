@@ -25,9 +25,11 @@
 
 额外的发布构建及运行检查见 [release-validation.json](release-validation.json)。请按各项范围解读，未测试字段不表示通过。GitHub Actions 另外在 macOS 与 Linux 上执行源码检查和主机测试。
 
+macOS 预编译预览版另有[验证记录](release-preview-validation.json)，覆盖搬移、私有输入导入和联合客体回归。
+
 ## 尚未完成
 
-- Linux/Windows 运行时移植，以及可独立移动的 macOS 应用包。
+- Linux/Windows 运行时移植、另一台 Mac 独立验证，以及 Developer ID 签名和公证。打包运行时及仍需提供的客体输入见[预编译预览版](releases.zh-CN.md)。
 - 从原始介质完整重建客体主盘，以及可再分发的客体基线。
 - 完整 EGL/GLES、SGX 仿真及任意 ARMEL 包兼容。
 - 完整 Upstart/Aegis/设备服务、蜂窝、相机、音频、网络和准确物理传感器。

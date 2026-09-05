@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT
- * Host-only presentation of Livven's original black Nokia N9 artwork.
+ * Host-only frame, with optional user-supplied Livven artwork.
  * Artwork attribution and export details: skins/README.md (not MIT licensed).
  * The unchanged QEMU framebuffer is a separate, opaque child NSView.
  */
@@ -162,8 +162,25 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
         CGContextRotateCTM(context, -M_PI_2);
     }
     [[NSGraphicsContext currentContext] setImageInterpolation:NSImageInterpolationHigh];
-    [caseImage drawInRect:NSMakeRect(0, 0, 620, 1160)
-                fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
+    if (caseImage) {
+        [caseImage drawInRect:NSMakeRect(0, 0, 620, 1160)
+                    fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
+    } else {
+        /* Original code-drawn fallback; no third-party image or logo. */
+        NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:
+            NSMakeRect(25, 20, 570, 1120) xRadius:78 yRadius:78];
+        [[NSColor colorWithCalibratedWhite:.12 alpha:1] setFill];
+        [body fill];
+        [[NSColor colorWithCalibratedWhite:.25 alpha:1] setStroke];
+        [body setLineWidth:2];
+        [body stroke];
+        [[NSColor colorWithCalibratedWhite:.025 alpha:1] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(36, 49.5, 548, 1061)
+            xRadius:40 yRadius:40] fill];
+        [[NSColor colorWithCalibratedWhite:.18 alpha:1] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(259, 1072, 102, 5)
+            xRadius:2.5 yRadius:2.5] fill];
+    }
     /* Overlap the opening by two view points, including at fractional zoom.
      * This covers the resampled PNG/child-layer fringe as well as aspect-fit
      * gaps. The framebuffer itself keeps its complete, unscaled bounds. */

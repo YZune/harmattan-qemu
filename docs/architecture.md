@@ -36,6 +36,7 @@ The prefix below is `qemu-9.1.3-n00`. The builder selects only the appropriate o
 | 13 | `-interaction-activity.patch` | Input activity acquisition and expiry |
 | 14 | `-n9-skin.patch` | Optional host view and edge input geometry |
 | 15 | `-cocoa-shutdown.patch` | Asynchronous AppKit termination and cleanup |
+| 16 | `-n9-frame.patch` | Original code-drawn frame for prebuilt distribution |
 
 The normal `--cocoa-interaction` build includes the idle/input activity path and the host view/shutdown code. It does not require artwork. The DGLES patch applies to a different source archive; never apply it to the QEMU tree.
 

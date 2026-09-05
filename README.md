@@ -45,6 +45,8 @@ An initial task can be: “Read AGENTS.md, inspect this checkout, and run the ch
 
 ## Run Harmattan
 
+For a precompiled application, use the [macOS preview guide](docs/releases.md) and [GitHub Releases](https://github.com/YZune/harmattan-qemu/releases). It bundles the runtime and a code-drawn device frame; you still supply a prepared guest disk and matching kernel.
+
 Full guest execution requires **user-supplied historical inputs**. Firmware, kernel binaries, system images, fonts, and device artwork are not distributed here. A fresh clone is not a ready-to-boot virtual machine.
 
 Follow the [English build guide](docs/building.md) or [中文构建说明](docs/building.zh-CN.md). They cover dependencies, exact input locations and hashes, the build sequence, disposable snapshots, and current reconstruction gaps. The default window works without a device skin.
@@ -72,6 +74,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are welco
 
 | Topic | English | 简体中文 |
 | --- | --- | --- |
+| Prebuilt macOS preview | [Guide](docs/releases.md) | [指南](docs/releases.zh-CN.md) |
 | Build and run | [Guide](docs/building.md) | [指南](docs/building.zh-CN.md) |
 | Architecture and patches | [Architecture](docs/architecture.md) | [架构](docs/architecture.zh-CN.md) |
 | Compatibility and validation | [Status](docs/status.md) | [状态](docs/status.zh-CN.md) |

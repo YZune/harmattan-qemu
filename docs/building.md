@@ -67,7 +67,7 @@ The maintained patch order is in [architecture.md](architecture.md). The build s
 
 The first QEMU configure may fetch pinned subprojects from the upstream locations declared in the release's Meson wrap files. Network access is needed when those dependencies are absent. If a fetch is interrupted and leaves a partial subproject, retry in a fresh workspace; archive hash verification does not validate an incomplete dependency checkout.
 
-The local `.app` still references the selected DGLES and Homebrew libraries. Moving those dependencies requires rebuilding. This release does not provide a relocatable binary bundle.
+The local `.app` still references the selected DGLES and Homebrew libraries. Moving those dependencies requires rebuilding. Use the separate [release packager and prebuilt guide](releases.md) for a relocatable application with bundled dependencies.
 
 ## 4. User-supplied guest inputs
 
@@ -123,7 +123,7 @@ Normal interaction enables WFI, input-driven activity, the original keyboard and
 | Variable | Values / use |
 | --- | --- |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`; activity releases after 8 seconds without input |
-| `HARMATTAN_UI_SKIN` | `off` (default) / `black` (requires separately obtained artwork and rebuild) |
+| `HARMATTAN_UI_SKIN` | `off` (source default) / `frame` (code-drawn, release default) / `black` (requires separately obtained artwork and rebuild) |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
 | `HARMATTAN_UI_HANDOFF` | `on` / `off` |
 | `HARMATTAN_UI_RUNTIME` | `responsive` (default) / `legacy` (diagnostic comparison) |
