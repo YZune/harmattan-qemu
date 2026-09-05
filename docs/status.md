@@ -25,9 +25,11 @@ On 2026-09-05 the exported tree's 224 host tests passed (220 baseline tests plus
 
 Additional release build/runtime checks are recorded in [release-validation.json](release-validation.json). Read each check's scope; an untested field is not a pass. GitHub Actions separately exercises source checks and host tests on macOS and Linux.
 
+The macOS prebuilt preview has a separate [validation record](release-preview-validation.json), including relocation, private input import and the combined guest regression.
+
 ## Open limitations
 
-- Linux/Windows runtime ports and an independently movable macOS application bundle.
+- Linux/Windows runtime ports, independent second-Mac validation and Developer ID signing/notarization. See the [prebuilt preview](releases.md) for the packaged runtime and its remaining guest-input requirement.
 - End-to-end guest disk reconstruction from original media and a redistributable guest baseline.
 - Complete EGL/GLES coverage, SGX emulation, and arbitrary ARMEL packages.
 - Full Upstart/Aegis/device services, cellular, camera, audio, networking, and accurate physical sensors.

@@ -16,7 +16,7 @@ class N9SkinTests(unittest.TestCase):
                             '-framework', 'QuartzCore', str(source), '-o', binary],
                            check=True, capture_output=True)
             result = subprocess.run([binary], check=True, capture_output=True, text=True)
-            self.assertIn('PASS: 15 native view layouts', result.stdout)
+            self.assertIn('PASS: 30 native view layouts', result.stdout)
 
 
 if __name__ == '__main__':

@@ -119,8 +119,11 @@ int main(int argc, const char **argv)
         const NSSize surfaces[] = {{480,864},{864,480},{640,480}};
         const NSSize sizes[] = {{465,870},{310,580},{558,1044},{1280,800},{800,1280}};
         for (unsigned i=0; i<3; i++)
-            for (unsigned j=0; j<5; j++) check(surfaces[i],sizes[j],image);
+            for (unsigned j=0; j<5; j++) {
+                check(surfaces[i],sizes[j],image);
+                check(surfaces[i],sizes[j],nil);
+            }
         [image release];
-        puts("PASS: 15 native view layouts; 105 coordinate conversions; 180 hit targets; 90 glass touches; opaque black aperture perimeters");
+        puts("PASS: 30 native view layouts; 210 coordinate conversions; 360 hit targets; 180 glass touches; image and code-drawn frames");
     }
 }

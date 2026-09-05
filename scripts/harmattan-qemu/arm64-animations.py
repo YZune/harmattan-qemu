@@ -24,7 +24,7 @@ def prepare(splash=False, handoff=False):
     scripts = Path(__file__).resolve().parent
     variant = 'handoff' if handoff else ('splash' if splash else 'matrices')
     subprocess.run(['sh', str(scripts / 'build-compositor-guest.sh'), *([] if variant == 'matrices' else [f'--{variant}'])], check=True)
-    work = Path(os.environ.get('HARMATTAN_PORT_WORKSPACE', scripts.parents[1] / 'extracted/qemu-arm64-port'))
+    work = Path(os.environ.get('HARMATTAN_PREBUILT_HELPERS') or os.environ.get('HARMATTAN_PORT_WORKSPACE', scripts.parents[1] / 'extracted/qemu-arm64-port'))
     binary = (work / f'compositor-guest/n00-compositor-{variant}.so').read_bytes()
     if len(binary) < 52 or binary[:7] != b'\x7fELF\x01\x01\x01' or binary[16:20] != b'\x03\x00\x28\x00':
         raise ValueError('compositor helper is not an ARM ELF32 shared library')

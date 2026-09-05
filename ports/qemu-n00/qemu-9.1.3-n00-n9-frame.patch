@@ -1,0 +1,22 @@
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -1395,14 +1395,14 @@
+         [window setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary];
+         [window setTitle:qemu_name ? [NSString stringWithFormat:@"QEMU %s", qemu_name] : @"QEMU"];
+         const char *skin = getenv("N00_COCOA_N9_SKIN");
+-        if (skin && strcmp(skin, "black") && strcmp(skin, "off")) {
+-            error_report("N00_COCOA_N9_SKIN must be black or off");
++        if (skin && strcmp(skin, "black") && strcmp(skin, "frame") && strcmp(skin, "off")) {
++            error_report("N00_COCOA_N9_SKIN must be black, frame or off");
+             exit(1);
+         }
+-        if (skin && !strcmp(skin, "black")) {
+-            NSString *path = [[NSBundle mainBundle] pathForResource:@"n9-black-livven" ofType:@"png"];
++        if (skin && strcmp(skin, "off")) {
++            NSString *path = !strcmp(skin, "black") ? [[NSBundle mainBundle] pathForResource:@"n9-black-livven" ofType:@"png"] : nil;
+             NSImage *image = path ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
+-            if (!image || ![image isValid]) {
++            if (!strcmp(skin, "black") && (!image || ![image isValid])) {
+                 error_report("Missing N9 artwork; rebuild the Harmattan N9 app bundle");
+                 [image release];
+                 exit(1);

@@ -31,7 +31,7 @@ def select_edge(mode, interactive, rotation):
 def prepare():
     scripts = Path(__file__).resolve().parent
     subprocess.run(['sh', str(scripts / 'build-orientation-guest.sh')], check=True)
-    work = Path(os.environ.get('HARMATTAN_PORT_WORKSPACE', scripts.parents[1] / 'extracted/qemu-arm64-port'))
+    work = Path(os.environ.get('HARMATTAN_PREBUILT_HELPERS') or os.environ.get('HARMATTAN_PORT_WORKSPACE', scripts.parents[1] / 'extracted/qemu-arm64-port'))
     binary = (work / 'orientation-guest/n00-orientation-provider').read_bytes()
     # ELF32, little-endian, executable, ARM; the loader is original /lib/ld-linux.so.3.
     if len(binary) < 52 or binary[:7] != b'\x7fELF\x01\x01\x01' or binary[16:20] != b'\x02\x00\x28\x00':

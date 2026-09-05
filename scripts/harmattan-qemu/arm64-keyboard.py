@@ -33,7 +33,7 @@ def prepare(exercise=False):
     payloads = {'input-method-guest.sh': (SCRIPTS / 'input-method-guest.sh').read_bytes()}
     if exercise:
         subprocess.run(['sh', str(SCRIPTS / 'build-keyboard-probe.sh')], check=True)
-        work = Path(os.environ.get('HARMATTAN_PORT_WORKSPACE', SCRIPTS.parents[1] / 'extracted/qemu-arm64-port'))
+        work = Path(os.environ.get('HARMATTAN_PREBUILT_HELPERS') or os.environ.get('HARMATTAN_PORT_WORKSPACE', SCRIPTS.parents[1] / 'extracted/qemu-arm64-port'))
         payloads['keyboard-notes-read'] = (work / 'keyboard-probe/keyboard-notes-read').read_bytes()
     return payloads, {'libraries_md5': LIBRARIES,
                       'payload_sha256': {name: hashlib.sha256(data).hexdigest() for name, data in payloads.items()}}

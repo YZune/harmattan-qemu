@@ -36,6 +36,7 @@
 | 13 | `-interaction-activity.patch` | 输入活动申请及超时释放 |
 | 14 | `-n9-skin.patch` | 可选宿主视图与边缘输入几何 |
 | 15 | `-cocoa-shutdown.patch` | 异步 AppKit 退出及清理 |
+| 16 | `-n9-frame.patch` | 预编译分发使用的原创代码外框 |
 
 正常 `--cocoa-interaction` 构建包含 idle、输入活动及宿主视图和退出代码，无需素材文件。DGLES 补丁属于另一份源码归档，不应应用到 QEMU 树中。
 

@@ -9,7 +9,7 @@ These are proposed contribution areas, not promised release dates. Start with a 
 | 1 | Independent setup reproduction | Another contributor builds from a fresh checkout and records host/tool versions, missing steps, and results |
 | 1 | Guest preparation pipeline | A deterministic, documented process accepts user-provided original inputs, validates identities, creates only derived files, and reaches the normal diagnostic entry |
 | 1 | Application compatibility reports | One original application has reproducible launch, interaction, exit and relevant pixel/identity checks |
-| 2 | macOS packaging | A built app relocates between directories without dependency-loading failures; all bundled libraries have source/license provenance |
+| 1 | macOS packaging and independent distribution verification | A built app relocates between directories without dependency-loading failures; all bundled libraries have source/license provenance |
 | 2 | Linux host investigation | A documented build/display strategy plus a bounded board or rendering result; portable host-test success alone is insufficient |
 | 2 | GLES correctness | A missing or incorrect call has a minimal guest reproducer, explicit memory/lifecycle checks, and a positive/negative regression |
 | 2 | Device model accuracy | A bounded reset, interrupt, clock or storage behavior is tied to source/documentation and tested without breaking the default guest |

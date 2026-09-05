@@ -30,7 +30,7 @@ if [ -z "$skin" ]; then
     skin=off
     # Artwork is user-supplied and opt-in in the public source distribution.
 fi
-case "$skin" in black|off) ;; *) echo 'HARMATTAN_UI_SKIN must be black or off' >&2; exit 2 ;; esac
+case "$skin" in black|frame|off) ;; *) echo 'HARMATTAN_UI_SKIN must be black, frame or off' >&2; exit 2 ;; esac
 N00_COCOA_N9_SKIN=$skin
 export N00_COCOA_N9_SKIN
 keyboard=${HARMATTAN_UI_KEYBOARD:-}
@@ -119,6 +119,11 @@ esac
 if [ "$mode" = --landscape-smoke ]; then rotation=0; fi
 if [ "$display" = none ]; then N00_COCOA_N9_SKIN=off; fi
 build_options="$bin_root/meson-info/intro-buildoptions.json"
+if [ -n "${HARMATTAN_APP_CONTENTS:-}" ]; then
+    test "$runtime" = responsive || { echo 'The release contains only the responsive runtime.' >&2; exit 2; }
+    bin_root="$HARMATTAN_APP_CONTENTS/MacOS"
+    dgles_runtime="$HARMATTAN_APP_CONTENTS/Frameworks"
+else
 if [ ! -f "$build_options" ]; then
     build_mode=--cocoa
     if [ "$runtime" = responsive ]; then build_mode=--cocoa-interaction; fi
@@ -133,12 +138,14 @@ if [ -n "${HARMATTAN_DGLES_ROOT:-}" ] && [ "$HARMATTAN_DGLES_ROOT" != "$dgles_ro
     exit 1
 fi
 test -n "$dgles_root" || { echo 'This Cocoa build has no DGLES support.' >&2; exit 1; }
-for required in "$bin_root/qemu-system-arm" "$bin_root/qemu-img" "$kernel" "$raw" "$dgles_root/objs-arm64/libEGL.dylib"; do
+dgles_runtime="$dgles_root/objs-arm64"
+fi
+for required in "$bin_root/qemu-system-arm" "$bin_root/qemu-img" "$kernel" "$raw" "$dgles_runtime/libEGL.1.dylib"; do
     test -f "$required" || { echo "Missing runtime file: $required" >&2; exit 1; }
 done
 file "$bin_root/qemu-system-arm" | grep -q 'Mach-O 64-bit executable arm64' || exit 1
-DYLD_LIBRARY_PATH="$dgles_root/objs-arm64${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-HARMATTAN_DGLES_RUNTIME_DIR="$dgles_root/objs-arm64"
+DYLD_LIBRARY_PATH="$dgles_runtime${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+HARMATTAN_DGLES_RUNTIME_DIR="$dgles_runtime"
 export DYLD_LIBRARY_PATH HARMATTAN_DGLES_RUNTIME_DIR
 if [ "$runtime" = responsive ]; then
     "$bin_root/qemu-system-arm" -trace help 2>&1 | grep -q '^n00_lease_config$' || {
@@ -177,6 +184,7 @@ if [ "$interaction_probe" = 1 ]; then
 fi
 qemu_name='Harmattan PR1.3 - ARM64 port'
 if [ "$N00_COCOA_N9_SKIN" = black ]; then qemu_name='Nokia N9 - Black - Harmattan PR1.3'; fi
+if [ "$N00_COCOA_N9_SKIN" = frame ]; then qemu_name='N9 frame - Harmattan PR1.3'; fi
 case "$mode" in
     --usability-diagnostic|--usability-headless-diagnostic) qemu_name="$qemu_name - usability diagnostic" ;;
     --animation-diagnostic|--animation-headless-diagnostic) qemu_name="$qemu_name - animation diagnostic" ;;

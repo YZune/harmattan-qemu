@@ -3,6 +3,13 @@
 set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 work_root=${HARMATTAN_PORT_WORKSPACE:-"$repo_root/extracted/qemu-arm64-port"}
+if [ -n "${HARMATTAN_PREBUILT_HELPERS:-}" ]; then
+    case "${1:-matrices}:$#" in
+        matrices:0) helper=matrices ;; --splash:1) helper=splash ;; --handoff:1) helper=handoff ;;
+        *) exit 2 ;;
+    esac
+    exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/prebuilt-helpers.py" "$helper"
+fi
 cc=$(command -v "${HARMATTAN_ARMEL_CLANG:-clang}")
 debugfs_bin=${HARMATTAN_DEBUGFS:-debugfs}
 rootfs=${HARMATTAN_PUBLIC_ROOTFS:-"$repo_root/extracted/hybrid-pr1.3-qemu/pr1.3-rootfs-qemu-rescue.ext4"}
