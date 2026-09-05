@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "930b8a4",
+  "scope": "Native source networking, independent guest network test and combined headless UI regression; not a prebuilt release or FPS benchmark.",
+  "host": {
+    "os": "26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2",
+    "libslirp": "4.9.4"
+  },
+  "source_sha256": {
+    "ports/qemu-n00/qemu-9.1.3-n00-network.patch": "02687e3be0bc70dfc5b49cfa2254f56ef0185ad04c735d7d825cce274e7a1876",
+    "scripts/check-environment.py": "528a910b9ba771998c3b86fbe0b30bce13e2a399d517eec58f2092a5267c58f4",
+    "scripts/harmattan-qemu/build-arm64-port.sh": "edc4b21b1c34c9f4c100bf1db26df85dcdc5be85ec5b018473b9a9e9290f730c",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "52f5422b827362c75fdda772e5467105cd017c6f818fc27f7c0b167db447c772",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "5700266e57bf73f7571e52b9864e24ab0aaa1966165b5b115628a10302b69b13",
+    "scripts/harmattan-qemu/arm64-network.py": "f5995bcad70bfd5d967264172d38f70880101775e879fc067154451039953b7b",
+    "scripts/harmattan-qemu/network-guest.sh": "cce0030114efaaa0738fab3f39a48f06d08be38b293cbf73b558b7d22e3d8769",
+    "scripts/harmattan-qemu/network-lease-guest.sh": "b2853a0d409058dbdf49db4dabfdafd18eaca3dfb353292bc5ba44314535f4dd",
+    "scripts/harmattan-qemu/smoke-arm64-network.py": "1e2cdaf24ad5dd433f13f411ab12c057d75418bf039a95542417db5977b396a2"
+  },
+  "qemu_sha256": "36d79170eb33ccd0c2d3369fee9adb1b20300e18e2e0a210d8d049855113de45",
+  "checks": {
+    "fresh_pinned_qemu_build": "build-arm64-port.sh --cocoa-interaction passed",
+    "fresh_pinned_dgles_build": "build-dgles2-host.sh passed; reused unchanged for final QEMU build",
+    "native_dgles_smoke": "GLES1 and GLES2 passed twice each",
+    "host_suite": "259 tests passed",
+    "network": {
+      "passed": true,
+      "setup": {
+        "enabled": true,
+        "backend": "slirp",
+        "interface": "eth0",
+        "address": "10.0.2.15",
+        "gateway": "10.0.2.2",
+        "dns": "10.0.2.3",
+        "dhcp": true,
+        "scope": "SDK Ethernet and initial DHCP lease; no Wi-Fi or connection-manager emulation"
+      },
+      "transfer": {
+        "download_md5": "e32bcf1791f30a708f0db825c9aa3f41",
+        "upload_md5": "e32bcf1791f30a708f0db825c9aa3f41",
+        "bytes_each_way": 65536,
+        "dns_name": "example.com",
+        "dns_address": "172.66.147.243",
+        "internet_url": "http://example.com/",
+        "internet_status": 200,
+        "internet_bytes": 559
+      }
+    },
+    "combined_headless_guest": "Home, original Notes text/save/reopen, Maliit, Calculator 2+3=5, return/resume and transition validators passed with networking enabled",
+    "guest_graphics": "clean exit; zero faults and rejects, workers joined"
+  },
+  "commands": [
+    "sh scripts/harmattan-qemu/build-dgles2-host.sh",
+    "python3 -B scripts/harmattan-qemu/smoke-dgles-host.py --workspace <fresh-dgles-workspace>",
+    "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction",
+    "sh scripts/harmattan-qemu/run-arm64-ui.sh --network-diagnostic",
+    "HARMATTAN_UI_NETWORK=user sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic",
+    "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'"
+  ],
+  "not_tested": [
+    "Cocoa physical input for this change",
+    "Wi-Fi, cellular, retail connection manager and connected status indication",
+    "TLS/browser compatibility, automatic DHCP renewal, sessions longer than the initial lease",
+    "new prebuilt packaging/relocation",
+    "second Mac, physical N9 hardware"
+  ]
+}

@@ -15,10 +15,10 @@
 
 ## 1. 主机工具
 
-安装 Xcode Command Line Tools，并准备 Python 3.12、Ninja、pkg-config、GLib、Pixman 和原生 C 编译器。Homebrew 用户可安装缺少的工具：
+安装 Xcode Command Line Tools，并准备 Python 3.12、Ninja、pkg-config、GLib、Pixman、libslirp 和原生 C 编译器。Homebrew 用户可安装缺少的工具：
 
 ```sh
-brew install python@3.12 ninja pkgconf glib pixman
+brew install python@3.12 ninja pkgconf glib pixman libslirp
 export PATH="$(brew --prefix python@3.12)/libexec/bin:$PATH"
 ```
 
@@ -141,6 +141,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 
 | 变量 | 值与用途 |
 | --- | --- |
+| `HARMATTAN_UI_NETWORK` | `off`（默认）/ `user`；[SDK 以太网、DHCP 与用户态联网](networking.zh-CN.md) |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |
 | `HARMATTAN_UI_SKIN` | `off`（源码默认）/ `frame`（代码绘制，发行版默认）/ `black`（需自行取得素材并重新构建） |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |

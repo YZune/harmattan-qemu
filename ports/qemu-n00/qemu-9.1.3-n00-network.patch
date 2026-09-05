@@ -1,0 +1,71 @@
+diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -11,6 +11,7 @@
+ #include "qemu/osdep.h"
+ #include "qapi/error.h"
+ #include "exec/address-spaces.h"
++#include "exec/cpu-common.h"
+ #include "hw/arm/boot.h"
+ #include "hw/arm/omap.h"
+ #include "hw/arm/soc_dma.h"
+@@ -22,6 +23,7 @@
+ #include "hw/sysbus.h"
+ #include "sysemu/blockdev.h"
+ #include "sysemu/sysemu.h"
++#include "net/net.h"
+ #include "qemu/error-report.h"
+ #include "qemu/units.h"
+ #include "target/arm/cpu-qom.h"
+@@ -70,6 +72,32 @@
+         sysbus_connect_irq(bus, i * 3, qdev_get_gpio_in(intc, 29 + i));
+     }
+     return dev;
++}
++
++/* The SDK kernel's smc.patch uses GPMC CS1 + 0x300 and GPIO54.
++ * Keep the GPMC mapping programmable: the kernel allocates its CS window.
++ * Reuse QEMU's packet device; no register-only or synthetic link backend.
++ */
++static void n00_network_init(DeviceState *intc, struct omap_mpu_state_s *mpu)
++{
++    DeviceState *nic = qdev_new("smc91c111");
++    SysBusDevice *bus = SYS_BUS_DEVICE(nic);
++    MemoryRegion *window = g_new0(MemoryRegion, 1);
++
++    qemu_configure_nic_device(nic, true, "smc91c111");
++    sysbus_realize_and_unref(bus, &error_fatal);
++    sysbus_connect_irq(bus, 0, qdev_get_gpio_in(mpu->gpio, 54));
++    memory_region_init(window, OBJECT(nic), "n00-smc91c111-window", 0x1000);
++    memory_region_add_subregion(window, 0x300, sysbus_mmio_get_region(bus, 0));
++    mpu->gpmc = omap_gpmc_init(mpu, 0x6e000000,
++                              qdev_get_gpio_in(intc, 20), mpu->drq[4]);
++    /* Direct boot has no NAND/ROM at CS0. The GPMC reset mapping starts at
++     * zero, outside this kernel's allocatable GPMC range (first MiB reserved).
++     * Nolo normally fixes the mapping; leave the absent boot chip disabled.
++     */
++    const uint32_t disabled_cs = 0;
++    cpu_physical_memory_write(0x6e000078, &disabled_cs, sizeof(disabled_cs));
++    omap_gpmc_attach(mpu->gpmc, 1, window);
+ }
+ 
+ static void n00_display_init(DeviceState *intc, struct omap_mpu_state_s *mpu)
+@@ -544,6 +572,7 @@
+                          N00_SRAM_BASE, N00_SRAM_SIZE);
+     n00_mmc2_init(intc, mpu->drq);
+     n00_display_init(intc, mpu);
++    n00_network_init(intc, mpu);
+ #ifdef CONFIG_N00_GLES
+     n00_gles_init(cpu);
+ #endif
+diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
+--- a/hw/arm/Kconfig
++++ b/hw/arm/Kconfig
+@@ -173,6 +173,7 @@
+ 
+ config OMAP
+     bool
++    select SMC91C111 # N00 SDK Ethernet
+     select FRAMEBUFFER
+     select I2C
+     select ECC
