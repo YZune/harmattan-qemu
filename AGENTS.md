@@ -63,7 +63,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 sh scripts/harmattan-qemu/run-arm64-ui.sh
 ```
 
-Do not run all three for every task. Full guest reconstruction from retail firmware is not yet automated. If inputs are missing, report the exact missing prerequisite and complete independent source work; never claim the guest ran. For an initial import from a user-supplied workspace, preview `scripts/import-local-inputs.py <source-workspace>` first and use `--apply` only within the authorized setup task. It refuses existing destinations and is not a sync tool.
+Do not run all three for every task. [Get guest inputs](docs/guest-inputs.md) covers exact original media and `scripts/prepare-guest.py`; read it before preparing inputs. The script rejects mismatched original media and existing output directories, and writes only a new derived workspace. If inputs are missing, report the exact missing prerequisite and complete independent source work; never claim the guest ran. For an initial import from a user-supplied workspace, preview `scripts/import-local-inputs.py <source-workspace>` first and use `--apply` only within the authorized setup task. It refuses existing destinations and is not a sync tool.
 
 For prebuilt distribution work, read [releases.md](docs/releases.md). `scripts/release/` owns packaging, the native first-run picker and prepared-disk import. Its private Python and prebuilt helper paths remove user-side build dependencies; they do not reconstruct retail firmware. Validate relocation, source/license completeness and the affected guest path before publishing. Use the existing user authorization; a source-only default does not prohibit an explicitly requested, reviewed binary release.
 

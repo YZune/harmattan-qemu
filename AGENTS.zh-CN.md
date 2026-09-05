@@ -63,7 +63,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 sh scripts/harmattan-qemu/run-arm64-ui.sh
 ```
 
-不要每个任务都运行三种模式。从量产固件完整重建客体尚未自动化；缺少输入时，明确报告缺项，并完成不依赖它的源码工作，不得声称客体已经运行。从用户提供的研究目录初次导入时，先预览 `scripts/import-local-inputs.py <source-workspace>`，仅在已授权的环境准备任务内使用 `--apply`。该工具拒绝覆盖现有目标，不是同步工具。
+不要每个任务都运行三种模式。准备输入前，先阅读[资源获取与准备指南](docs/guest-inputs.zh-CN.md)，其中说明准确原始材料及 `scripts/prepare-guest.py`。该脚本拒绝原始材料不匹配或输出目录已存在的情况，只写新建的派生工作目录。缺少输入时，明确报告缺项，并完成不依赖它的源码工作，不得声称客体已经运行。从用户提供的研究目录初次导入时，先预览 `scripts/import-local-inputs.py <source-workspace>`，仅在已授权的环境准备任务内使用 `--apply`。该工具拒绝覆盖现有目标，不是同步工具。
 
 预编译分发工作先阅读[发行说明](docs/releases.zh-CN.md)。`scripts/release/` 负责打包、原生首次启动选择器和已准备磁盘导入。私有 Python 与预编译辅助程序消除使用者侧的编译依赖，不会重建零售固件。发布前验证搬移、源码及许可完整性和相关客体路径。沿用用户已有授权；默认仅发布源码的边界不禁止用户明确要求且经过检查的二进制发行。
 

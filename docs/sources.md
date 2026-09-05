@@ -42,6 +42,8 @@ The Harmattan source DVD is a source-package collection. It does not itself prov
 
 ## External guest input identities
 
+For exact SDK/firmware download links, full-file SHA-256 values and local extraction commands, use [Get guest inputs](guest-inputs.md) and [guest-media.json](guest-media.json). The preparation script accepts user-supplied original files and creates a new private disk; it does not download or publish guest software.
+
 The historic runtime was recovered from the Nokia Qt SDK 1.1.2 offline installer, preserved under the [Internet Archive entry](https://archive.org/details/nokia-qt-sdk-1.1.2). Its identity is `DFL61_1.2011.22-5.S`, an early PR1.0-era runtime, not PR1.2. Original research recorded:
 
 | Item | SHA-1 identifier |

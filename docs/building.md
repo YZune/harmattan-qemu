@@ -11,7 +11,7 @@ There are two independent entry points:
 1. **Source work:** host tests and building QEMU/DGLES from public source inputs.
 2. **System execution:** additionally supply the historical kernel, adapted PR1.3 guest disk, and read-only guest filesystem used for linking helpers.
 
-The first release does not automate reconstruction of the complete guest disk from a retail firmware container. Do not mistake the source DVD for a bootable image. If you do not already have prepared guest inputs, start with host tests or source builds and see the [guest-preparation roadmap](roadmap.md).
+For the supported original SDK installer and PR1.3 firmware, [Get guest inputs](guest-inputs.md) provides exact downloads and a local disk preparation script. A source DVD is not a bootable image. You can also contribute through host tests and source builds without guest inputs.
 
 ## 1. Host tools
 
@@ -98,6 +98,21 @@ python3 scripts/check-environment.py --guest
 The first command is a dry run. The second refuses existing destination files, validates pinned inputs, and APFS-clones large disk files. It never imports logs, accounts, arbitrary folders, or firmware into Git. The main guest disk is prepared local state and has no universal release checksum; the importer records its size and does not claim to validate its contents. Use a trusted, quiescent source copy without personal data.
 
 For manual placement, `HARMATTAN_KERNEL`, `HARMATTAN_GUEST_IMAGE`, and `HARMATTAN_PUBLIC_ROOTFS` can override the kernel, main disk, and helper-linking filesystem. Adaptation libraries retain the documented relative location.
+
+To use the output of [Get guest inputs](guest-inputs.md) for a source build, select that output and copy only the three required SDK link libraries into the ignored layout. `cp -n` preserves any existing files; the builders reject mismatched hashes.
+
+```sh
+HARMATTAN_PREPARED="$PWD/extracted/guest-from-original-media"
+export HARMATTAN_KERNEL="$HARMATTAN_PREPARED/zImage-2.6.32.26-qemu"
+export HARMATTAN_GUEST_IMAGE="$HARMATTAN_PREPARED/harmattan-pr1.3.raw"
+export HARMATTAN_PUBLIC_ROOTFS="$HARMATTAN_PREPARED/pr1.3-rootfs-qemu-rescue.ext4"
+mkdir -p extracted/pr1.0-qemu-adaptation/usr/lib
+for library in libEGL.so.1.3.0 libGLES_CM.so.1.4.5 libGLESv2.so.1.4.9; do
+  cp -n "$HARMATTAN_PREPARED/overlay/usr/lib/$library" extracted/pr1.0-qemu-adaptation/usr/lib/
+done
+```
+
+Keep these environment selections for the build and run commands. The separate preparation script has already applied the UI overlay to its output disk; do not apply it again to an original image.
 
 ### What a prepared disk contains
 

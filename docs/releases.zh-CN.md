@@ -10,7 +10,7 @@
 - **已经准备好的 PR1.3 raw 磁盘**，第二分区是 Linux/ext 根文件系统，总大小不超过 32 GiB，即现有原生启动器使用的磁盘。
 - `zImage-2.6.32.26-qemu`，SHA-256 为 `4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e`。
 
-应用**暂不能**把零售固件、源码 DVD、单独 rootfs 或 QCOW2 转换成上述磁盘。包内不包含固件、客体内核、字体、客体链接库、SDK 安装包或 Livven 外壳素材。从原始介质准备客体的完整流程仍是优先贡献方向。具体输入见[清单](https://github.com/YZune/harmattan-qemu/blob/main/docs/inputs.json)。
+应用**本身不会**把零售固件、源码 DVD、单独 rootfs 或 QCOW2 转换成上述磁盘。获取两个必需文件请按[资源获取与准备指南](https://github.com/YZune/harmattan-qemu/blob/main/docs/guest-inputs.zh-CN.md)操作：其中提供准确下载链接、校验值，以及面向指定原始材料的独立本地准备脚本。包内不包含固件、客体内核、字体、客体链接库、SDK 安装包或 Livven 外壳素材。具体输入见[清单](https://github.com/YZune/harmattan-qemu/blob/main/docs/inputs.json)。
 
 ## 使用应用
 

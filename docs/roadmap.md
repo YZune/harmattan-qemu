@@ -7,7 +7,7 @@ These are proposed contribution areas, not promised release dates. Start with a 
 | Priority | Work | Completion condition |
 | --- | --- | --- |
 | 1 | Independent setup reproduction | Another contributor builds from a fresh checkout and records host/tool versions, missing steps, and results |
-| 1 | Guest preparation pipeline | A deterministic, documented process accepts user-provided original inputs, validates identities, creates only derived files, and reaches the normal diagnostic entry |
+| 1 | Independent guest preparation reproduction | Repeat the [implemented preparation route](guest-inputs.md) on another Mac; record exact media/tool identities and a passing app diagnostic; additional formats require separate validation |
 | 1 | Application compatibility reports | One original application has reproducible launch, interaction, exit and relevant pixel/identity checks |
 | 1 | macOS packaging and independent distribution verification | A built app relocates between directories without dependency-loading failures; all bundled libraries have source/license provenance |
 | 2 | Linux host investigation | A documented build/display strategy plus a bounded board or rendering result; portable host-test success alone is insufficient |

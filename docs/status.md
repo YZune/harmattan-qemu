@@ -27,10 +27,12 @@ Additional release build/runtime checks are recorded in [release-validation.json
 
 The macOS prebuilt preview has a separate [validation record](release-preview-validation.json), including relocation, private input import and the combined guest regression.
 
+The [original-media preparation record](guest-preparation-validation.json) covers a complete fresh run from the two pinned SDK/firmware inputs, unchanged original hashes, a clean read-only filesystem check, 246 host tests and the published app's combined headless Home/Notes/keyboard/Calculator/transition regression. See [Get guest inputs](guest-inputs.md) for the supported preparation route.
+
 ## Open limitations
 
 - Linux/Windows runtime ports, independent second-Mac validation and Developer ID signing/notarization. See the [prebuilt preview](releases.md) for the packaged runtime and its remaining guest-input requirement.
-- End-to-end guest disk reconstruction from original media and a redistributable guest baseline.
+- Independent reproduction of the new original-media preparation route, support for additional media versions, and a redistributable guest baseline.
 - Complete EGL/GLES coverage, SGX emulation, and arbitrary ARMEL packages.
 - Full Upstart/Aegis/device services, cellular, camera, audio, networking, and accurate physical sensors.
 - General save/restore, machine reset and suspend/resume compatibility.

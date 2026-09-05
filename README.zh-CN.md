@@ -47,6 +47,8 @@ python3 scripts/check-public-tree.py
 
 预编译应用见 [macOS 预览版说明](docs/releases.zh-CN.md)和 [GitHub Releases](https://github.com/YZune/harmattan-qemu/releases)。包内提供运行时和代码绘制的设备外框，仍需自行提供已经准备的客体磁盘及对应内核。
 
+**镜像和内核从哪里获取？** 请看[资源获取与准备指南](docs/guest-inputs.zh-CN.md)，其中提供两个准确下载链接、校验值和本地准备脚本。脚本不安装旧 SDK，而是提取其内容，并从指定 PR1.3 固件生成新的磁盘。
+
 完整客体运行需要**用户自行提供历史输入文件**。本仓库不分发固件、内核二进制、系统镜像、字体或机身素材；克隆仓库不会直接得到可启动虚拟机。
 
 请按[中文构建说明](docs/building.zh-CN.md)或 [English build guide](docs/building.md)操作。文档说明依赖、输入位置和摘要、构建顺序、独立快照及现有镜像重建缺口。默认窗口无需机身外壳。
