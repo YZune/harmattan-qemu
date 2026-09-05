@@ -69,3 +69,5 @@ python3 scripts/release/package-macos.py \
 LGPL 动态库保持为 `Contents/Frameworks` 下的独立文件，接收者可以按许可重新构建、替换，并为修改后的应用施加本地签名。对应源码包及构建、重定位脚本支持这一过程。参见[第三方声明](https://github.com/YZune/harmattan-qemu/blob/main/docs/THIRD_PARTY_NOTICES.zh-CN.md)。
 
 运行验证完成后，使用 `python3 scripts/release/verify-release.py artifacts/new-release --archive` 生成发行资产。它先核对项目源码一致性、包内文件、动态库加载路径、签名及固定归档，再生成应用 ZIP、源码压缩包和校验清单。
+
+便于阅读的已打补丁源码树不保留指向树外的上游符号链接，其路径和目标记录在 `build-recipes/*-external-links.json`；固定上游源码归档保持原样。

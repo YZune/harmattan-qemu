@@ -217,7 +217,20 @@ def preserve_sources(kit, licenses, cache, libraries, qemu, dgles, python_source
         ('dgles-patched', dgles, {'objs-arm64', '.git', '__pycache__'}),
     ):
         target = kit / 'prepared-source' / label
-        shutil.copytree(source, target, ignore=shutil.ignore_patterns(*excludes, '*.pyc', '*.o', '*.dylib', '*.a'), symlinks=True)
+        omitted_links = []
+        ignored = shutil.ignore_patterns(*excludes, '*.pyc', '*.o', '*.dylib', '*.a')
+        def safe_source_entries(directory, names):
+            skip = set(ignored(directory, names))
+            for name in names:
+                path = Path(directory) / name
+                if path.is_symlink() and not path.resolve().is_relative_to(source.resolve()):
+                    # Upstream EDK2's include-directory conveniences point into
+                    # the host OS. Record them without shipping live escaping links.
+                    omitted_links.append({'path': str(path.relative_to(source)), 'target': str(path.readlink())})
+                    skip.add(name)
+            return skip
+        shutil.copytree(source, target, ignore=safe_source_entries, symlinks=True)
+        (kit / 'build-recipes' / (label + '-external-links.json')).write_text(json.dumps(omitted_links, indent=2) + '\n')
     copy(python_source / 'config.log', kit / 'build-recipes/python-config.log')
     copy(qemu / 'build-arm64-interaction/config-host.mak', kit / 'build-recipes/qemu-config-host.mak')
     for name in ('intro-buildoptions.json', 'intro-dependencies.json', 'intro-compilers.json'):

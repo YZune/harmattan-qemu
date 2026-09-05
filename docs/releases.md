@@ -69,3 +69,5 @@ Packaging verifies library dependency closure, source hashes, helper ELF/source 
 Dynamic LGPL libraries remain separate files in `Contents/Frameworks`; recipients can rebuild/replace them under their licenses and apply a local signature to their modified bundle. The supplied source kit and build/relocation scripts support this. See [third-party notices](https://github.com/YZune/harmattan-qemu/blob/main/docs/THIRD_PARTY_NOTICES.md).
 
 After runtime verification, finalize assets with `python3 scripts/release/verify-release.py artifacts/new-release --archive`. This verifies exact project-source equality, bundle contents, load paths, signatures and pinned archives before creating the application ZIP, source tarball and checksums.
+
+The convenient patched source trees omit upstream symlinks pointing outside those trees; their paths and targets are recorded in `build-recipes/*-external-links.json`. The pinned upstream archives remain unchanged.
