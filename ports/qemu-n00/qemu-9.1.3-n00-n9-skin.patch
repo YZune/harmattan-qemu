@@ -1,0 +1,172 @@
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -54,6 +54,7 @@
+ static unsigned n00_scanout_refresh_ms;
+ #include "qemu/error-report.h"
+ #include <Carbon/Carbon.h>
++#include "n00-n9-skin.h"
+ #include "hw/core/cpu.h"
+ 
+ #ifndef MAC_OS_VERSION_14_0
+@@ -359,6 +360,7 @@
+      */
+     BOOL isMouseGrabbed;
+     BOOL isAbsoluteEnabled;
++    BOOL n00SkinTouchActive; /* keep an edge swipe captured until release */
+     CFMachPortRef eventsTap;
+     CGColorSpaceRef colorspace;
+     CALayer *cursorLayer;
+@@ -454,6 +456,16 @@
+ - (BOOL) isOpaque
+ {
+     return YES;
++}
++
++- (BOOL)acceptsFirstMouse:(NSEvent *)event
++{
++    return n00_n9_skin ? YES : [super acceptsFirstMouse:event];
++}
++
++- (BOOL)mouseDownCanMoveWindow
++{
++    return n00_n9_skin ? NO : [super mouseDownCanMoveWindow];
+ }
+ 
+ - (void) viewDidMoveToWindow
+@@ -674,6 +686,10 @@
+ 
+ - (void) resizeWindow
+ {
++    if (n00_n9_skin) {
++        [n00_n9_skin resizeWindowForGuestSize:NSMakeSize(screen.width, screen.height)];
++        return;
++    }
+     [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
+ 
+     if (!([[self window] styleMask] & NSWindowStyleMaskResizable)) {
+@@ -1142,12 +1158,17 @@
+ 
+     with_bql(^{
+         if (isAbsoluteEnabled) {
+-            CGFloat d = (CGFloat)screen.height / [self frame].size.height;
+-            NSPoint p = [event locationInWindow];
++            /* Convert the window point through the screen subview, including
++             * the case offset, uniform zoom and full-screen letterboxing. */
++            NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
++            if (n00_n9_skin) {
++                /* A press on the glass begins at the nearest screen edge. */
++                p = n00_n9_clamp_touch(p, NSMakeSize(screen.width, screen.height));
++            }
+ 
+             /* Note that the origin for Cocoa mouse coords is bottom left, not top left. */
+-            qemu_input_queue_abs(dcl.con, INPUT_AXIS_X, p.x * d, 0, screen.width);
+-            qemu_input_queue_abs(dcl.con, INPUT_AXIS_Y, screen.height - p.y * d, 0, screen.height);
++            qemu_input_queue_abs(dcl.con, INPUT_AXIS_X, p.x, 0, screen.width);
++            qemu_input_queue_abs(dcl.con, INPUT_AXIS_Y, screen.height - p.y, 0, screen.height);
+         } else {
+             qemu_input_queue_rel(dcl.con, INPUT_AXIS_X, [event deltaX]);
+             qemu_input_queue_rel(dcl.con, INPUT_AXIS_Y, [event deltaY]);
+@@ -1159,7 +1180,7 @@
+ 
+ - (void) mouseExited:(NSEvent *)event
+ {
+-    if (isAbsoluteEnabled && isMouseGrabbed) {
++    if (isAbsoluteEnabled && isMouseGrabbed && !n00SkinTouchActive) {
+         [self ungrabMouse];
+     }
+ }
+@@ -1178,6 +1199,12 @@
+ 
+ - (void) mouseDown:(NSEvent *)event
+ {
++    if (n00_n9_skin && isAbsoluteEnabled) {
++        /* Glass outside the screen has no mouse-enter tracking area. Capture
++         * on down so the first event and its edge coordinate reach Harmattan. */
++        if (!isMouseGrabbed) [self grabMouse];
++        n00SkinTouchActive = YES;
++    }
+     [self handleMouseEvent:event button:INPUT_BUTTON_LEFT down:true];
+ }
+ 
+@@ -1193,6 +1220,8 @@
+ 
+ - (void) mouseDragged:(NSEvent *)event
+ {
++    /* Focus loss or Ctrl-Alt-G cancels the touch; re-entry must not revive it. */
++    if (n00_n9_skin && isAbsoluteEnabled && !n00SkinTouchActive) return;
+     [self handleMouseEvent:event];
+ }
+ 
+@@ -1208,6 +1237,14 @@
+ 
+ - (void) mouseUp:(NSEvent *)event
+ {
++    if (n00_n9_skin && isAbsoluteEnabled) {
++        if (!n00SkinTouchActive) return;
++        [self handleMouseEvent:event button:INPUT_BUTTON_LEFT down:false];
++        n00SkinTouchActive = NO;
++        NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
++        if (!NSPointInRect(p, [self bounds])) [self ungrabMouse];
++        return;
++    }
+     if (!isMouseGrabbed) {
+         [self grabMouse];
+     }
+@@ -1249,6 +1286,7 @@
+     [self unhideCursor];
+     CGAssociateMouseAndMouseCursorPosition(TRUE);
+     isMouseGrabbed = FALSE;
++    n00SkinTouchActive = NO;
+     [self raiseAllButtons];
+ }
+ 
+@@ -1292,6 +1330,7 @@
+         qemu_input_queue_btn(dcl.con, INPUT_BUTTON_LEFT, false);
+         qemu_input_queue_btn(dcl.con, INPUT_BUTTON_RIGHT, false);
+         qemu_input_queue_btn(dcl.con, INPUT_BUTTON_MIDDLE, false);
++        if (n00_n9_skin) qemu_input_event_sync();
+     });
+ }
+ @end
+@@ -1353,7 +1392,31 @@
+         [window setAcceptsMouseMovedEvents:YES];
+         [window setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary];
+         [window setTitle:qemu_name ? [NSString stringWithFormat:@"QEMU %s", qemu_name] : @"QEMU"];
+-        [window setContentView:cocoaView];
++        const char *skin = getenv("N00_COCOA_N9_SKIN");
++        if (skin && strcmp(skin, "black") && strcmp(skin, "off")) {
++            error_report("N00_COCOA_N9_SKIN must be black or off");
++            exit(1);
++        }
++        if (skin && !strcmp(skin, "black")) {
++            NSString *path = [[NSBundle mainBundle] pathForResource:@"n9-black-livven" ofType:@"png"];
++            NSImage *image = path ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
++            if (!image || ![image isValid]) {
++                error_report("Missing N9 artwork; rebuild the Harmattan N9 app bundle");
++                [image release];
++                exit(1);
++            }
++            n00_n9_skin = [[N00N9SkinView alloc] initWithGuestView:cocoaView image:image];
++            [image release];
++            [window setOpaque:NO];
++            [window setBackgroundColor:[NSColor clearColor]];
++            [window setHasShadow:YES];
++            [window setContentView:n00_n9_skin];
++            [n00_n9_skin release]; /* the window owns the frame view */
++            [cocoaView resizeWindow];
++        } else {
++            [window setContentView:cocoaView];
++        }
++        [window makeFirstResponder:cocoaView];
+         [window makeKeyAndOrderFront:self];
+         [window center];
+         [window setDelegate: self];
+@@ -1435,6 +1498,7 @@
+ 
+ - (void)windowDidResize:(NSNotification *)notification
+ {
++    [n00_n9_skin layoutGuest];
+     [cocoaView updateBounds];
+     [cocoaView updateUIInfo];
+ }

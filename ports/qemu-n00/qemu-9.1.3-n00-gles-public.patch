@@ -1,0 +1,67 @@
+diff --git a/hw/arm/n00_gles_port.c b/hw/arm/n00_gles_port.c
+index 5693801..f2d0188 100644
+--- a/hw/arm/n00_gles_port.c
++++ b/hw/arm/n00_gles_port.c
+@@ -65,7 +65,7 @@ struct N00Client {
+     pthread_t thread;
+     pthread_mutex_t mutex;
+     pthread_cond_t start, done;
+-    bool pending, stop, returned, bad_memory;
++    bool pending, stop, returned, bad_memory, egl_initialized;
+     unsigned nr, abi, api, call;
+     uint32_t regs[16], fp[16], result;
+     EGLint egl_error;
+@@ -236,6 +236,7 @@ static void unsupported(N00Client *c)
+ 
+ static void call_egl(N00Client *c);
+ static void call_gl(N00Client *c);
++static void cleanup_client(N00Client *c);
+ 
+ static void call_egl(N00Client *c)
+ {
+@@ -267,15 +268,44 @@ static void call_egl(N00Client *c)
+     }
+     d = handle(c, arg(c, 0), H_DISPLAY);
+     if (!d) {
++        if (c->call == N00_egl_eglTerminate) {
++            c->egl_error = EGL_BAD_DISPLAY;
++            fprintf(stderr, "N00_GLES terminate client=%u rejected=bad-display\n",
++                    c->nr);
++        }
+         return;
+     }
+     EGLDisplay display = d->object;
++    if (c->call != N00_egl_eglInitialize && c->call != N00_egl_eglTerminate &&
++        !c->egl_initialized) {
++        c->egl_error = EGL_NOT_INITIALIZED;
++        return;
++    }
+     switch (c->call) {
++    case N00_egl_eglTerminate:
++        /* Each guest client has a logical display lifetime. The backend display
++         * and config cache are shared by otherwise isolated worker contexts and
++         * stay alive until QEMU exit. Never invalidate another client's context.
++         * Deferred destruction of a current context is not implemented yet.
++         */
++        if (c->current) {
++            c->egl_error = EGL_BAD_ACCESS;
++            fprintf(stderr, "N00_GLES terminate client=%u rejected=current-context\n",
++                    c->nr);
++            break;
++        }
++        cleanup_client(c);
++        c->egl_initialized = false;
++        c->result = EGL_TRUE;
++        fprintf(stderr, "N00_GLES terminate client=%u released=1 backend=retained\n",
++                c->nr);
++        break;
+     case N00_egl_eglInitialize:
+         a[1] = arg(c, 1);
+         a[2] = arg(c, 2);
+         c->result = eglInitialize(display, &major, &minor);
+         if (c->result) {
++            c->egl_initialized = true;
+             if (a[1]) {
+                 put_word(c, a[1], major);
+             }
+

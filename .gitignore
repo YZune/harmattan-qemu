@@ -1,0 +1,25 @@
+# External inputs, locally generated artifacts, and private runtime state.
+/downloads/
+/extracted/
+/artifacts/
+/.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+*.raw
+*.qcow2
+*.ext4
+*.dmg
+*.iso
+*.dylib
+*.so
+*.so.*
+*.app/
+*.log
+/ports/qemu-n00/skins/*.png
+/ports/qemu-n00/skins/*.psd
+/ports/qemu-n00/skins/*.json
+.env
+.env.*
+*.pem
+*.key

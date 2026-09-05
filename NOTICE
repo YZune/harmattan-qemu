@@ -1,0 +1,32 @@
+Harmattan QEMU — source distribution
+
+Copyright holders retain ownership of their respective work.
+Project additions without a more specific notice: Copyright (C) 2026 YZune
+and contributors, GPL-2.0-or-later.
+
+The LICENSE file provides the GNU GPL version 2 text. The choice of later
+versions applies only where permitted by the applicable file notice.
+Some inherited Nokia files allow GPL version 2 or version 3 specifically;
+others allow version 2 or later. Those notices are preserved in the patches.
+QEMU as a combined program is distributed under GPLv2, subject to its own
+file-level license inventory. This patch repository does not replace that
+inventory. Preserve all upstream notices when applying or redistributing it.
+
+The DGLES Cocoa addition and n00-n9-skin.h have explicit MIT notices.
+MIT text is provided in LICENSES/MIT.txt. The DGLES archive contains other
+components under their own terms; it is not uniformly MIT-licensed.
+
+Nokia source provenance: Software Heritage revision
+swh:1:rev:32530f6ab08f80a53bf56843ab793eefde75a67f
+and the Harmattan PR1.3 gles-libs_1.4.2-3+0m6.tar.gz source package.
+See docs/sources.md for identifiers and checksums.
+
+No firmware, retail root filesystem, guest kernel binary, SDK installer,
+Nokia Pure font, theme asset, third-party application package, or Livven
+device artwork is included. Their availability in an archive does not grant
+redistribution rights. Local import or export tools do not grant those rights.
+
+中文说明：各权利人保留各自作品的权利。无更具体声明的新增代码与文档采用
+GPL-2.0-or-later；继承文件及 MIT 标记代码保留原声明。外部固件、镜像、
+字体和素材不在本仓库许可范围内，也未包含在源码发布中。
+详细来源与许可边界见 docs/sources.zh-CN.md。

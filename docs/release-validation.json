@@ -1,0 +1,48 @@
+{
+  "date": "2026-09-05",
+  "research_baseline": "621c7f7",
+  "host": {
+    "os": "macOS",
+    "version": "26.6.2",
+    "architecture": "arm64"
+  },
+  "source_export": true,
+  "firmware_or_artwork_distributed": false,
+  "host_tests": {
+    "python": "3.12.2",
+    "total": 224,
+    "passed": 224,
+    "failed": 0,
+    "includes_import_safety_tests": 4
+  },
+  "dgles_clean_build": "passed",
+  "dgles_native_offscreen": {
+    "gles1_runs": 2,
+    "gles2_runs": 2,
+    "all_passed": true
+  },
+  "qemu_clean_build": {
+    "version": "9.1.3",
+    "mode": "cocoa-interaction",
+    "fresh_source_tree": true,
+    "result": "passed",
+    "binary_sha256": "0454a1243cf6ca38924bf818b4761e14c8100404d753d19c9bd49201fe8c68f5",
+    "app_signature_and_version": "passed"
+  },
+  "guest_regression": {
+    "mode": "usability-headless-diagnostic",
+    "user_supplied_prepared_inputs": true,
+    "disposable_snapshot": true,
+    "qemu_exit": 0,
+    "keyboard_and_notes": true,
+    "keyboard_transition_check": true,
+    "calculator_functional": true,
+    "host_graphics_clean": true,
+    "animation_intermediate_frames": true,
+    "black_flash_absent_in_samples": true,
+    "scope": "Guest RAM sampling and QMP input; not screen FPS, physical mouse or all-application acceptance."
+  },
+  "fresh_firmware_to_guest_reconstruction": "not_implemented",
+  "relocatable_application_bundle": "not_implemented",
+  "public_ci": "See GitHub Actions for results on the published commit."
+}

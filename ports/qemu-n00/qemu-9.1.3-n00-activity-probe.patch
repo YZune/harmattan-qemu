@@ -1,0 +1,96 @@
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -108,6 +108,49 @@
+ static NSTextField *pauseLabel;
+ 
+ static bool allow_events;
++
++/* Only the independent diagnostic build uses this opt-in activity assertion.
++ * It neither prevents display/system idle sleep nor changes saved defaults. */
++static bool n00_activity_enabled;
++static id<NSObject> n00_activity_token;
++static NSActivityOptions n00_activity_options;
++
++static void n00_activity_begin(void)
++{
++    const char *value = getenv("N00_COCOA_ACTIVITY");
++    if (value && strcmp(value, "0") && strcmp(value, "1")) {
++        error_report("N00_COCOA_ACTIVITY must be 0 or 1");
++        exit(1);
++    }
++    n00_activity_enabled = value && !strcmp(value, "1");
++    if (n00_activity_enabled) {
++        NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
++        n00_activity_options = NSActivityUserInitiatedAllowingIdleSystemSleep;
++        n00_activity_token = [[[NSProcessInfo processInfo]
++            beginActivityWithOptions:n00_activity_options
++            reason:@"Bounded Harmattan QEMU scheduling diagnostic"] retain];
++        [pool release];
++        if (!n00_activity_token) {
++            error_report("N00 Cocoa activity request returned no token");
++            exit(1);
++        }
++    }
++    trace_n00_activity_lifecycle(get_clock(), 0, n00_activity_enabled,
++                                  n00_activity_options);
++}
++
++static void n00_activity_end(void)
++{
++    if (n00_activity_token) {
++        NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
++        [[NSProcessInfo processInfo] endActivity:n00_activity_token];
++        [n00_activity_token release];
++        n00_activity_token = nil;
++        [pool release];
++    }
++    trace_n00_activity_lifecycle(get_clock(), 1, n00_activity_enabled,
++                                  n00_activity_options);
++}
+ 
+ static NSInteger cbchangecount = -1;
+ static QemuClipboardInfo *cbinfo;
+@@ -2037,6 +2080,7 @@
+     status = qemu_default_main();
+     bql_unlock();
+     COCOA_DEBUG("Second thread: qemu_default_main() returned, exiting\n");
++    n00_activity_end();
+     [cbowner release];
+     exit(status);
+ }
+@@ -2047,6 +2091,7 @@
+ 
+     COCOA_DEBUG("Entered %s()\n", __func__);
+ 
++    n00_activity_begin();
+     bql_unlock();
+     qemu_thread_create(&thread, "qemu_main", call_qemu_main,
+                        NULL, QEMU_THREAD_DETACHED);
+@@ -2072,6 +2117,12 @@
+     dispatch_async(dispatch_get_main_queue(), ^{
+         if (profile) {
+             trace_n00_profile_cocoa_queue(started, get_clock() - started, w, h);
++        }
++        if (trace_event_get_state_backends(TRACE_N00_ACTIVITY_OBSERVE)) {
++            /* These AppKit observations are confined to the Cocoa main queue. */
++            NSWindow *window = [cocoaView window];
++            trace_n00_activity_observe(get_clock(), [NSApp isActive],
++                                       [window isVisible], [window occlusionState]);
+         }
+         NSRect rect = NSMakeRect(x, [cocoaView gscreen].height - y - h, w, h);
+         [cocoaView setNeedsDisplayInRect:rect];
+diff --git a/ui/trace-events b/ui/trace-events
+--- a/ui/trace-events
++++ b/ui/trace-events
+@@ -6,6 +6,10 @@
+ n00_profile_cocoa_refresh(int64_t start_ns, int64_t total_ns, int64_t gfx_ns) "start_ns=%"PRId64" total_ns=%"PRId64" gfx_ns=%"PRId64
+ n00_profile_cocoa_queue(int64_t start_ns, int64_t wait_ns, int w, int h) "start_ns=%"PRId64" wait_ns=%"PRId64" w=%d h=%d"
+ n00_profile_cocoa_draw(int64_t start_ns, int64_t total_ns) "start_ns=%"PRId64" total_ns=%"PRId64
++
++# Opt-in Cocoa activity assertion; state observations are not presentation FPS.
++n00_activity_lifecycle(int64_t start_ns, unsigned phase, bool enabled, uint64_t options) "start_ns=%"PRId64" phase=%u enabled=%d options=%"PRIu64
++n00_activity_observe(int64_t start_ns, bool active, bool window_visible, uint64_t occlusion) "start_ns=%"PRId64" active=%d window_visible=%d occlusion=%"PRIu64
+ 
+ # console.c
+ console_gfx_new(void) ""

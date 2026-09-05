@@ -1,0 +1,1191 @@
+diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -44,6 +44,9 @@
+ 
+ void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base);
+ void n00_twl5031_init(I2CBus *bus, qemu_irq irq);
++#ifdef CONFIG_N00_GLES
++void n00_gles_init(ARMCPU *cpu);
++#endif
+ 
+ static void n00_display_init(DeviceState *intc, qemu_irq *drq)
+ {
+@@ -438,6 +441,9 @@
+                          N00_SRAM_BASE, N00_SRAM_SIZE);
+     n00_mmc2_init(intc, mpu->drq);
+     n00_display_init(intc, mpu->drq);
++#ifdef CONFIG_N00_GLES
++    n00_gles_init(cpu);
++#endif
+ 
+     l4 = omap_l4_init(get_system_memory(), 0x48000000, 7);
+     omap_gp_timer_init(omap_l4ta_get(l4, n00_l4_regions,
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -2,6 +2,12 @@
+ arm_ss.add(files('boot.c'))
+ arm_ss.add(files('n00_port_spike.c', 'n00_sdrc_port.c', 'n00_mmc_port.c'))
+ arm_ss.add(files('n00_i2c_port.c', 'n00_twl4030_port.c', 'n00_dss_port.c'))
++if get_option('n00_dgles_dir') != ''
++  n00_dgles = get_option('n00_dgles_dir')
++  arm_ss.add(files('n00_gles_port.c'), declare_dependency(
++    compile_args: ['-DCONFIG_N00_GLES', '-I' + n00_dgles / 'include'],
++    dependencies: cc.find_library('EGL', dirs: n00_dgles / 'objs-arm64')))
++endif
+ arm_ss.add(when: 'CONFIG_ARM_VIRT', if_true: files('virt.c'))
+ arm_ss.add(when: 'CONFIG_ACPI', if_true: files('virt-acpi-build.c'))
+ arm_ss.add(when: 'CONFIG_DIGIC', if_true: files('digic_boards.c'))
+diff --git a/meson_options.txt b/meson_options.txt
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -4,6 +4,8 @@
+ 
+ option('qemu_suffix', type : 'string', value: 'qemu',
+        description: 'Suffix for QEMU data/modules/config directories (can be empty)')
++option('n00_dgles_dir', type: 'string', value: '',
++       description: 'Experimental N00 DGLES directory (empty disables guest GLES)')
+ option('docdir', type : 'string', value : 'share/doc',
+        description: 'Base directory for documentation installation (can be empty)')
+ option('qemu_firmwarepath', type : 'array', value : ['share/qemu-firmware'],
+diff --git a/scripts/meson-buildoptions.py b/scripts/meson-buildoptions.py
+--- a/scripts/meson-buildoptions.py
++++ b/scripts/meson-buildoptions.py
+@@ -30,6 +30,7 @@
+ SKIP_OPTIONS = {
+     "default_devices",
+     "fuzzing_engine",
++    "n00_dgles_dir",
+ }
+ 
+ # Options whose name doesn't match the option for backwards compatibility
+diff --git a/hw/arm/n00_gles_port.c b/hw/arm/n00_gles_port.c
+new file mode 100644
+--- /dev/null
++++ b/hw/arm/n00_gles_port.c
+@@ -0,0 +1,777 @@
++/*
++ * Experimental Nokia kfgles2 transport for QEMU 9.1.
++ * Wire protocol derived from Nokia's 2009-2010 gles2 device, revision
++ * 32530f6ab08f80a53bf56843ab793eefde75a67f. Not a full GLES implementation.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++#include "qemu/osdep.h"
++#include "qemu/bswap.h"
++#include "qemu/error-report.h"
++#include "qemu/notify.h"
++#include "qemu/rcu.h"
++#include "exec/address-spaces.h"
++#include "sysemu/sysemu.h"
++#include "target/arm/cpu.h"
++#include "n00_gles_wire.h"
++#include <dlfcn.h>
++#include <pthread.h>
++#define MESA_EGL_NO_X11_HEADERS
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++#include <GLES2/gl2.h>
++
++enum { MAX_HANDLES = 1024, MAX_TRANSFER = 64 * 1024 * 1024 };
++enum HandleKind { H_FREE, H_DISPLAY, H_CONFIG, H_CONTEXT, H_SURFACE };
++typedef struct N00GLES N00GLES;
++typedef struct N00Client N00Client;
++
++typedef struct N00GL {
++    void *library;
++    typeof(&glClearColor) ClearColor;
++    typeof(&glClear) Clear;
++    typeof(&glScissor) Scissor;
++    typeof(&glViewport) Viewport;
++    typeof(&glEnable) Enable;
++    typeof(&glDisable) Disable;
++    typeof(&glFinish) Finish;
++    typeof(&glGetError) GetError;
++    typeof(&glGetString) GetString;
++    typeof(&glReadPixels) ReadPixels;
++} N00GL;
++
++typedef struct N00Surface {
++    DEGLDrawable drawable;
++    EGLSurface host;
++    uint32_t guest_drawable, guest_pixels;
++    size_t bytes;
++} N00Surface;
++
++typedef struct N00Handle {
++    void *object;
++    enum HandleKind kind;
++    N00Client *owner;
++    unsigned version;
++} N00Handle;
++
++struct N00Client {
++    N00GLES *s;
++    pthread_t thread;
++    pthread_mutex_t mutex;
++    pthread_cond_t start, done;
++    bool pending, stop, returned, bad_memory;
++    unsigned nr, abi, api, call;
++    uint32_t regs[16], fp[16], result;
++    EGLint egl_error;
++    GLenum gl_error;
++    N00Handle *current;
++};
++
++struct N00GLES {
++    MemoryRegion mmio;
++    ARMCPU *cpu;
++    EGLDisplay display;
++    Notifier exit;
++    N00Client *clients[N00_GLES_CLIENTS + 1]; /* slot 0: contextless EGL */
++    N00Handle handles[MAX_HANDLES];
++    N00GL gl[2];
++    bool trace;
++    uint64_t calls, faults, swaps;
++};
++
++void n00_gles_init(ARMCPU *cpu);
++
++/* CPU waits for the complete worker call. No guest execution or MMU changes
++ * can race this copy. Restrict to this board's RAM, never recursive MMIO/ROM.
++ * Preflight the entire range before writing; never retain unmapped pointers.
++ * Debug translation does not enforce guest PTE write permissions: this is a
++ * trusted-image porting experiment, not a hardened device for untrusted code.
++ */
++static bool guest_copy(N00Client *c, uint32_t va, void *data, size_t length, bool write)
++{
++    CPUState *cpu = CPU(c->s->cpu);
++    if (!length) {
++        return true;
++    }
++    if (!va || length > MAX_TRANSFER || length > UINT32_MAX - va) {
++        c->bad_memory = true;
++        return false;
++    }
++    RCU_READ_LOCK_GUARD();
++    for (unsigned pass = 0; pass < 2; pass++) {
++        uint32_t cursor = va;
++        size_t left = length;
++        uint8_t *bytes = data;
++        while (left) {
++            MemTxAttrs attrs;
++            hwaddr page =
++                cpu_get_phys_page_attrs_debug(cpu, cursor & TARGET_PAGE_MASK, &attrs);
++            size_t part = MIN(left, TARGET_PAGE_SIZE - (cursor & ~TARGET_PAGE_MASK));
++            hwaddr pa = page + (cursor & ~TARGET_PAGE_MASK);
++            bool ram = (pa >= 0x80000000 && pa + part <= 0xa0000000) ||
++                       (pa >= 0x40200000 && pa + part <= 0x40210000);
++            if (page == (hwaddr)-1 || !ram) {
++                c->bad_memory = true;
++                return false;
++            }
++            if (pass) {
++                AddressSpace *as =
++                    cpu_get_address_space(cpu, cpu_asidx_from_attrs(cpu, attrs));
++                if (address_space_rw(as, pa, attrs, bytes, part, write) != MEMTX_OK) {
++                    c->bad_memory = true;
++                    return false;
++                }
++            }
++            cursor += part;
++            bytes += part;
++            left -= part;
++        }
++    }
++    return true;
++}
++
++static uint32_t guest_word(N00Client *c, uint32_t va)
++{
++    uint8_t bytes[4] = {0};
++    guest_copy(c, va, bytes, sizeof(bytes), false);
++    return ldl_le_p(bytes);
++}
++
++static bool put_word(N00Client *c, uint32_t va, uint32_t word)
++{
++    uint8_t bytes[4];
++    stl_le_p(bytes, word);
++    return guest_copy(c, va, bytes, sizeof(bytes), true);
++}
++
++static uint32_t arg(N00Client *c, unsigned n)
++{
++    if (n < 4) {
++        return c->regs[n];
++    }
++    /* Nokia's assembly gateway pushes exactly two words before STR. */
++    return guest_word(c, c->regs[13] + 8 + (n - 4) * 4);
++}
++
++static float float_arg(N00Client *c, unsigned n)
++{
++    uint32_t bits = c->abi == 2 ? c->fp[n] : arg(c, n);
++    float value;
++    memcpy(&value, &bits, sizeof(value));
++    return value;
++}
++
++static uint32_t make_handle(N00GLES *s, void *object, enum HandleKind kind,
++                            N00Client *owner, unsigned version)
++{
++    if (!object) {
++        return 0;
++    }
++    for (unsigned i = 0; i < MAX_HANDLES; i++) {
++        if (s->handles[i].kind == kind && s->handles[i].object == object) {
++            return 0xcafe0000u | i;
++        }
++    }
++    for (unsigned i = 0; i < MAX_HANDLES; i++) {
++        if (s->handles[i].kind == H_FREE) {
++            s->handles[i] = (N00Handle){object, kind, owner, version};
++            return 0xcafe0000u | i;
++        }
++    }
++    return 0;
++}
++
++static N00Handle *handle(N00Client *c, uint32_t token, enum HandleKind kind)
++{
++    unsigned index = token & 0xffff;
++    if ((token & 0xffff0000) != 0xcafe0000 || index >= MAX_HANDLES ||
++        c->s->handles[index].kind != kind ||
++        (c->s->handles[index].owner && c->s->handles[index].owner != c)) {
++        c->egl_error = EGL_BAD_PARAMETER;
++        return NULL;
++    }
++    return &c->s->handles[index];
++}
++
++static bool attributes(N00Client *c, uint32_t va, EGLint *list)
++{
++    if (!va) {
++        list[0] = EGL_NONE;
++        return true;
++    }
++    if (va > UINT32_MAX - 128 * 4) {
++        c->bad_memory = true;
++        return false;
++    }
++    for (unsigned i = 0; i < 128; i += 2) {
++        list[i] = guest_word(c, va + i * 4);
++        if (c->bad_memory) {
++            return false;
++        }
++        if (list[i] == EGL_NONE) {
++            return true;
++        }
++        list[i + 1] = guest_word(c, va + (i + 1) * 4);
++    }
++    c->egl_error = EGL_BAD_ATTRIBUTE;
++    return false;
++}
++
++static void unsupported(N00Client *c)
++{
++    c->s->faults++;
++    c->egl_error = EGL_BAD_PARAMETER;
++    c->gl_error = GL_INVALID_OPERATION;
++    error_report("N00_GLES unsupported/invalid api=%u call=%u client=%u", c->api,
++                 c->call, c->nr);
++}
++
++static void call_egl(N00Client *c);
++static void call_gl(N00Client *c);
++
++static void call_egl(N00Client *c)
++{
++    N00GLES *s = c->s;
++    EGLint list[129], major = 0, minor = 0;
++    N00Handle *d, *h;
++    uint32_t a[5];
++    c->returned = true;
++    c->result = 0;
++    if (c->call == N00_egl_eglGetError) {
++        c->result = c->egl_error != EGL_SUCCESS ? c->egl_error : eglGetError();
++        c->egl_error = EGL_SUCCESS;
++        return;
++    }
++    if (c->call == N00_egl_eglGetDisplay) {
++        if (!s->display) {
++            s->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++        }
++        c->result = make_handle(s, s->display, H_DISPLAY, NULL, 0);
++        return;
++    }
++    if (c->call == N00_egl_eglBindAPI) {
++        if (arg(c, 0) != EGL_OPENGL_ES_API) {
++            c->egl_error = EGL_BAD_PARAMETER;
++            return;
++        }
++        c->result = eglBindAPI(EGL_OPENGL_ES_API);
++        return;
++    }
++    d = handle(c, arg(c, 0), H_DISPLAY);
++    if (!d) {
++        return;
++    }
++    EGLDisplay display = d->object;
++    switch (c->call) {
++    case N00_egl_eglInitialize:
++        a[1] = arg(c, 1);
++        a[2] = arg(c, 2);
++        c->result = eglInitialize(display, &major, &minor);
++        if (c->result) {
++            if (a[1]) {
++                put_word(c, a[1], major);
++            }
++            if (a[2]) {
++                put_word(c, a[2], minor);
++            }
++        }
++        break;
++    case N00_egl_eglGetConfigs:
++    case N00_egl_eglChooseConfig: {
++        bool choose = c->call == N00_egl_eglChooseConfig;
++        unsigned offset = choose ? 1 : 0;
++        EGLConfig configs[64];
++        EGLint count = 0;
++        a[1] = arg(c, 1 + offset);
++        a[2] = arg(c, 2 + offset);
++        a[3] = arg(c, 3 + offset);
++        if (a[2] > ARRAY_SIZE(configs) || !a[3] || c->bad_memory ||
++            a[1] > UINT32_MAX - a[2] * 4) {
++            c->egl_error = EGL_BAD_PARAMETER;
++            break;
++        }
++        if (choose && !attributes(c, arg(c, 1), list)) {
++            break;
++        }
++        c->result =
++            choose ? eglChooseConfig(display, list, a[1] ? configs : NULL, a[2], &count)
++                   : eglGetConfigs(display, a[1] ? configs : NULL, a[2], &count);
++        if (c->result) {
++            for (int i = 0; a[1] && i < MIN(count, a[2]); i++) {
++                uint32_t token = make_handle(s, configs[i], H_CONFIG, NULL, 0);
++                if (!token || !put_word(c, a[1] + i * 4, token)) {
++                    c->result = EGL_FALSE;
++                    break;
++                }
++            }
++            put_word(c, a[3], count);
++        }
++        break;
++    }
++    case N00_egl_eglGetConfigAttrib: {
++        EGLint value = 0;
++        h = handle(c, arg(c, 1), H_CONFIG);
++        if (h) {
++            c->result = eglGetConfigAttrib(display, h->object, arg(c, 2), &value);
++            if (c->result) {
++                put_word(c, arg(c, 3), value);
++            }
++        }
++        break;
++    }
++    case N00_egl_eglCreateContext: {
++        N00Handle *share = NULL;
++        unsigned version = 1;
++        h = handle(c, arg(c, 1), H_CONFIG);
++        if (!h || !attributes(c, arg(c, 3), list)) {
++            break;
++        }
++        if (arg(c, 2) && !(share = handle(c, arg(c, 2), H_CONTEXT))) {
++            break;
++        }
++        for (unsigned i = 0; list[i] != EGL_NONE; i += 2) {
++            if (list[i] == EGL_CONTEXT_CLIENT_VERSION) {
++                version = list[i + 1];
++            }
++        }
++        if (version != 1 && version != 2) {
++            c->egl_error = EGL_BAD_MATCH;
++            break;
++        }
++        EGLContext context = eglCreateContext(
++            display, h->object, share ? share->object : EGL_NO_CONTEXT, list);
++        c->result = make_handle(s, context, H_CONTEXT, c, version);
++        if (context && !c->result) {
++            eglDestroyContext(display, context);
++        }
++        break;
++    }
++    case N00_egl_eglCreateWindowSurface: {
++        h = handle(c, arg(c, 1), H_CONFIG);
++        a[2] = arg(c, 2);
++        if (!h || !attributes(c, arg(c, 3), list)) {
++            break;
++        }
++        uint8_t wire[20];
++        if (!guest_copy(c, a[2], wire, sizeof(wire), false)) {
++            break;
++        }
++        unsigned w = ldl_le_p(wire), height = ldl_le_p(wire + 4);
++        unsigned depth = ldl_le_p(wire + 8), bpp = ldl_le_p(wire + 12);
++        if (!w || w > 4096 || !height || height > 4096 || depth != 24 || bpp != 4) {
++            c->egl_error = EGL_BAD_PARAMETER;
++            break;
++        }
++        N00Surface *surf = g_new0(N00Surface, 1);
++        surf->guest_drawable = a[2];
++        surf->guest_pixels = ldl_le_p(wire + 16);
++        surf->bytes = (size_t)w * height * bpp;
++        surf->drawable = (DEGLDrawable){.width = w,
++                                        .height = height,
++                                        .depth = depth,
++                                        .bpp = bpp,
++                                        .pixels = g_malloc0(surf->bytes)};
++        surf->host =
++            eglCreateOffscreenSurfaceDGLES(display, h->object, &surf->drawable);
++        if (surf->host) {
++            c->result = make_handle(s, surf, H_SURFACE, c, 0);
++        }
++        if (!c->result) {
++            if (surf->host) {
++                eglDestroySurface(display, surf->host);
++            }
++            g_free(surf->drawable.pixels);
++            g_free(surf);
++        }
++        break;
++    }
++    case N00_egl_eglMakeCurrent: {
++        a[1] = arg(c, 1);
++        a[2] = arg(c, 2);
++        a[3] = arg(c, 3);
++        if (!a[1] && !a[2] && !a[3]) {
++            c->result =
++                eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++            if (c->result) {
++                c->current = NULL;
++            }
++            break;
++        }
++        N00Handle *draw = handle(c, a[1], H_SURFACE);
++        h = handle(c, a[3], H_CONTEXT);
++        if (!draw || !h || a[1] != a[2]) {
++            c->egl_error = EGL_BAD_MATCH;
++            break;
++        }
++        N00Surface *surf = draw->object;
++        c->result = eglMakeCurrent(display, surf->host, surf->host, h->object);
++        if (c->result) {
++            c->current = h;
++            N00GL *gl = &s->gl[h->version - 1];
++            fprintf(stderr, "N00_GLES current client=%u es=%u renderer=%s\n", c->nr,
++                    h->version, gl->GetString(GL_RENDERER));
++        }
++        break;
++    }
++    case N00_egl_eglSwapBuffers: {
++        h = handle(c, arg(c, 1), H_SURFACE);
++        if (!h || !c->current) {
++            c->egl_error = EGL_BAD_SURFACE;
++            break;
++        }
++        N00Surface *surf = h->object;
++        uint8_t wire[20];
++        if (!guest_copy(c, surf->guest_drawable, wire, sizeof(wire), false)) {
++            break;
++        }
++        if (ldl_le_p(wire) != surf->drawable.width ||
++            ldl_le_p(wire + 4) != surf->drawable.height || ldl_le_p(wire + 8) != 24 ||
++            ldl_le_p(wire + 12) != 4) {
++            c->egl_error = EGL_BAD_SURFACE; /* resize not implemented */
++            break;
++        }
++        surf->guest_pixels = ldl_le_p(wire + 16);
++        c->result = eglSwapBuffers(display, surf->host);
++        if (c->result && guest_copy(c, surf->guest_pixels, surf->drawable.pixels,
++                                    surf->bytes, true)) {
++            s->swaps++;
++        }
++        break;
++    }
++    case N00_egl_eglDestroySurface: {
++        h = handle(c, arg(c, 1), H_SURFACE);
++        if (h && !c->current) {
++            N00Surface *surf = h->object;
++            c->result = eglDestroySurface(display, surf->host);
++            if (c->result) {
++                g_free(surf->drawable.pixels);
++                g_free(surf);
++                memset(h, 0, sizeof(*h));
++            }
++        } else {
++            c->egl_error = EGL_BAD_ACCESS;
++        }
++        break;
++    }
++    case N00_egl_eglDestroyContext:
++        h = handle(c, arg(c, 1), H_CONTEXT);
++        if (h && c->current != h) {
++            c->result = eglDestroyContext(display, h->object);
++            if (c->result) {
++                memset(h, 0, sizeof(*h));
++            }
++        } else {
++            c->egl_error = EGL_BAD_ACCESS;
++        }
++        break;
++    default:
++        unsupported(c);
++        break;
++    }
++}
++
++static void call_gl(N00Client *c)
++{
++    if (!c->current || c->current->version != c->api) {
++        unsupported(c);
++        return;
++    }
++    N00GL *gl = &c->s->gl[c->api - 1];
++    unsigned nr = c->call;
++    uint32_t a[7];
++    /* The common subset has different call numbers in the two ABIs. */
++#define IS(name) (nr == (c->api == 1 ? N00_es11_##name : N00_es20_##name))
++    if (IS(glClearColor)) {
++        gl->ClearColor(float_arg(c, 0), float_arg(c, 1), float_arg(c, 2),
++                       float_arg(c, 3));
++    } else if (IS(glClear)) {
++        gl->Clear(arg(c, 0));
++    } else if (IS(glEnable)) {
++        gl->Enable(arg(c, 0));
++    } else if (IS(glDisable)) {
++        gl->Disable(arg(c, 0));
++    } else if (IS(glFinish)) {
++        gl->Finish();
++    } else if (IS(glScissor) || IS(glViewport)) {
++        for (int i = 0; i < 4; i++) {
++            a[i] = arg(c, i);
++        }
++        if (IS(glScissor)) {
++            gl->Scissor(a[0], a[1], a[2], a[3]);
++        } else {
++            gl->Viewport(a[0], a[1], a[2], a[3]);
++        }
++    } else if (IS(glGetError)) {
++        c->returned = true;
++        c->result = c->gl_error ? c->gl_error : gl->GetError();
++        c->gl_error = GL_NO_ERROR;
++    } else if (IS(glReadPixels)) {
++        for (int i = 0; i < 7; i++) {
++            a[i] = arg(c, i);
++        }
++        if (c->bad_memory || a[2] > 4096 || a[3] > 4096 || a[4] != GL_RGBA ||
++            a[5] != GL_UNSIGNED_BYTE) {
++            c->gl_error = GL_INVALID_VALUE;
++            return;
++        }
++        size_t bytes = (size_t)a[2] * a[3] * 4;
++        void *pixels = g_malloc0(MAX(bytes, 1));
++        gl->ReadPixels(a[0], a[1], a[2], a[3], a[4], a[5], pixels);
++        guest_copy(c, a[6], pixels, bytes, true);
++        g_free(pixels);
++    } else {
++        unsupported(c);
++    }
++#undef IS
++}
++
++static void cleanup_client(N00Client *c)
++{
++    EGLDisplay display = c->s->display;
++    if (!display) {
++        return;
++    }
++    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++    for (int kind = H_SURFACE; kind >= H_CONTEXT; kind--) {
++        for (unsigned i = 0; i < MAX_HANDLES; i++) {
++            N00Handle *h = &c->s->handles[i];
++            if (h->owner != c || h->kind != kind) {
++                continue;
++            }
++            if (kind == H_SURFACE) {
++                N00Surface *surf = h->object;
++                eglDestroySurface(display, surf->host);
++                g_free(surf->drawable.pixels);
++                g_free(surf);
++            } else {
++                eglDestroyContext(display, h->object);
++            }
++            memset(h, 0, sizeof(*h));
++        }
++    }
++}
++
++static void *worker(void *opaque)
++{
++    N00Client *c = opaque;
++    rcu_register_thread();
++    pthread_mutex_lock(&c->mutex);
++    for (;;) {
++        while (!c->pending && !c->stop) {
++            pthread_cond_wait(&c->start, &c->mutex);
++        }
++        if (c->stop) {
++            break;
++        }
++        c->returned = c->bad_memory = false;
++        if (c->api == 0) {
++            call_egl(c);
++        } else {
++            call_gl(c);
++        }
++        if (c->bad_memory) {
++            c->s->faults++;
++            c->egl_error = EGL_BAD_PARAMETER;
++            c->gl_error = GL_INVALID_OPERATION;
++            if (c->api == 0) {
++                c->returned = true;
++                c->result = 0;
++            }
++            error_report("N00_GLES rejected guest memory client=%u api=%u call=%u",
++                         c->nr, c->api, c->call);
++        }
++        c->pending = false;
++        pthread_cond_signal(&c->done);
++    }
++    cleanup_client(c);
++    pthread_mutex_unlock(&c->mutex);
++    rcu_unregister_thread();
++    return NULL;
++}
++
++static N00Client *new_client(N00GLES *s, unsigned nr, unsigned abi)
++{
++    N00Client *c = g_new0(N00Client, 1);
++    c->s = s;
++    c->nr = nr;
++    c->abi = abi;
++    c->egl_error = EGL_SUCCESS;
++    pthread_mutex_init(&c->mutex, NULL);
++    pthread_cond_init(&c->start, NULL);
++    pthread_cond_init(&c->done, NULL);
++    if (pthread_create(&c->thread, NULL, worker, c)) {
++        pthread_cond_destroy(&c->done);
++        pthread_cond_destroy(&c->start);
++        pthread_mutex_destroy(&c->mutex);
++        g_free(c);
++        return NULL;
++    }
++    s->clients[nr] = c;
++    fprintf(stderr, "N00_GLES connect client=%u abi=%u\n", nr, abi);
++    return c;
++}
++
++static void drop_client(N00GLES *s, unsigned nr)
++{
++    N00Client *c = s->clients[nr];
++    if (!c) {
++        return;
++    }
++    pthread_mutex_lock(&c->mutex);
++    c->stop = true;
++    pthread_cond_signal(&c->start);
++    pthread_mutex_unlock(&c->mutex);
++    pthread_join(c->thread, NULL);
++    pthread_cond_destroy(&c->done);
++    pthread_cond_destroy(&c->start);
++    pthread_mutex_destroy(&c->mutex);
++    g_free(c);
++    s->clients[nr] = NULL;
++    fprintf(stderr, "N00_GLES disconnect client=%u\n", nr);
++}
++
++static uint64_t n00_gles_read(void *opaque, hwaddr addr, unsigned size)
++{
++    /* Writes wait for host completion; the original guest polling loop sees
++     * ready immediately. This conservative port does not overlap guest/GL. */
++    return 0;
++}
++
++static void n00_gles_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
++{
++    N00GLES *s = opaque;
++    CPUARMState *env = &s->cpu->env;
++    unsigned api = addr / N00_GLES_BLOCK;
++    unsigned offset = addr % N00_GLES_BLOCK;
++    unsigned page = offset / N00_GLES_PAGE;
++    unsigned nr = (offset % N00_GLES_PAGE) / 4;
++    N00Client *c;
++    if (api > 2 || offset % N00_GLES_PAGE >= N00_GLES_CALL_BYTES) {
++        goto invalid;
++    }
++    if (!page && !api) {
++        if (nr == 0) {
++            unsigned abi = env->regs[0] == 2 ? 2 : 1;
++            env->regs[0] = 0;
++            for (unsigned slot = 1; slot <= N00_GLES_CLIENTS; slot++) {
++                if (!s->clients[slot]) {
++                    if (new_client(s, slot, abi)) {
++                        env->regs[0] = slot;
++                    }
++                    return;
++                }
++            }
++            return;
++        }
++        if (nr == 1 && env->regs[0] > 0 && env->regs[0] <= N00_GLES_CLIENTS) {
++            drop_client(s, env->regs[0]);
++            env->regs[0] = 0;
++            return;
++        }
++        goto invalid;
++    }
++    if (!page || (page == 1 && api) || page - 1 > N00_GLES_CLIENTS) {
++        goto invalid;
++    }
++    c = s->clients[page - 1];
++    if (!c && page == 1) {
++        c = new_client(s, 0, 1);
++    }
++    if (!c || nr >= (api == 0   ? N00_egl_count
++                     : api == 1 ? N00_es11_count
++                                : N00_es20_count)) {
++        goto invalid;
++    }
++    pthread_mutex_lock(&c->mutex);
++    memcpy(c->regs, env->regs, sizeof(c->regs));
++    for (unsigned i = 0; i < 16; i++) {
++        c->fp[i] = *aa32_vfp_dreg(env, i / 2) >> ((i & 1) * 32);
++    }
++    c->api = api;
++    c->call = nr;
++    c->pending = true;
++    pthread_cond_signal(&c->start);
++    while (c->pending) {
++        pthread_cond_wait(&c->done, &c->mutex);
++    }
++    if (c->returned) {
++        env->regs[0] = c->result;
++    }
++    s->calls++;
++    if (s->trace) {
++        fprintf(stderr, "N00_GLES call client=%u api=%u nr=%u r0=%08x -> %08x\n", c->nr,
++                api, nr, c->regs[0], env->regs[0]);
++    }
++    pthread_mutex_unlock(&c->mutex);
++    return;
++invalid:
++    s->faults++;
++    env->regs[0] = 0;
++    error_report("N00_GLES invalid MMIO offset=0x%" HWADDR_PRIx, addr);
++}
++
++static const MemoryRegionOps n00_gles_ops = {
++    .read = n00_gles_read,
++    .write = n00_gles_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static void n00_gles_exit(Notifier *notify, void *data)
++{
++    N00GLES *s = container_of(notify, N00GLES, exit);
++    for (unsigned i = 1; i <= N00_GLES_CLIENTS; i++) {
++        drop_client(s, i);
++    }
++    drop_client(s, 0);
++    if (s->display) {
++        eglTerminate(s->display);
++    }
++    fprintf(stderr,
++            "N00_GLES summary calls=%" PRIu64 " swaps=%" PRIu64 " faults=%" PRIu64
++            " workers=joined\n",
++            s->calls, s->swaps, s->faults);
++}
++
++void n00_gles_init(ARMCPU *cpu)
++{
++    N00GLES *s = g_new0(N00GLES, 1);
++    s->cpu = cpu;
++    s->trace = getenv("N00_GLES_TRACE") != NULL;
++    setenv("DGLES2_FRONTEND", "offscreen", 1);
++    setenv("DGLES2_BACKEND", "cocoa", 1);
++    setenv("DGLES2_NO_ALPHA", "1", 1);
++    setenv("DGLES2_COCOA_FBO", "1", 1);
++    const char *libraries[] = {"libGLES_CM.dylib", "libGLESv2.dylib"};
++    for (unsigned i = 0; i < 2; i++) {
++        N00GL *gl = &s->gl[i];
++        gl->library = dlopen(libraries[i], RTLD_NOW | RTLD_LOCAL);
++        if (!gl->library) {
++            error_report("N00_GLES: %s", dlerror());
++            exit(EXIT_FAILURE);
++        }
++#define LOAD(name)                                                                     \
++    do {                                                                               \
++        gl->name = (typeof(gl->name))dlsym(gl->library, "gl" #name);                   \
++        if (!gl->name) {                                                               \
++            error_report("N00_GLES missing gl" #name);                                 \
++            exit(EXIT_FAILURE);                                                        \
++        }                                                                              \
++    } while (0)
++        LOAD(ClearColor);
++        LOAD(Clear);
++        LOAD(Scissor);
++        LOAD(Viewport);
++        LOAD(Enable);
++        LOAD(Disable);
++        LOAD(Finish);
++        LOAD(GetError);
++        LOAD(GetString);
++        LOAD(ReadPixels);
++#undef LOAD
++    }
++    memory_region_init_io(&s->mmio, NULL, &n00_gles_ops, s, "n00-gles", 0x100000);
++    memory_region_add_subregion(get_system_memory(), N00_GLES_BASE, &s->mmio);
++    s->exit.notify = n00_gles_exit;
++    qemu_add_exit_notifier(&s->exit);
++}
+diff --git a/hw/arm/n00_gles_wire.h b/hw/arm/n00_gles_wire.h
+new file mode 100644
+--- /dev/null
++++ b/hw/arm/n00_gles_wire.h
+@@ -0,0 +1,342 @@
++/* Nokia 2009-2010 QEMU wire call order. SPDX-License-Identifier: GPL-2.0-or-later
++ * Recovered revision 32530f6ab08f80a53bf56843ab793eefde75a67f.
++ * This is a fixed guest ABI, independent of QEMU and host page sizes.
++ */
++#ifndef N00_GLES_WIRE_H
++#define N00_GLES_WIRE_H
++#define N00_GLES_BASE 0x4f000000u
++#define N00_GLES_BLOCK 0x40000u
++#define N00_GLES_PAGE 0x1000u
++#define N00_GLES_CALL_BYTES 0x400u
++#define N00_GLES_CLIENTS (N00_GLES_BLOCK / N00_GLES_PAGE - 2)
++enum n00_egl_call {
++    N00_egl_eglGetError,
++    N00_egl_eglGetDisplay,
++    N00_egl_eglInitialize,
++    N00_egl_eglTerminate,
++    N00_egl_eglQueryString,
++    N00_egl_eglGetConfigs,
++    N00_egl_eglChooseConfig,
++    N00_egl_eglGetConfigAttrib,
++    N00_egl_eglCreateWindowSurface,
++    N00_egl_eglCreatePbufferSurface,
++    N00_egl_eglCreatePixmapSurface,
++    N00_egl_eglDestroySurface,
++    N00_egl_eglQuerySurface,
++    N00_egl_eglBindAPI,
++    N00_egl_eglQueryAPI,
++    N00_egl_eglWaitClient,
++    N00_egl_eglReleaseThread,
++    N00_egl_eglCreatePbufferFromClientBuffer,
++    N00_egl_eglSurfaceAttrib,
++    N00_egl_eglBindTexImage,
++    N00_egl_eglReleaseTexImage,
++    N00_egl_eglSwapInterval,
++    N00_egl_eglCreateContext,
++    N00_egl_eglDestroyContext,
++    N00_egl_eglMakeCurrent,
++    N00_egl_eglGetCurrentContext,
++    N00_egl_eglGetCurrentSurface,
++    N00_egl_eglGetCurrentDisplay,
++    N00_egl_eglQueryContext,
++    N00_egl_eglWaitGL,
++    N00_egl_eglWaitNative,
++    N00_egl_eglSwapBuffers,
++    N00_egl_eglCopyBuffers,
++    N00_egl_eglGetProcAddress,
++    N00_egl_count
++};
++enum n00_es11_call {
++    N00_es11_glAlphaFunc,
++    N00_es11_glClearColor,
++    N00_es11_glClearDepthf,
++    N00_es11_glClipPlanef,
++    N00_es11_glColor4f,
++    N00_es11_glDepthRangef,
++    N00_es11_glFogf,
++    N00_es11_glFogfv,
++    N00_es11_glFrustumf,
++    N00_es11_glGetClipPlanef,
++    N00_es11_glGetFloatv,
++    N00_es11_glGetLightfv,
++    N00_es11_glGetMaterialfv,
++    N00_es11_glGetTexEnvfv,
++    N00_es11_glGetTexParameterfv,
++    N00_es11_glLightModelf,
++    N00_es11_glLightModelfv,
++    N00_es11_glLightf,
++    N00_es11_glLightfv,
++    N00_es11_glLineWidth,
++    N00_es11_glLoadMatrixf,
++    N00_es11_glMaterialf,
++    N00_es11_glMaterialfv,
++    N00_es11_glMultMatrixf,
++    N00_es11_glMultiTexCoord4f,
++    N00_es11_glNormal3f,
++    N00_es11_glOrthof,
++    N00_es11_glPointParameterf,
++    N00_es11_glPointParameterfv,
++    N00_es11_glPointSize,
++    N00_es11_glPolygonOffset,
++    N00_es11_glRotatef,
++    N00_es11_glScalef,
++    N00_es11_glTexEnvf,
++    N00_es11_glTexEnvfv,
++    N00_es11_glTexParameterf,
++    N00_es11_glTexParameterfv,
++    N00_es11_glTranslatef,
++    N00_es11_glActiveTexture,
++    N00_es11_glAlphaFuncx,
++    N00_es11_glBindBuffer,
++    N00_es11_glBindTexture,
++    N00_es11_glBlendFunc,
++    N00_es11_glBufferData,
++    N00_es11_glBufferSubData,
++    N00_es11_glClear,
++    N00_es11_glClearColorx,
++    N00_es11_glClearDepthx,
++    N00_es11_glClearStencil,
++    N00_es11_glClientActiveTexture,
++    N00_es11_glClipPlanex,
++    N00_es11_glColor4ub,
++    N00_es11_glColor4x,
++    N00_es11_glColorMask,
++    N00_es11_glColorPointer,
++    N00_es11_glCompressedTexImage2D,
++    N00_es11_glCompressedTexSubImage2D,
++    N00_es11_glCopyTexImage2D,
++    N00_es11_glCopyTexSubImage2D,
++    N00_es11_glCullFace,
++    N00_es11_glDeleteBuffers,
++    N00_es11_glDeleteTextures,
++    N00_es11_glDepthFunc,
++    N00_es11_glDepthMask,
++    N00_es11_glDepthRangex,
++    N00_es11_glDisable,
++    N00_es11_glDisableClientState,
++    N00_es11_glDrawArrays,
++    N00_es11_glDrawElements,
++    N00_es11_glEnable,
++    N00_es11_glEnableClientState,
++    N00_es11_glFinish,
++    N00_es11_glFlush,
++    N00_es11_glFogx,
++    N00_es11_glFogxv,
++    N00_es11_glFrontFace,
++    N00_es11_glFrustumx,
++    N00_es11_glGetBooleanv,
++    N00_es11_glGetBufferParameteriv,
++    N00_es11_glGetClipPlanex,
++    N00_es11_glGenBuffers,
++    N00_es11_glGenTextures,
++    N00_es11_glGetError,
++    N00_es11_glGetFixedv,
++    N00_es11_glGetIntegerv,
++    N00_es11_glGetLightxv,
++    N00_es11_glGetMaterialxv,
++    N00_es11_glGetPointerv,
++    N00_es11_glGetString,
++    N00_es11_glGetTexEnviv,
++    N00_es11_glGetTexEnvxv,
++    N00_es11_glGetTexParameteriv,
++    N00_es11_glGetTexParameterxv,
++    N00_es11_glHint,
++    N00_es11_glIsBuffer,
++    N00_es11_glIsEnabled,
++    N00_es11_glIsTexture,
++    N00_es11_glLightModelx,
++    N00_es11_glLightModelxv,
++    N00_es11_glLightx,
++    N00_es11_glLightxv,
++    N00_es11_glLineWidthx,
++    N00_es11_glLoadIdentity,
++    N00_es11_glLoadMatrixx,
++    N00_es11_glLogicOp,
++    N00_es11_glMaterialx,
++    N00_es11_glMaterialxv,
++    N00_es11_glMatrixMode,
++    N00_es11_glMultMatrixx,
++    N00_es11_glMultiTexCoord4x,
++    N00_es11_glNormal3x,
++    N00_es11_glNormalPointer,
++    N00_es11_glOrthox,
++    N00_es11_glPixelStorei,
++    N00_es11_glPointParameterx,
++    N00_es11_glPointParameterxv,
++    N00_es11_glPointSizex,
++    N00_es11_glPolygonOffsetx,
++    N00_es11_glPopMatrix,
++    N00_es11_glPushMatrix,
++    N00_es11_glReadPixels,
++    N00_es11_glRotatex,
++    N00_es11_glSampleCoverage,
++    N00_es11_glSampleCoveragex,
++    N00_es11_glScalex,
++    N00_es11_glScissor,
++    N00_es11_glShadeModel,
++    N00_es11_glStencilFunc,
++    N00_es11_glStencilMask,
++    N00_es11_glStencilOp,
++    N00_es11_glTexCoordPointer,
++    N00_es11_glTexEnvi,
++    N00_es11_glTexEnvx,
++    N00_es11_glTexEnviv,
++    N00_es11_glTexEnvxv,
++    N00_es11_glTexImage2D,
++    N00_es11_glTexParameteri,
++    N00_es11_glTexParameterx,
++    N00_es11_glTexParameteriv,
++    N00_es11_glTexParameterxv,
++    N00_es11_glTexSubImage2D,
++    N00_es11_glTranslatex,
++    N00_es11_glVertexPointer,
++    N00_es11_glViewport,
++    N00_es11_glPointSizePointerOES,
++    N00_es11_count
++};
++enum n00_es20_call {
++    N00_es20_glActiveTexture,
++    N00_es20_glAttachShader,
++    N00_es20_glBindAttribLocation,
++    N00_es20_glBindBuffer,
++    N00_es20_glBindFramebuffer,
++    N00_es20_glBindRenderbuffer,
++    N00_es20_glBindTexture,
++    N00_es20_glBlendColor,
++    N00_es20_glBlendEquation,
++    N00_es20_glBlendEquationSeparate,
++    N00_es20_glBlendFunc,
++    N00_es20_glBlendFuncSeparate,
++    N00_es20_glBufferData,
++    N00_es20_glBufferSubData,
++    N00_es20_glCheckFramebufferStatus,
++    N00_es20_glClear,
++    N00_es20_glClearColor,
++    N00_es20_glClearDepthf,
++    N00_es20_glClearStencil,
++    N00_es20_glColorMask,
++    N00_es20_glCompileShader,
++    N00_es20_glCompressedTexImage2D,
++    N00_es20_glCompressedTexSubImage2D,
++    N00_es20_glCopyTexImage2D,
++    N00_es20_glCopyTexSubImage2D,
++    N00_es20_glCreateProgram,
++    N00_es20_glCreateShader,
++    N00_es20_glCullFace,
++    N00_es20_glDeleteBuffers,
++    N00_es20_glDeleteFramebuffers,
++    N00_es20_glDeleteProgram,
++    N00_es20_glDeleteRenderbuffers,
++    N00_es20_glDeleteShader,
++    N00_es20_glDeleteTextures,
++    N00_es20_glDepthFunc,
++    N00_es20_glDepthMask,
++    N00_es20_glDepthRangef,
++    N00_es20_glDetachShader,
++    N00_es20_glDisable,
++    N00_es20_glDisableVertexAttribArray,
++    N00_es20_glDrawArrays,
++    N00_es20_glDrawElements,
++    N00_es20_glEnable,
++    N00_es20_glEnableVertexAttribArray,
++    N00_es20_glFinish,
++    N00_es20_glFlush,
++    N00_es20_glFramebufferRenderbuffer,
++    N00_es20_glFramebufferTexture2D,
++    N00_es20_glFrontFace,
++    N00_es20_glGenBuffers,
++    N00_es20_glGenerateMipmap,
++    N00_es20_glGenFramebuffers,
++    N00_es20_glGenRenderbuffers,
++    N00_es20_glGenTextures,
++    N00_es20_glGetActiveAttrib,
++    N00_es20_glGetActiveUniform,
++    N00_es20_glGetAttachedShaders,
++    N00_es20_glGetAttribLocation,
++    N00_es20_glGetBooleanv,
++    N00_es20_glGetBufferParameteriv,
++    N00_es20_glGetError,
++    N00_es20_glGetFloatv,
++    N00_es20_glGetFramebufferAttachmentParameteriv,
++    N00_es20_glGetIntegerv,
++    N00_es20_glGetProgramiv,
++    N00_es20_glGetProgramInfoLog,
++    N00_es20_glGetRenderbufferParameteriv,
++    N00_es20_glGetShaderiv,
++    N00_es20_glGetShaderInfoLog,
++    N00_es20_glGetShaderPrecisionFormat,
++    N00_es20_glGetShaderSource,
++    N00_es20_glGetString,
++    N00_es20_glGetTexParameterfv,
++    N00_es20_glGetTexParameteriv,
++    N00_es20_glGetUniformfv,
++    N00_es20_glGetUniformiv,
++    N00_es20_glGetUniformLocation,
++    N00_es20_glGetVertexAttribfv,
++    N00_es20_glGetVertexAttribiv,
++    N00_es20_glGetVertexAttribPointerv,
++    N00_es20_glHint,
++    N00_es20_glIsBuffer,
++    N00_es20_glIsEnabled,
++    N00_es20_glIsFramebuffer,
++    N00_es20_glIsProgram,
++    N00_es20_glIsRenderbuffer,
++    N00_es20_glIsShader,
++    N00_es20_glIsTexture,
++    N00_es20_glLineWidth,
++    N00_es20_glLinkProgram,
++    N00_es20_glPixelStorei,
++    N00_es20_glPolygonOffset,
++    N00_es20_glReadPixels,
++    N00_es20_glReleaseShaderCompiler,
++    N00_es20_glRenderbufferStorage,
++    N00_es20_glSampleCoverage,
++    N00_es20_glScissor,
++    N00_es20_glShaderBinary,
++    N00_es20_glShaderSource,
++    N00_es20_glStencilFunc,
++    N00_es20_glStencilFuncSeparate,
++    N00_es20_glStencilMask,
++    N00_es20_glStencilMaskSeparate,
++    N00_es20_glStencilOp,
++    N00_es20_glStencilOpSeparate,
++    N00_es20_glTexImage2D,
++    N00_es20_glTexParameterf,
++    N00_es20_glTexParameterfv,
++    N00_es20_glTexParameteri,
++    N00_es20_glTexParameteriv,
++    N00_es20_glTexSubImage2D,
++    N00_es20_glUniform1f,
++    N00_es20_glUniform1fv,
++    N00_es20_glUniform1i,
++    N00_es20_glUniform1iv,
++    N00_es20_glUniform2f,
++    N00_es20_glUniform2fv,
++    N00_es20_glUniform2i,
++    N00_es20_glUniform2iv,
++    N00_es20_glUniform3f,
++    N00_es20_glUniform3fv,
++    N00_es20_glUniform3i,
++    N00_es20_glUniform3iv,
++    N00_es20_glUniform4f,
++    N00_es20_glUniform4fv,
++    N00_es20_glUniform4i,
++    N00_es20_glUniform4iv,
++    N00_es20_glUniformMatrix2fv,
++    N00_es20_glUniformMatrix3fv,
++    N00_es20_glUniformMatrix4fv,
++    N00_es20_glUseProgram,
++    N00_es20_glValidateProgram,
++    N00_es20_glVertexAttrib1f,
++    N00_es20_glVertexAttrib1fv,
++    N00_es20_glVertexAttrib2f,
++    N00_es20_glVertexAttrib2fv,
++    N00_es20_glVertexAttrib3f,
++    N00_es20_glVertexAttrib3fv,
++    N00_es20_glVertexAttrib4f,
++    N00_es20_glVertexAttrib4fv,
++    N00_es20_glVertexAttribPointer,
++    N00_es20_glViewport,
++    N00_es20_count
++};
++#endif

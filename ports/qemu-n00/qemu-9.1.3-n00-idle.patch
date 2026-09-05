@@ -1,0 +1,134 @@
+diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
+index abde922..b78b7d4 100644
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -109,8 +109,55 @@ typedef struct N00RegisterBank {
+     MemoryRegion iomem;
+     uint32_t words[N00_PRCM_SIZE / sizeof(uint32_t)];
+     bool clock_manager;
++    bool power_manager;
+ } N00RegisterBank;
+ 
++static bool n00_prm_retained_domain(hwaddr domain)
++{
++    switch (domain) {
++    case 0x0900: /* MPU */
++    case 0x0a00: /* CORE */
++    case 0x1000: /* PER */
++    case 0x1300: /* NEON */
++        return true;
++    default:
++        return false;
++    }
++}
++
++static void n00_prm_retained_state(N00RegisterBank *prm, hwaddr domain)
++{
++    uint32_t *control = &prm->words[(domain + 0xe0) >> 2];
++    uint32_t state;
++
++    /* Port Nokia's explicit always-ON compatibility policy for these four
++     * domains. There is no power loss/context loss in this machine yet.
++     * Do not report OFF and make the unmodified kernel restore an MMU table
++     * that was never saved by a ROM resume path. This is not suspend support. */
++    switch (domain) {
++    case 0x0900:
++        *control &= 0x3010f;
++        state = ((*control >> 10) & 0xc0) | 0x07;
++        break;
++    case 0x0a00:
++        *control &= 0x0f031f;
++        state = ((*control >> 12) & 0xf0) | 0x07;
++        break;
++    case 0x1000:
++        *control = 0x030100 | (*control & 7);
++        state = 0x07;
++        break;
++    case 0x1300:
++        *control = 0x4 | (*control & 3);
++        state = 0x03;
++        break;
++    default:
++        g_assert_not_reached();
++    }
++    prm->words[(domain + 0xe4) >> 2] = state;
++    prm->words[(domain + 0xe8) >> 2] = state;
++}
++
+ static void n00_cm_pll_status(N00RegisterBank *cm, unsigned control,
+                                unsigned mode_shift, unsigned select,
+                                unsigned mult_shift, unsigned status,
+@@ -137,6 +184,11 @@ static void n00_cm_update(N00RegisterBank *cm)
+                        (1 << 5) | (1 << 6));
+     n00_cm_pll_status(cm, 0xd00, 16, 0xd44, 8, 0xd20, 1, 1 << 1);
+     n00_cm_pll_status(cm, 0xd04, 0, 0xd4c, 8, 0xd24, 0, 1 << 1);
++    /* Nokia CM_ICLKEN1_CORE.EN_SDRC -> CM_IDLEST1_CORE.ST_SDRC.
++     * The kernel's SRAM clock-change routine waits for both transitions.
++     * Other module IDLEST bits remain bootstrap-only at this milestone. */
++    cm->words[0xa20 >> 2] = (cm->words[0xa20 >> 2] & ~2u) |
++                            (~cm->words[0xa10 >> 2] & 2u);
+ }
+ 
+ static uint64_t n00_register_bank_read(void *opaque, hwaddr offset,
+@@ -157,11 +209,23 @@ static void n00_register_bank_write(void *opaque, hwaddr offset,
+     unsigned shift = (offset & 3) * 8;
+     uint32_t mask = MAKE_64BIT_MASK(shift, size * 8);
+     uint32_t *word = &bank->words[offset >> 2];
++    hwaddr domain = offset & ~0xff;
++    unsigned reg = offset & 0xfc;
++
++    if (bank->power_manager && n00_prm_retained_domain(domain) &&
++        (reg == 0xe4 || reg == 0xe8)) {
++        /* PWSTST is read-only; Nokia's retained-domain model updates
++         * PREPWSTST on PWSTCTRL writes and ignores its clear writes. */
++        return;
++    }
+ 
+     *word = (*word & ~mask) | ((value << shift) & mask);
+     if (bank->clock_manager) {
+         n00_cm_update(bank);
+     }
++    if (bank->power_manager && n00_prm_retained_domain(domain) && reg == 0xe0) {
++        n00_prm_retained_state(bank, domain);
++    }
+ }
+ 
+ static const MemoryRegionOps n00_register_bank_ops = {
+@@ -211,11 +275,16 @@ static void n00_cm_reset(N00RegisterBank *cm)
+      * SYSCLK and /1 reference: M=432,N=25 gives 432 MHz, CLKOUTX2=864 MHz.
+      * /9 supplies 96 MHz; DSS/TV divisors remain guest-programmable.
+      * This is a bootloader preset, not the silicon reset value. */
+-    CM_RESET(0x0d00, 0x00170015);
++    CM_RESET(0x0d00, 0x00170017);
+     CM_RESET(0x0d04, 0x00000011);
+     CM_RESET(0x0d20, 0x00003f3c);
+     CM_RESET(0x0d24, 0x0000000a);
+-    CM_RESET(0x0d40, 0x08000040);
++    /* Direct boot also needs a locked CORE DPLL3 before the SRAM idle
++     * return path waits for ST_CORE_CLK. 26 MHz * 166 / (25 + 1) / M2=1
++     * gives 166 MHz CORE/L3/SDRC with the /1 CM_CLKSEL_CORE preset.
++     * 166 MHz is in Nokia's SDRC timing table. This is a bootloader
++     * preset, not a reset value, and does not implement power domains. */
++    CM_RESET(0x0d40, 0x08a61940);
+     CM_RESET(0x0d44, 0x0001b019);
+     CM_RESET(0x0d48, 0x00000009);
+     CM_RESET(0x0d50, 0x00000001);
+@@ -249,6 +318,7 @@ static void n00_prm_domain_reset(N00RegisterBank *prm, hwaddr domain,
+ 
+ static void n00_prm_reset(N00RegisterBank *prm)
+ {
++    prm->power_manager = true;
+     /* Reset values copied from Nokia's recovered OMAP3 PRM model. */
+     n00_prm_domain_reset(prm, 0x0000, 0x7, 0x1, 0, 0, 0, 0xb3,
+                          0x00ff0f07, 0x00000ff7);
+@@ -288,6 +358,10 @@ static void n00_prm_reset(N00RegisterBank *prm)
+     prm->words[0x129c >> 2] = 0xa;
+     prm->words[0x12c4 >> 2] = 0x1;
+     prm->words[0x12e4 >> 2] = 0x1;
++    n00_prm_retained_state(prm, 0x0900);
++    n00_prm_retained_state(prm, 0x0a00);
++    n00_prm_retained_state(prm, 0x1000);
++    n00_prm_retained_state(prm, 0x1300);
+ }
+ 
+ static void n00_mmc2_init(DeviceState *intc, qemu_irq *drq)

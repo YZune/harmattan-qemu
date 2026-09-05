@@ -1,0 +1,140 @@
+diff --git a/hw/arm/n00_dss_port.c b/hw/arm/n00_dss_port.c
+--- a/hw/arm/n00_dss_port.c
++++ b/hw/arm/n00_dss_port.c
+@@ -29,6 +29,7 @@
+ #include "hw/arm/omap.h"
+ #include "hw/sysbus.h"
+ #include "ui/console.h"
++#include "sysemu/sysemu.h"
+ #include "../display/framebuffer.h"
+ 
+ /* Generic DPI panel only, matching Nokia n00.c's N00_FAKE_DISPLAY.
+@@ -417,7 +418,33 @@
+ }
+ 
+ 
+-/* RAM-backed, non-rotated GFX plane. Positive row padding is supported.
++/* Legacy scanline functions assume contiguous output (some use memcpy).
++ * Render one bounded line first, then scatter to the rotated surface. This
++ * preserves their pixel conversion and avoids a second full-frame buffer. */
++typedef struct N00DSSRotatedLine {
++    drawfn draw;
++    void *palette;
++    int bytes_per_pixel;
++    uint8_t pixels[2048 * 4];
++} N00DSSRotatedLine;
++
++static void n00_dss_draw_rotated_line(void *opaque, uint8_t *dest,
++                                      const uint8_t *src, int cols, int step)
++{
++    N00DSSRotatedLine *line = opaque;
++    int bpp = line->bytes_per_pixel;
++
++    line->draw(line->palette, line->pixels, src, cols, bpp);
++    for (int x = 0; x < cols; x++) {
++        memcpy(dest, line->pixels + x * bpp, bpp);
++        if (x + 1 < cols) {
++            dest += step;
++        }
++    }
++}
++
++/* RAM-backed GFX plane. Positive row padding is supported. -rotate changes
++ * host presentation only; ui/input.c applies the inverse ABS transform.
+  * VID overlays, nonzero origin, pixel stepping and big-endian pixels are
+  * deliberately unsupported; do not read beyond RAM for malformed modes. */
+ static void n00_dss_panel_update_display(struct n00_dss_panel_s *s, int lcd)
+@@ -427,15 +454,21 @@
+     unsigned width = s->shadow.width, height = s->shadow.height;
+     unsigned format = (gfx->attr >> 1) & 15;
+     unsigned stride, rows, cols;
++    unsigned out_width, out_height;
+     drawfn line_fn;
++    void *line_opaque;
++    N00DSSRotatedLine rotated = { 0 };
++    int row_pitch, col_pitch;
+     int first = 0, last = 0;
+     bool remap;
+ 
+     if (!width || !height || width > 2048 || height > 2048) {
+         return;
+     }
+-    if (surface_width(surface) != width || surface_height(surface) != height) {
+-        qemu_console_resize(s->ds, width, height);
++    out_width = (graphic_rotate == 90 || graphic_rotate == 270) ? height : width;
++    out_height = (graphic_rotate == 90 || graphic_rotate == 270) ? width : height;
++    if (surface_width(surface) != out_width || surface_height(surface) != out_height) {
++        qemu_console_resize(s->ds, out_width, out_height);
+         surface = qemu_console_surface(s->ds);
+         s->invalidate = 1;
+     }
+@@ -454,6 +487,10 @@
+     }
+     cols = MIN(width, gfx->nx);
+     rows = MIN(height, gfx->ny);
++    if (graphic_rotate && (cols != width || rows != height)) {
++        qemu_log_mask(LOG_UNIMP, "N00: rotated partial GFX plane unsupported\n");
++        return;
++    }
+     stride = format < 3 ? (gfx->nx + (1 << (3 - format)) - 1) >> (3 - format)
+                         : gfx->nx * omap_lcd_Bpp[format];
+     stride += gfx->rowinc - 1;
+@@ -471,14 +508,54 @@
+         cpu_physical_memory_read(gfx->addr[2], s->shadow.gfx_palette,
+                                   s->shadow.gfx_palette_size * sizeof(uint32_t));
+     }
++    row_pitch = surface_stride(surface);
++    col_pitch = surface_bytes_per_pixel(surface);
++    line_opaque = s->shadow.gfx_palette;
++    if (graphic_rotate) {
++        rotated.draw = line_fn;
++        rotated.palette = line_opaque;
++        rotated.bytes_per_pixel = col_pitch;
++        if (col_pitch < 1 || col_pitch > 4) {
++            return;
++        }
++        line_fn = n00_dss_draw_rotated_line;
++        line_opaque = &rotated;
++        switch (graphic_rotate) {
++        case 90: /* QEMU -rotate is counterclockwise. */
++            row_pitch = col_pitch;
++            col_pitch = -surface_stride(surface);
++            break;
++        case 180:
++            row_pitch = -row_pitch;
++            col_pitch = -col_pitch;
++            break;
++        case 270:
++            row_pitch = -col_pitch;
++            col_pitch = surface_stride(surface);
++            break;
++        default:
++            g_assert_not_reached();
++        }
++    }
+     framebuffer_update_display(surface, &s->section, cols, rows, stride,
+-                                surface_stride(surface),
+-                                surface_bytes_per_pixel(surface),
+-                                s->invalidate, line_fn, s->shadow.gfx_palette,
++                                row_pitch, col_pitch,
++                                s->invalidate, line_fn, line_opaque,
+                                 &first, &last);
+     s->invalidate = 0;
+     if (first >= 0) {
+-        dpy_gfx_update(s->ds, 0, first, cols, last - first + 1);
++        switch (graphic_rotate) {
++        case 90:
++            dpy_gfx_update(s->ds, first, 0, last - first + 1, cols);
++            break;
++        case 180:
++            dpy_gfx_update(s->ds, 0, rows - 1 - last, cols, last - first + 1);
++            break;
++        case 270:
++            dpy_gfx_update(s->ds, rows - 1 - last, 0, last - first + 1, cols);
++            break;
++        default:
++            dpy_gfx_update(s->ds, 0, first, cols, last - first + 1);
++        }
+     }
+ }
+ 

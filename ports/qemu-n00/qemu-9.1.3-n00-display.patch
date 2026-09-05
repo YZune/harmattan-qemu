@@ -1,0 +1,5172 @@
+diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
+index 83c2af7..324eac0 100644
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -16,6 +16,7 @@
+ #include "hw/arm/soc_dma.h"
+ #include "hw/boards.h"
+ #include "hw/char/serial.h"
++#include "hw/i2c/i2c.h"
+ #include "hw/qdev-properties.h"
+ #include "hw/sd/sd.h"
+ #include "hw/sysbus.h"
+@@ -42,6 +43,37 @@
+ #define N00_RX71_MACHINE_ID 6666
+ 
+ void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base);
++void n00_twl5031_init(I2CBus *bus, qemu_irq irq);
++
++static void n00_display_init(DeviceState *intc, qemu_irq *drq)
++{
++    static const hwaddr i2c_base[] = { 0x48070000, 0x48072000, 0x48060000 };
++    static const int i2c_irq[] = { 56, 57, 61 };
++    static const int i2c_tx[] = { 27, 29, 25 };
++    static const hwaddr dss_base[] = {
++        0x48050000, 0x48050400, 0x48050800, 0x48050c00, 0x4804fc00
++    };
++    DeviceState *i2c = qdev_new("n00-omap3-i2c");
++    SysBusDevice *bus = SYS_BUS_DEVICE(i2c);
++    sysbus_realize_and_unref(bus, &error_fatal);
++    for (int i = 0; i < 3; i++) {
++        sysbus_mmio_map(bus, i, i2c_base[i]);
++        sysbus_connect_irq(bus, i * 3, qdev_get_gpio_in(intc, i2c_irq[i]));
++        sysbus_connect_irq(bus, i * 3 + 1, drq[i2c_tx[i] + 1]);
++        sysbus_connect_irq(bus, i * 3 + 2, drq[i2c_tx[i]]);
++    }
++    n00_twl5031_init(I2C_BUS(qdev_get_child_bus(i2c, "n00-i2c1")),
++                     qdev_get_gpio_in(intc, 7));
++    bus = SYS_BUS_DEVICE(qdev_new("n00-omap3-dss"));
++    sysbus_realize_and_unref(bus, &error_fatal);
++    for (int i = 0; i < 5; i++) {
++        sysbus_mmio_map(bus, i, dss_base[i]);
++    }
++    sysbus_connect_irq(bus, 0, qdev_get_gpio_in(intc, 25));
++    sysbus_connect_irq(bus, 1, drq[6]);
++    /* DSI DMA requests 72..75 need an expanded OMAP3 DMA model.
++     * They are not used by the attached generic DPI panel. */
++}
+ 
+ typedef struct N00RegisterBank {
+     MemoryRegion iomem;
+@@ -145,13 +177,17 @@ static void n00_cm_reset(N00RegisterBank *cm)
+     CM_RESET(0x0a40, 0x00001105);
+     CM_RESET(0x0b20, 0x00000000);
+     CM_RESET(0x0c40, 0x00000012);
+-    CM_RESET(0x0d00, 0x00110015);
++    /* Direct boot skips Nolo's DPLL4 setup. With this machine's 26 MHz
++     * SYSCLK and /1 reference: M=432,N=25 gives 432 MHz, CLKOUTX2=864 MHz.
++     * /9 supplies 96 MHz; DSS/TV divisors remain guest-programmable.
++     * This is a bootloader preset, not the silicon reset value. */
++    CM_RESET(0x0d00, 0x00170015);
+     CM_RESET(0x0d04, 0x00000011);
+     CM_RESET(0x0d20, 0x00003f3c);
+     CM_RESET(0x0d24, 0x0000000a);
+     CM_RESET(0x0d40, 0x08000040);
+-    CM_RESET(0x0d44, 0x00000000);
+-    CM_RESET(0x0d48, 0x00000001);
++    CM_RESET(0x0d44, 0x0001b019);
++    CM_RESET(0x0d48, 0x00000009);
+     CM_RESET(0x0d50, 0x00000001);
+     CM_RESET(0x0d70, 0x00000003);
+     CM_RESET(0x0e40, 0x00001010);
+@@ -162,6 +198,7 @@ static void n00_cm_reset(N00RegisterBank *cm)
+     CM_RESET(0x1320, 0x00000000);
+     CM_RESET(0x1420, 0x00000000);
+ #undef CM_RESET
++    n00_cm_update(cm);
+ }
+ 
+ static void n00_prm_domain_reset(N00RegisterBank *prm, hwaddr domain,
+@@ -400,6 +437,7 @@ static void n00_port_spike_init(MachineState *machine)
+     soc_dma_port_add_mem(mpu->dma, memory_region_get_ram_ptr(sram),
+                          N00_SRAM_BASE, N00_SRAM_SIZE);
+     n00_mmc2_init(intc, mpu->drq);
++    n00_display_init(intc, mpu->drq);
+ 
+     l4 = omap_l4_init(get_system_memory(), 0x48000000, 7);
+     omap_gp_timer_init(omap_l4ta_get(l4, n00_l4_regions,
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+index 6b07fb1..e0b4363 100644
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -1,6 +1,7 @@
+ arm_ss = ss.source_set()
+ arm_ss.add(files('boot.c'))
+ arm_ss.add(files('n00_port_spike.c', 'n00_sdrc_port.c', 'n00_mmc_port.c'))
++arm_ss.add(files('n00_i2c_port.c', 'n00_twl4030_port.c', 'n00_dss_port.c'))
+ arm_ss.add(when: 'CONFIG_ARM_VIRT', if_true: files('virt.c'))
+ arm_ss.add(when: 'CONFIG_ACPI', if_true: files('virt-acpi-build.c'))
+ arm_ss.add(when: 'CONFIG_DIGIC', if_true: files('digic_boards.c'))
+diff --git a/hw/arm/n00_i2c_port.c b/hw/arm/n00_i2c_port.c
+new file mode 100644
+index 0000000..d34ab73
+--- /dev/null
++++ b/hw/arm/n00_i2c_port.c
+@@ -0,0 +1,748 @@
++/*
++ * TI OMAP on-chip I2C controller.  Only "new I2C" mode supported.
++ *
++ * Copyright (C) 2007 Andrzej Zaborowski  <balrog@zabor.org>
++ * Copyright (C) 2009 Nokia Corporation
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++#include "qemu/osdep.h"
++#include "qemu/module.h"
++#include "qapi/error.h"
++#include "hw/irq.h"
++#include "hw/hw.h"
++#include "hw/i2c/i2c.h"
++#include "hw/arm/omap.h"
++#include "hw/sysbus.h"
++
++#define I2C_MAX_FIFO_SIZE (1 << 6)
++#define I2C_FIFO_SIZE_MASK ((I2C_MAX_FIFO_SIZE) - 1)
++
++typedef struct n00_i2c_bus_s {
++    I2CBus *bus;
++    MemoryRegion iomem;
++    qemu_irq irq;
++    qemu_irq drq[2];
++
++    uint8_t revision;
++    int fifosize;
++    char *id;
++
++    uint16_t mask;
++    uint16_t stat;
++    uint16_t we;
++    uint16_t dma;
++    uint16_t count;
++    int count_cur;
++    uint16_t sysc;
++    uint16_t control;
++    uint16_t own_addr[4];
++    uint16_t slave_addr;
++    uint8_t sblock;
++    uint8_t divider;
++    uint16_t times[2];
++    uint16_t test;
++    int fifostart;
++    int fifolen;
++    uint8_t fifo[I2C_MAX_FIFO_SIZE];
++} N00I2CBusState;
++
++typedef struct n00_i2c_s {
++    SysBusDevice busdev;
++    int32_t mpu_model;
++    int buscount;
++    N00I2CBusState *bus;
++} N00I2CState;
++
++/* I2C controller revision register values */
++#define OMAP1_INTR_REV    0x11
++#define OMAP2_INTR_REV	  0x34
++#define OMAP3_INTR_REV    0x3c
++#define OMAP3630_INTR_REV 0x40
++
++//#define I2C_DEBUG
++#ifdef I2C_DEBUG
++#define TRACE(fmt, ...) \
++    fprintf(stderr, "%s " fmt "\n", __FUNCTION__, ##__VA_ARGS__)
++#else
++#define TRACE(...)
++#endif
++
++static void n00_i2c_interrupts_update(N00I2CBusState *s)
++{
++    TRACE("IRQ=%04x,RDRQ=%d,XDRQ=%d",
++          s->stat & s->mask,
++          ((s->dma >> 15 ) & 1) & ((s->stat >> 3) & 1),
++          ((s->dma >> 7 ) & 1 )& ((s->stat >> 4 ) & 1));
++    qemu_set_irq(s->irq, s->stat & s->mask);
++    if ((s->dma >> 15) & 1)                          /* RDMA_EN */
++        qemu_set_irq(s->drq[0], (s->stat >> 3) & 1); /* RRDY */
++    if ((s->dma >> 7) & 1)                           /* XDMA_EN */
++        qemu_set_irq(s->drq[1], (s->stat >> 4) & 1); /* XRDY */
++}
++
++static void n00_i2c_fifo_run(N00I2CBusState *s)
++{
++    int ack = 1, i;
++
++    if (!i2c_bus_busy(s->bus))
++        return;
++
++    if ((s->control >> 2) & 1) {				/* RM */
++        if ((s->control >> 1) & 1) {				/* STP */
++            i2c_end_transfer(s->bus);
++            s->control &= ~(1 << 1);				/* STP */
++            s->count_cur = s->count;
++            s->fifolen = 0;
++        } else if ((s->control >> 9) & 1) {			/* TRX */
++            while (ack && s->fifolen) {
++                ack = (i2c_send(s->bus, s->fifo[s->fifostart++]) == 0);
++                s->fifostart &= I2C_FIFO_SIZE_MASK;
++                s->fifolen--;
++            }
++            s->fifolen = 0;
++            s->stat |= 1 << 4;					/* XRDY */
++        } else {
++            for (i = 0; i < 4; i++)
++                s->fifo[(s->fifostart + i) & I2C_FIFO_SIZE_MASK] =
++                    i2c_recv(s->bus);
++            s->fifolen = 4;
++            s->stat |= 1 << 3;					/* RRDY */
++        }
++    } else {
++        if ((s->control >> 9) & 1) {                /* TRX */
++            TRACE("master transmit, count_cur=%d, fifolen=%d",
++                  s->count_cur, s->fifolen);
++            for (; ack && s->count_cur && s->fifolen; s->count_cur--) {
++                ack = (i2c_send(s->bus, s->fifo[s->fifostart++]) == 0);
++                s->fifostart &= I2C_FIFO_SIZE_MASK;
++                s->fifolen--;
++            }
++            s->stat &= ~0x4410;                     /* XDR | XUDF | XRDY */
++            if (ack && s->count_cur) {              /* send more? */
++                /* we know that FIFO is empty */
++                if (s->revision < OMAP3_INTR_REV)
++                    s->stat |= 1 << 4;              /* XRDY */
++                else {
++                    if (s->count_cur > (s->dma & 0x3f)) /* XTRSH */
++                        s->stat |= 1 << 4;          /* XRDY */
++                    else
++                        s->stat |= 1 << 14;         /* XDR */
++                }
++            }
++            if (!s->count_cur)                      /* everything sent? */
++                s->stat |= 1 << 2;                  /* ARDY */
++        } else {                                    /* !TRX */
++            TRACE("master receive");
++            for (; s->count_cur && s->fifolen < s->fifosize; s->count_cur--) {
++                i = i2c_recv(s->bus);
++                if (i < 0) break; /* stop receiving if nothing to receive */
++                s->fifo[(s->fifostart + s->fifolen++) & I2C_FIFO_SIZE_MASK] =
++                    (uint8_t)(i & 0xff);
++                TRACE("received fifo[%02x] = %02x", s->fifolen - 1,
++                      s->fifo[(s->fifostart + s->fifolen - 1)
++                              & I2C_FIFO_SIZE_MASK]);
++            }
++            s->stat &= ~((1 << 3) | (1 << 13));            /* RRDY | RDR */
++            if (s->fifolen) {
++                if (s->revision < OMAP3_INTR_REV)
++                    s->stat |= 1 << 3;                     /* RRDY */
++                else {
++                    if (s->fifolen > ((s->dma >> 8) & 0x3f)) /* RTRSH */
++                        s->stat |= 1 << 3;                 /* RRDY */
++                    else
++                        s->stat |= 1 << 13;                /* RDR */
++                }
++            } else if (!s->count_cur && (s->control & 2))  /* STP */
++                s->stat |= 1 << 2;                         /* ARDY */
++        }
++        if (!s->count_cur) {
++            TRACE("no more data to transmit/receive");
++            i2c_end_transfer(s->bus);
++            if ((s->control >> 1) & 1) {   /* STP */
++                s->control &= ~0x0602;     /* MST | TRX | STP */
++                s->count_cur = s->count;
++            }
++        }
++    }
++
++    s->stat |= (!ack) << 1;	              /* NACK */
++    if (!ack)
++        s->control &= ~(1 << 1);          /* STP */
++    TRACE("finished, STAT = %04x, CNT = %d", s->stat, s->count_cur);
++}
++
++static void n00_i2c_bus_reset(N00I2CBusState *s)
++{
++    s->mask = 0;
++    s->stat = 0;
++    s->dma = 0;
++    s->count = 0;
++    s->count_cur = 0;
++    s->we = 0;
++    s->sysc = 0;
++    s->fifolen = 0;
++    s->fifostart = 0;
++    s->control = 0;
++    s->own_addr[0] = 0;
++    s->own_addr[1] = 0;
++    s->own_addr[2] = 0;
++    s->own_addr[3] = 0;
++    s->slave_addr = 0;
++    s->sblock = 0;
++    s->divider = 0;
++    s->times[0] = 0;
++    s->times[1] = 0;
++    s->test = 0;
++
++    i2c_end_transfer(s->bus);
++}
++
++static uint32_t n00_i2c_read(void *opaque, hwaddr addr)
++{
++    N00I2CBusState *s = opaque;
++    int offset = addr & OMAP_MPUI_REG_MASK;
++    uint16_t ret;
++
++    switch (offset) {
++        case 0x00: /* I2C_REV */
++            TRACE("REV returns %04x", s->revision);
++            return s->revision;
++        case 0x04: /* I2C_IE */
++            TRACE("IE returns %04x", s->mask);
++            return s->mask;
++        case 0x08: /* I2C_STAT */
++            ret = s->stat | (i2c_bus_busy(s->bus) << 12 );
++            if (s->revision >= OMAP3_INTR_REV
++                && (s->stat & 0x4010)) { /* XRDY or XDR  */
++                s->stat |= 1 << 10; /* XUDF as required by errata 1.153 */
++            }
++            TRACE("STAT returns %04x", ret);
++            return ret;
++        case 0x0c: /* I2C_IV / I2C_WE */
++            if (s->revision >= OMAP3_INTR_REV)
++                return s->we;
++            if (s->revision >= OMAP2_INTR_REV)
++                break;
++            ret = ffs(s->stat & s->mask);
++            if (ret)
++                s->stat ^= 1 << (ret - 1);
++            n00_i2c_interrupts_update(s);
++            return ret;
++        case 0x10: /* I2C_SYSS */
++            return (s->control >> 15) & 1; /* reset completed == I2C_EN */
++        case 0x14: /* I2C_BUF */
++            TRACE("BUF returns %04x", s->dma);
++            return s->dma;
++        case 0x18: /* I2C_CNT */
++            TRACE("CNT returns %04x", s->count_cur);
++            return s->count_cur; /* DCOUNT */
++        case 0x1c: /* I2C_DATA */
++            ret = 0;
++            if (s->fifolen) {
++                if (s->revision < OMAP3_INTR_REV) {
++                    if (s->control & (1 << 14)) /* BE */
++                        ret = (((uint16_t)s->fifo[s->fifostart]) << 8)
++                            | s->fifo[(s->fifostart + 1) & I2C_FIFO_SIZE_MASK];
++                    else
++                        ret = (((uint16_t)s->fifo[(s->fifostart + 1)
++                                                  & I2C_FIFO_SIZE_MASK]) << 8)
++                            | s->fifo[s->fifostart];
++                    s->fifostart = (s->fifostart + 2) & I2C_FIFO_SIZE_MASK;
++                    if (s->fifolen == 1) {
++                        s->stat |= 1 << 15; /* SBD */
++                        s->fifolen = 0;
++                    } else
++                        s->fifolen -= 2;
++                    if (!s->fifolen) {
++                        s->stat &= ~(1 << 3); /* RRDY */
++                        s->stat |= 1 << 2;    /* ARDY */
++                    }
++                } else {
++                    s->stat &= ~(1 << 7); /* AERR */
++                    ret = s->fifo[s->fifostart++];
++                    s->fifostart &= I2C_FIFO_SIZE_MASK;
++                    if (--s->fifolen) {
++                        if (s->fifolen <= ((s->dma >> 8) & 0x3f)) {
++                            s->stat &= ~(1 << 3); /* RRDY */
++                            s->stat |= 1 << 13;   /* RDR */
++                        }
++                    } else {
++                        s->stat &= ~((1 << 3) | (1 << 13)); /* RRDY | RDR */
++                        s->stat |= 1 << 2;                  /* ARDY */
++                    }
++                }
++                s->stat &= ~(1 << 11); /* ROVR */
++            } else if (s->revision >= OMAP3_INTR_REV)
++                s->stat |= (1 << 7); /* AERR */
++            TRACE("DATA returns %04x", ret);
++            n00_i2c_fifo_run(s);
++            n00_i2c_interrupts_update(s);
++            return ret;
++        case 0x20: /* I2C_SYSC */
++            TRACE("SYSC returns %04x", s->sysc);
++            return s->sysc;
++        case 0x24: /* I2C_CON */
++            TRACE("CON returns %04x", s->control);
++            return s->control;
++        case 0x28: /* I2C_OA / I2C_OA0 */
++            return s->own_addr[0];
++        case 0x2c: /* I2C_SA */
++            return s->slave_addr;
++        case 0x30: /* I2C_PSC */
++            return s->divider;
++        case 0x34: /* I2C_SCLL */
++            return s->times[0];
++        case 0x38: /* I2C_SCLH */
++            return s->times[1];
++        case 0x3c: /* I2C_SYSTEST */
++            if (s->test & (1 << 15)) { /* ST_EN */
++                s->test ^= 0xa;
++                return s->test;
++            }
++            return s->test & ~0x300f;
++        case 0x40: /* I2C_BUFSTAT */
++            if (s->revision >= OMAP3_INTR_REV) {
++                switch (s->fifosize) {
++                    case 8:  ret = 0x0000; break;
++                    case 16: ret = 0x4000; break;
++                    case 32: ret = 0x8000; break;
++                    case 64: ret = 0xc000; break;
++                    default: ret = 0x0000; break;
++                }
++                ret |= ((s->fifolen) & 0x3f) << 8;  /* RXSTAT */
++                ret |= (s->count_cur) & 0x3f;       /* TXSTAT */
++                TRACE("BUFSTAT returns %04x", ret);
++                return ret;
++            }
++            break;
++        case 0x44: /* I2C_OA1 */
++        case 0x48: /* I2C_OA2 */
++        case 0x4c: /* I2C_OA3 */
++            if (s->revision >= OMAP3_INTR_REV)
++                return s->own_addr[(addr >> 2) & 3];
++            break;
++        case 0x50: /* I2C_ACTOA */
++            if (s->revision >= OMAP3_INTR_REV)
++                return 0; /* TODO: determine accessed slave own address */
++            break;
++        case 0x54: /* I2C_SBLOCK */
++            if (s->revision >= OMAP3_INTR_REV)
++                return s->sblock;
++            break;
++        default:
++            break;
++    }
++
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static uint32_t n00_i2c_readb(void *opaque, hwaddr addr)
++{
++    N00I2CBusState *s = opaque;
++    int offset = addr & OMAP_MPUI_REG_MASK;
++    uint8_t ret;
++
++    switch (offset) {
++        case 0x1c: /* I2C_DATA */
++            ret = 0;
++            if (s->fifolen) {
++                if (s->revision < OMAP3_INTR_REV) {
++                    if (s->control & (1 << 14)) /* BE */
++                        ret = (((uint8_t)s->fifo[s->fifostart]) << 8)
++                            | s->fifo[(s->fifostart + 1) & I2C_FIFO_SIZE_MASK];
++                    else
++                        ret = (((uint8_t)s->fifo[(s->fifostart + 1)
++                                                 & I2C_FIFO_SIZE_MASK]) << 8)
++                            | s->fifo[s->fifostart];
++                    s->fifostart = (s->fifostart + 2) & I2C_FIFO_SIZE_MASK;
++                    if (s->fifolen == 1) {
++                        s->stat |= 1 << 15; /* SBD */
++                        s->fifolen = 0;
++                    } else
++                        s->fifolen -= 2;
++                    if (!s->fifolen) {
++                        s->stat &= ~(1 << 3); /* RRDY */
++                        s->stat |= 1 << 2;    /* ARDY */
++                    }
++                } else {
++                    s->stat &= ~(1 << 7); /* AERR */
++                    ret = (uint8_t)s->fifo[s->fifostart++];
++                    s->fifostart &= I2C_FIFO_SIZE_MASK;
++                    if (--s->fifolen) {
++                        if (s->fifolen <= ((s->dma >> 8) & 0x3f)) {
++                            s->stat &= ~(1 << 3); /* RRDY */
++                            s->stat |= 1 << 13;   /* RDR */
++                        }
++                    } else {
++                        s->stat &= ~((1 << 3) | (1 << 13)); /* RRDY | RDR */
++                        s->stat |= 1 << 2;                  /* ARDY */
++                    }
++                }
++                s->stat &= ~(1 << 11); /* ROVR */
++            } else if (s->revision >= OMAP3_INTR_REV)
++                s->stat |= (1 << 7); /* AERR */
++            TRACE("DATA returns %04x", ret);
++            n00_i2c_fifo_run(s);
++            n00_i2c_interrupts_update(s);
++            return ret;
++         default:
++            break;
++    }
++
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static void n00_i2c_write(void *opaque, hwaddr addr,
++                           uint32_t value)
++{
++    N00I2CBusState *s = opaque;
++    int offset = addr & OMAP_MPUI_REG_MASK;
++    int nack;
++
++    switch (offset) {
++        case 0x00: /* I2C_REV */
++        case 0x10: /* I2C_SYSS */
++        case 0x40: /* I2C_BUFSTAT */
++        case 0x50: /* I2C_ACTOA */
++            OMAP_RO_REG(addr);
++            break;
++        case 0x04: /* I2C_IE */
++            TRACE("IE = %04x", value);
++            if (s->revision < OMAP2_INTR_REV) {
++                s->mask = value & 0x1f;
++            } else if (s->revision < OMAP3_INTR_REV) {
++                s->mask = value & 0x3f;
++            } else if (s->revision == OMAP3_INTR_REV) {
++                s->mask = value & 0x63ff;
++            } else { /* omap3630 */
++                s->mask = value & 0x6fff;
++            }
++            n00_i2c_interrupts_update(s);
++            break;
++        case 0x08: /* I2C_STAT */
++            if (s->revision < OMAP2_INTR_REV) {
++                OMAP_RO_REG(addr);
++            } else {
++                TRACE("STAT = %04x", value);
++                /* RRDY and XRDY are reset by hardware. (in all versions???) */
++                if (s->revision < OMAP3_INTR_REV) {
++                    value &= 0x27;
++                } else if (s->revision == OMAP3_INTR_REV) {
++                    value &= 0x63e7;
++                } else { /* omap3630 */
++                    value &= 0x6ee7;
++                }
++                s->stat &= ~value;
++                n00_i2c_interrupts_update(s);
++            }
++            break;
++        case 0x0c: /* I2C_IV / I2C_WE */
++            if (s->revision < OMAP3_INTR_REV) {
++                OMAP_RO_REG(addr);
++            } else if (s->revision == OMAP3_INTR_REV) {
++                s->we = value & 0x636f;
++            } else { /* omap3630 */
++                s->we = value & 0x6f6f;
++            }
++            break;
++        case 0x14: /* I2C_BUF */
++            TRACE("BUF = %04x", value);
++            if (s->revision < OMAP3_INTR_REV)
++                s->dma = value & 0x8080;
++            else {
++                s->dma = value & 0xbfbf;
++                if ((value & (1 << 14))    /* RXFIFO_CLR */
++                    || (value & (1 << 6))) /* TXFIFO_CLR */
++                    s->fifolen = 0;
++            }
++            if (value & (1 << 15))     /* RDMA_EN */
++                s->mask &= ~(1 << 3);  /* RRDY_IE */
++            if (value & (1 << 7))      /* XDMA_EN */
++                s->mask &= ~(1 << 4);  /* XRDY_IE */
++            break;
++        case 0x18: /* I2C_CNT */
++            TRACE("CNT = %04x", value);
++            s->count = value; /* DCOUNT */
++            break;
++        case 0x1c: /* I2C_DATA */
++            TRACE("DATA = %04x", value);
++            if (s->revision < OMAP3_INTR_REV) {
++                if (s->fifolen > 2) {
++                    /* XXX: remote access (qualifier) error - what's that? */
++                    break;
++                }
++                if (s->control & (1 << 14)) { /* BE */
++                    s->fifo[(s->fifostart + s->fifolen++)
++                            & I2C_FIFO_SIZE_MASK] =
++                        (uint8_t)((value >> 8) & 0xff);
++                    s->fifo[(s->fifostart + s->fifolen++)
++                            & I2C_FIFO_SIZE_MASK] =
++                        (uint8_t)(value & 0xff);
++                } else {
++                    s->fifo[(s->fifostart + s->fifolen++)
++                            & I2C_FIFO_SIZE_MASK] =
++                        (uint8_t)(value & 0xff);
++                    s->fifo[(s->fifostart + s->fifolen++)
++                            & I2C_FIFO_SIZE_MASK] =
++                        (uint8_t)((value >> 8) & 0xff);
++                }
++            } else {
++                if (s->fifolen < s->fifosize) {
++                    s->stat &= ~(1 << 7); /* AERR */
++                    s->fifo[(s->fifostart + s->fifolen++)
++                            & I2C_FIFO_SIZE_MASK] =
++                        (uint8_t)(value & 0xff);
++                } else
++                    s->stat |= (1 << 7); /* AERR */
++            }
++            s->stat &= ~(1 << 10); /* XUDF */
++            n00_i2c_fifo_run(s);
++            n00_i2c_interrupts_update(s);
++            break;
++        case 0x20: /* I2C_SYSC */
++            if (s->revision < OMAP2_INTR_REV) {
++                OMAP_BAD_REG(addr);
++                break;
++            }
++            TRACE("SYSC = %04x", value);
++            if (value & 2)
++                n00_i2c_bus_reset(s);
++            else if (s->revision >= OMAP3_INTR_REV)
++                s->sysc = value & 0x031d;
++            break;
++        case 0x24: /* I2C_CON */
++            TRACE("CON = %04x", value);
++            s->control = value & (s->revision < OMAP3_INTR_REV
++                                  ? 0xcf87 : 0xbff3);
++            if (~value & (1 << 15)) { /* I2C_EN */
++                if (s->revision < OMAP2_INTR_REV)
++                    n00_i2c_bus_reset(s);
++                break;
++            }
++            if (s->revision >= OMAP3_INTR_REV &&
++                ((value >> 12) & 3) > 1) { /* OPMODE */
++                fprintf(stderr,
++                        "%s: only FS and HS modes are supported\n",
++                        __FUNCTION__);
++                break;
++            }
++            if ((value & (1 << 10))) { /* MST */
++                if (value & 1) { /* STT */
++                    nack = !!i2c_start_transfer(s->bus, s->slave_addr, /*SA*/
++                                                (~value >> 9) & 1);    /*TRX*/
++                    s->stat |= nack << 1;        /* NACK */
++                    s->control &= ~(1 << 0);     /* STT */
++                    s->fifolen = 0;
++                    if (nack)
++                        s->control &= ~(1 << 1); /* STP */
++                    else {
++                        s->count_cur = s->count;
++                        n00_i2c_fifo_run(s);
++                    }
++                    n00_i2c_interrupts_update(s);
++                } else if (value & 2) { /* STP, but not STT */
++                    i2c_end_transfer(s->bus);
++                    s->control &= ~0x0602;     /* MST | TRX | STP */
++                    s->count_cur = s->count;
++                }
++            }
++            break;
++        case 0x28: /* I2C_OA / I2C_OA0 */
++            TRACE("OA0 = %04x", value);
++            s->own_addr[0] = value & (s->revision < OMAP3_INTR_REV
++                                      ? 0x3ff : 0xe3ff);
++            /*i2c_set_slave_address(&s->slave[0],
++                                  value & (s->revision >= OMAP3_INTR_REV
++                                           && (s->control & 0x80)
++                                           ? 0x3ff: 0x7f));*/
++            break;
++        case 0x2c: /* I2C_SA */
++            TRACE("SA = %04x", value);
++            s->slave_addr = value & 0x3ff;
++            break;
++        case 0x30: /* I2C_PSC */
++            s->divider = value;
++            break;
++        case 0x34: /* I2C_SCLL */
++            s->times[0] = value & (s->revision < OMAP3_INTR_REV
++                                   ? 0xff : 0xffff);
++            break;
++        case 0x38: /* I2C_SCLH */
++            s->times[1] = value & (s->revision < OMAP3_INTR_REV
++                                   ? 0xff : 0xffff);
++            break;
++        case 0x3c: /* I2C_SYSTEST */
++            if (s->revision < OMAP3_INTR_REV) {
++                value &= 0xf805;
++            } else if (s->revision == OMAP3_INTR_REV) {
++                value &= 0xf815;
++            } else { /* omap3630 */
++                value = (value & 0xf835) | 0x1c00;
++            }
++            if ((value & (1 << 15))) { /* ST_EN */
++                fprintf(stderr, "%s: System Test not supported\n",
++                        __FUNCTION__);
++                s->test = (s->test & 0x0a) | value;
++            } else {
++                value &= ~0xff;
++                s->test = (s->test & 0x1f) | value;
++            }
++            if (value & (1 << 11)) { /* SBB */
++                if (s->revision >= OMAP2_INTR_REV) {
++                    s->stat |= 0x3f;
++                    if (s->revision >= OMAP3_INTR_REV) {
++                        s->stat |= 0x6300;
++                        if (s->revision > OMAP3_INTR_REV) {
++                            s->stat |= 0x0c00;
++                        }
++                    }
++                    n00_i2c_interrupts_update(s);
++                }
++            }
++            break;
++        case 0x44: /* I2C_OA1 */
++        case 0x48: /* I2C_OA2 */
++        case 0x4c: /* I2C_OA3 */
++            if (s->revision < OMAP3_INTR_REV) {
++                OMAP_BAD_REG(addr);
++            } else {
++                addr = (addr >> 2) & 3;
++                TRACE("OA%d = %04x", (int)addr, value);
++                s->own_addr[addr] = value & 0x3ff;
++                /*i2c_set_slave_address(&s->slave[addr],
++                                      value & ((s->control & (0x80 >> addr))
++                                               ? 0x3ff: 0x7f));*/
++            }
++            break;
++        case 0x54: /* I2C_SBLOCK */
++            if (s->revision < OMAP3_INTR_REV)
++                OMAP_BAD_REG(addr);
++            else {
++                s->sblock = value & 0x0f;
++            }
++            break;
++        default:
++            OMAP_BAD_REG(addr);
++            break;
++    }
++}
++
++static void n00_i2c_writeb(void *opaque, hwaddr addr,
++                            uint32_t value)
++{
++    N00I2CBusState *s = opaque;
++    int offset = addr & OMAP_MPUI_REG_MASK;
++
++    switch (offset) {
++        case 0x1c: /* I2C_DATA */
++            TRACE("DATA = %02x", value);
++            if (s->revision < OMAP3_INTR_REV && s->fifolen > 2) {
++                /* XXX: remote access (qualifier) error - what's that? */
++                break;
++            }
++            if (s->fifolen < s->fifosize) {
++                s->fifo[(s->fifostart + s->fifolen++) & I2C_FIFO_SIZE_MASK] =
++                    (uint8_t)(value & 0xff);
++                if (s->revision >= OMAP3_INTR_REV)
++                    s->stat &= ~(1 << 7); /* AERR */
++                s->stat &= ~(1 << 10);    /* XUDF */
++                n00_i2c_fifo_run(s);
++            } else if (s->revision >= OMAP3_INTR_REV)
++                s->stat |= (1 << 7);      /* AERR */
++            n00_i2c_interrupts_update(s);
++            break;
++        default:
++            OMAP_BAD_REG(addr);
++            break;
++    }
++}
++
++
++/* QEMU 9.x adapter: Nokia's OMAP3 FIFO semantics, isolated from OMAP2. */
++static uint64_t n00_i2c_mmio_read(void *opaque, hwaddr addr, unsigned size)
++{
++    return size == 1 ? n00_i2c_readb(opaque, addr)
++                     : n00_i2c_read(opaque, addr);
++}
++
++static void n00_i2c_mmio_write(void *opaque, hwaddr addr,
++                                uint64_t value, unsigned size)
++{
++    if (size == 1) {
++        n00_i2c_writeb(opaque, addr, value);
++    } else {
++        n00_i2c_write(opaque, addr, value);
++    }
++}
++
++static const MemoryRegionOps n00_i2c_ops = {
++    .read = n00_i2c_mmio_read,
++    .write = n00_i2c_mmio_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 1,
++    .valid.max_access_size = 2,
++};
++
++static void n00_i2c_reset(DeviceState *dev)
++{
++    N00I2CState *s = (N00I2CState *)dev;
++    for (int i = 0; i < s->buscount; i++) {
++        n00_i2c_bus_reset(&s->bus[i]);
++        n00_i2c_interrupts_update(&s->bus[i]);
++    }
++}
++
++static void n00_i2c_instance_init(Object *obj)
++{
++    N00I2CState *s = (N00I2CState *)obj;
++    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
++    s->buscount = 3;
++    s->bus = g_new0(N00I2CBusState, s->buscount);
++    for (int i = 0; i < s->buscount; i++) {
++        N00I2CBusState *b = &s->bus[i];
++        b->revision = OMAP3_INTR_REV;
++        b->fifosize = i < 2 ? 8 : 64;
++        b->id = g_strdup_printf("n00-i2c%d", i + 1);
++        sysbus_init_irq(dev, &b->irq);
++        sysbus_init_irq(dev, &b->drq[0]); /* RX */
++        sysbus_init_irq(dev, &b->drq[1]); /* TX */
++        memory_region_init_io(&b->iomem, obj, &n00_i2c_ops, b, b->id, 0x1000);
++        sysbus_init_mmio(dev, &b->iomem);
++        b->bus = i2c_init_bus(DEVICE(obj), b->id);
++    }
++}
++
++static void n00_i2c_class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++    dc->reset = n00_i2c_reset;
++    dc->desc = "Nokia OMAP3 I2C port (no migration support)";
++}
++
++static const TypeInfo n00_i2c_type = {
++    .name = "n00-omap3-i2c",
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(N00I2CState),
++    .instance_init = n00_i2c_instance_init,
++    .class_init = n00_i2c_class_init,
++};
++
++static void n00_i2c_register_types(void)
++{
++    type_register_static(&n00_i2c_type);
++}
++type_init(n00_i2c_register_types)
+diff --git a/hw/arm/n00_twl4030_port.c b/hw/arm/n00_twl4030_port.c
+new file mode 100644
+index 0000000..15be120
+--- /dev/null
++++ b/hw/arm/n00_twl4030_port.c
+@@ -0,0 +1,1636 @@
++/*
++ * TI TWL4030 emulation
++ *
++ * Copyright (C) 2008 yajin<yajin@vm-kernel.org>
++ * Copyright (C) 2009-2010 Nokia Corporation
++ *
++ * Register implementation based on TPS65950 ES1.0 specification.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 or
++ * (at your option) version 3 of the License.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/timer.h"
++#include "qemu/module.h"
++#include "qapi/error.h"
++#include "hw/i2c/i2c.h"
++#include "hw/irq.h"
++#include "sysemu/reset.h"
++#include "hw/hw.h"
++
++void n00_twl5031_init(I2CBus *bus, qemu_irq irq);
++#include "sysemu/runstate.h"
++
++//#define DEBUG_GENERAL
++//#define DEBUG_RTC
++
++#define DEBUG_TRACE(fmt, ...) fprintf(stderr, "%s@%d: " fmt "\n", \
++                                      __FUNCTION__, __LINE__, ##__VA_ARGS__)
++
++#ifdef DEBUG_GENERAL
++#define TRACE(...) DEBUG_TRACE(__VA_ARGS__)
++#else
++#define TRACE(...)
++#endif
++
++#ifdef DEBUG_RTC
++#define TRACE_RTC(...) DEBUG_TRACE(__VA_ARGS__)
++#else
++#define TRACE_RTC(...)
++#endif
++
++typedef struct TWL4030State TWL4030State;
++typedef struct TWL4030NodeState TWL4030NodeState;
++
++typedef uint8_t (*twl4030_read_func)(TWL4030NodeState *s,
++                                     uint8_t addr);
++typedef void (*twl4030_write_func)(TWL4030NodeState *s,
++                                   uint8_t addr, uint8_t value);
++
++struct TWL4030NodeState {
++    I2CSlave i2c;
++    int firstbyte;
++    uint8_t reg;
++
++    twl4030_read_func read_func;
++    twl4030_write_func write_func;
++    TWL4030State *twl4030;
++
++    uint8_t reg_data[256];
++};
++
++struct TWL4030State {
++    qemu_irq irq1;
++    qemu_irq irq2;
++    QEMUTimer *alarm_timer;
++    QEMUTimer *periodic_timer;
++    int extended_key;
++    uint8_t twl5031;
++    uint8_t twl5031_aciid;
++
++    int key_cfg;
++    int key_tst;
++
++    TWL4030NodeState *i2c[4];
++
++    uint8_t seq_mem[64][4]; /* power-management sequencing memory */
++};
++
++static const uint8_t addr_48_reset_values[256] = {
++    0x51, 0x04, 0x02, 0xc0, 0x41, 0x41, 0x41, 0x10, /* 0x00...0x07 */
++    0x10, 0x10, 0x06, 0x06, 0x06, 0x1f, 0x1f, 0x1f, /* 0x08...0x0f */
++    0x1f, 0x1f, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x10...0x17 */
++    0x00, 0x00, 0x00, 0x00, 0x52, 0x00, 0x00, 0x00, /* 0x18...0x1f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0a, 0x03, /* 0x20...0x27 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x28...0x2f */
++    0x00, 0x00, 0x00, 0x04, 0x04, 0x04, 0x00, 0x00, /* 0x30...0x37 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x38...0x3f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x40...0x47 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x48...0x4f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x50...0x57 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x58...0x5f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x60...0x67 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x68...0x6f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x70...0x77 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x78...0x7f */
++    0x00, 0x00, 0x00, 0x80, 0x80, 0x80, 0x00, 0x00, /* 0x80...0x87 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x88...0x8f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x90...0x97 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x98...0x9f */
++    0x00, 0x10, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00, /* 0xa0...0xa7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xa8...0xaf */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xb0...0xb7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xb8...0xb8 */
++    0xa0, 0xa0, 0x64, 0x7f, 0x6c, 0x75, 0x64, 0x20, /* 0xc0...0xc7 */
++    0x01, 0x17, 0x01, 0x02, 0x00, 0x36, 0x44, 0x07, /* 0xc8...0xcf */
++    0x3b, 0x17, 0x6b, 0x04, 0x00, 0x00, 0x00, 0x00, /* 0xd0...0xd7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xd8...0xdf */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xe0...0xe7 */
++    0x00, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, /* 0xe8...0xef */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xf0...0xf7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00  /* 0xf8...0xff */
++};
++
++static const uint8_t addr_49_reset_values[256] = {
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x00...0x07 */
++    0x00, 0x00, 0x0f, 0x0f, 0x0f, 0x0f, 0x00, 0x00, /* 0x08...0x0f */
++    0x3f, 0x3f, 0x3f, 0x3f, 0x25, 0x00, 0x00, 0x00, /* 0x10...0x17 */
++    0x00, 0x32, 0x32, 0x32, 0x32, 0x00, 0x00, 0x55, /* 0x18...0x1f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x20...0x27 */
++    0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, /* 0x28...0x2f */
++    0x13, 0x00, 0x00, 0x00, 0x00, 0x79, 0x11, 0x00, /* 0x30...0x37 */
++    0x00, 0x00, 0x06, 0x00, 0x44, 0x69, 0x00, 0x00, /* 0x38...0x3f */
++    0x00, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00, /* 0x40...0x47 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x48...0x4f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x50...0x57 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x58...0x5f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x60...0x67 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x68...0x6f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x70...0x77 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x78...0x7f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x80...0x87 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x88...0x8f */
++    0x00, 0x90, 0x00, 0x00, 0x55, 0x00, 0x00, 0x00, /* 0x90...0x97 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x98...0x9f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xa0...0xa7 */
++    0x00, 0x00, 0x04, 0x00, 0x55, 0x01, 0x55, 0x05, /* 0xa8...0xaf */
++    0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x03, 0x00, /* 0xb0...0xb7 */
++    0x00, 0x00, 0xff, 0xff, 0x03, 0x00, 0x00, 0x00, /* 0xb8...0xbf */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /* 0xc0...0xc7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xc8...0xcf */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xd0...0xd7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xd8...0xdf */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xe0...0xe7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xe8...0xef */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xf0...0xf7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xf8...0xff */
++};
++
++static const uint8_t addr_4a_reset_values[256] = {
++    0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x00...0x07 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x08...0x0f */
++    0xc0, 0x8c, 0xde, 0xde, 0x00, 0x00, 0x00, 0x00, /* 0x10...0x17 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x18...0x1f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x20...0x27 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x28...0x2f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x30...0x37 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x38...0x3f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x40...0x47 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x48...0x4f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x50...0x57 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x58...0x5f */
++    0x00, 0x00, 0x0f, 0x00, 0x0f, 0x00, 0x55, 0x07, /* 0x60...0x67 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x68...0x6f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x70...0x77 */
++    0xff, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x78...0x7f */
++    0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, /* 0x80...0x87 */
++    0x00, 0x68, 0x9b, 0x86, 0x48, 0x2a, 0x07, 0x28, /* 0x88...0x8f */
++    0x09, 0x69, 0x90, 0x00, 0x2a, 0x00, 0x02, 0x00, /* 0x90...0x97 */
++    0x10, 0xcd, 0x02, 0x68, 0x03, 0x00, 0x00, 0x00, /* 0x98...0x9f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xa0...0xa7 */
++    0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00, 0x00, /* 0xa8...0xaf */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xb0...0xb7 */
++    0x00, 0x00, 0x00, 0xff, 0x0f, 0x00, 0x00, 0xff, /* 0xb8...0xbf */
++    0x0f, 0x00, 0x00, 0xbf, 0x00, 0x00, 0x01, 0x00, /* 0xc0...0xc7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xc8...0xcf */
++    0x00, 0x00, 0x03, 0x00, 0x00, 0xe0, 0x00, 0x00, /* 0xd0...0xd7 */
++    0xff, 0xff, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xd8...0xdf */
++    0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x0f, 0x00, /* 0xe0...0xe7 */
++    0x55, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xe8...0xef */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xf0...0xf7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  /* 0xf8...0xff */
++};
++
++static const uint8_t addr_4b_reset_values[256] = {
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x00...0x07 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x08...0x0f */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x10...0x17 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, /* 0x18...0x1f */
++    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, /* 0x20...0x27 */
++    0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x01, 0x00, /* 0x28...0x2f */
++    0x00, 0x00, 0x00, 0xff, 0xff, 0x01, 0xbf, 0xbf, /* 0x30...0x37 */
++    0xbf, 0xab, 0x00, 0x08, 0x3f, 0x15, 0x40, 0x0e, /* 0x38...0x3f */
++    0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x40...0x47 */
++    0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, /* 0x48...0x4f */
++    0x00, 0x02, 0x00, 0x04, 0x0d, 0x00, 0x00, 0x00, /* 0x50...0x57 */
++    0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x58...0x5f */
++    0x00, 0x00, 0x2f, 0x18, 0x0f, 0x08, 0x0f, 0x08, /* 0x60...0x67 */
++    0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0x68...0x6f */
++    0x00, 0x00, 0x00, 0x00, 0x08, 0x02, 0x80, 0x03, /* 0x70...0x77 */
++    0x08, 0x09, 0x00, 0x00, 0x08, 0x03, 0x80, 0x03, /* 0x78...0x7f */
++    0x08, 0x02, 0x00, 0x00, 0x08, 0x00, 0x80, 0x03, /* 0x80...0x87 */
++    0x08, 0x08, 0x20, 0x00, 0x00, 0x02, 0x80, 0x04, /* 0x88...0x8f */
++    0x08, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, /* 0x90...0x97 */
++    0x08, 0x02, 0xe0, 0x01, 0x08, 0x00, 0xe0, 0x00, /* 0x98...0x9f */
++    0x08, 0x01, 0xe0, 0x01, 0x08, 0x04, 0xe0, 0x03, /* 0xa0...0xa7 */
++    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xa8...0xaf */
++    0x20, 0x04, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xb0...0xb7 */
++    0x00, 0x38, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, /* 0xb8...0xbf */
++    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, /* 0xc0...0xc7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x08, /* 0xc8...0xcf */
++    0x00, 0x08, 0xe0, 0x00, 0x08, 0x00, 0x00, 0x00, /* 0xd0...0xd7 */
++    0x14, 0x08, 0xe0, 0x02, 0x08, 0xe0, 0x00, 0x08, /* 0xd8...0xdf */
++    0xe0, 0x05, 0x08, 0xe0, 0x06, 0x08, 0xe0, 0x00, /* 0xe0...0xe7 */
++    0x08, 0xe0, 0x00, 0x08, 0xe0, 0x06, 0x06, 0xe0, /* 0xe8...0xef */
++    0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 0xf0...0xf7 */
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  /* 0xf8...0xff */
++};
++
++static void twl4030_interrupt_update(TWL4030State *s)
++{
++    uint8_t x = 0;
++    /* TODO: USB, BCI and GPIO interrupts */
++    if (s->irq1) {
++        /* KEYPAD */
++        if (((s->i2c[2]->reg_data[0xda] & 0x10) && /* SIR_EN */
++             s->i2c[2]->reg_data[0xe7]) ||         /* KEYP_SIR */
++            (s->i2c[2]->reg_data[0xe3] &           /* KEYP_ISR1 */
++             ~s->i2c[2]->reg_data[0xe4]))          /* KEYP_IMR1 */
++            x |= 0x02;                             /* PIH_ISR1 */
++        /* MADC */
++        if (s->i2c[2]->reg_data[0x65] ||           /* MADC_SIR */
++            (s->i2c[2]->reg_data[0x61] &           /* MADC_ISR1 */
++             ~s->i2c[2]->reg_data[0x62]))          /* MADC_IMR1 */
++            x |= 0x08;                             /* PIH_ISR3 */
++        /* PM */
++        if ((s->i2c[3]->reg_data[0x2e] &           /* PWR_ISR1 */
++             ~s->i2c[3]->reg_data[0x2f]))          /* PWR_IMR1 */
++            x |= 0x20;                             /* PIH_ISR5 */
++
++        s->i2c[1]->reg_data[0x81] = x;             /* PIH_ISR_P1 */
++        qemu_set_irq(s->irq1, x);
++    }
++    if (s->irq2) {
++        /* KEYPAD */
++        if (((s->i2c[2]->reg_data[0xda] & 0x10) && /* SIR_EN */
++             s->i2c[2]->reg_data[0xe7]) ||         /* KEYP_SIR */
++            (s->i2c[2]->reg_data[0xe5] &           /* KEYP_ISR2 */
++             ~s->i2c[2]->reg_data[0xe6]))          /* KEYP_IMR2 */
++            x |= 0x02;                             /* PIH_ISR1 */
++        /* MADC */
++        if (s->i2c[2]->reg_data[0x65] ||           /* MADC_SIR */
++            (s->i2c[2]->reg_data[0x63] &           /* MADC_ISR2 */
++             ~s->i2c[2]->reg_data[0x64]))          /* MADC_IMR2 */
++            x |= 0x08;                             /* PIH_ISR3 */
++        /* PM */
++        if ((s->i2c[3]->reg_data[0x30] &           /* PWR_ISR2 */
++             ~s->i2c[3]->reg_data[0x31]))          /* PWR_IMR2 */
++            x |= 0x20;                             /* PIH_ISR5 */
++
++        s->i2c[1]->reg_data[0x82] = x;             /* PIH_ISR_P2 */
++        qemu_set_irq(s->irq2, x);
++    }
++}
++
++static uint8_t twl4030_48_read(TWL4030NodeState *s, uint8_t addr)
++{
++    TRACE("addr=0x%02x", addr);
++    switch (addr) {
++        case 0x00: /* VENDOR_ID_LO */
++        case 0x01: /* VENDOR_ID_HI */
++        case 0x02: /* PRODUCT_ID_LO */
++        case 0x03: /* PRODUCT_ID_HI */
++            return s->reg_data[addr];
++        case 0x04: /* FUNC_CTRL */
++        case 0x05: /* FUNC_CRTL_SET */
++        case 0x06: /* FUNC_CRTL_CLR */
++            return s->reg_data[0x04];
++        case 0x07: /* IFC_CTRL */
++        case 0x08: /* IFC_CRTL_SET */
++        case 0x09: /* IFC_CRTL_CLR */
++            return s->reg_data[0x07];
++        case 0x13: /* USB_INT_STS */
++        case 0x16: /* SCRATCH_REG */
++            return s->reg_data[addr];
++        case 0xac: /* POWER_CTRL */
++        case 0xad: /* POWER_SET */
++        case 0xae: /* POWER_CLR */
++            return s->reg_data[0xac];
++        case 0xbb: /* CARKIT_AND_CTRL */
++        case 0xbc: /* CARKIT_ANA_SET */
++        case 0xbd: /* CARKIT_ANA_CLR */
++            return s->reg_data[0xbb];
++        case 0xfd: /* PHY_PWR_CTRL */
++        case 0xfe: /* PHY_CLK_CTRL */
++            return s->reg_data[addr];
++        case 0xff: /* PHY_CLK_CTRL_STS */
++            if (s->reg_data[0xfd] & 1) /* PHY_PWR_CTRL */
++                return 0;
++            if (s->reg_data[0xfe] & 1) /* REQ_PHY_DPLL_CLK */
++                return 1;
++            return (s->reg_data[0x04] >> 6) & 1; /* SUSPENDM */
++        default:
++            hw_error("%s: unknown register 0x%02x", __FUNCTION__, addr);
++            break;
++    }
++    return 0;
++}
++
++static void twl4030_48_write(TWL4030NodeState *s, uint8_t addr, uint8_t value)
++{
++    TRACE("addr=0x%02x, value=0x%02x", addr, value);
++    switch (addr) {
++        case 0x04: /* FUNC_CTRL */
++            s->reg_data[0x04] = value & 0x7f;
++            break;
++        case 0x05: /* FUNC_CRTL_SET */
++            s->reg_data[0x04] = (s->reg_data[0x04] | value) & 0x7f;
++            break;
++        case 0x06: /* FUNC_CTRL_CLEAR */
++            s->reg_data[0x04] = (s->reg_data[0x04] & ~value) & 0x7f;
++            break;
++        case 0x07: /* IFC_CTRL */
++            s->reg_data[0x07] = value & 0x9e;
++            break;
++        case 0x08: /* IFC_CRTL_SET */
++            s->reg_data[0x07] = (s->reg_data[0x07] | value) & 0x9e;
++            break;
++        case 0x09: /* IFC_CRTL_CLEAR */
++            s->reg_data[0x07] = (s->reg_data[0x07] & ~value) & 0x9e;
++            break;
++        case 0x16: /* SCRATCH_REG */
++            s->reg_data[0x16] = value;
++            break;
++        case 0xa1: /* CARKIT_SM_CTRL */
++            s->reg_data[0xa1] = value & 0x3f;
++            break;
++        case 0xa2: /* CARKIT_SM_CTRL_SET */
++            s->reg_data[0xa1] = (s->reg_data[0xa1] | value) & 0x3f;
++            break;
++        case 0xa3: /* CARKIT_SM_CTRL_CLR */
++            s->reg_data[0xa1] = (s->reg_data[0xa1] & ~value) & 0x3f;
++            break;
++        case 0xac: /* POWER_CTRL */
++            s->reg_data[0xac] = value & 0x20;
++            break;
++        case 0xad: /* POWER_SET */
++            s->reg_data[0xac] = (s->reg_data[0xac] | value) & 0x20;
++            break;
++        case 0xae: /* POWER_CLEAR */
++            s->reg_data[0xac] = (s->reg_data[0xac] & ~value) & 0x20;
++            break;
++        case 0xbb: /* CARKIT_ANA_CTRL */
++            s->reg_data[0xbb] = value;
++            break;
++        case 0xbc: /* CARKIT_ANA_CTRL_SET */
++            s->reg_data[0xbb] |= value;
++            break;
++        case 0xbd: /* CARKIT_ANA_CTRL_CLR */
++            s->reg_data[0xbb] &= ~value;
++            break;
++        case 0xfd: /* PHY_PWR_CTRL */
++            s->reg_data[addr] = value & 0x1;
++            break;
++        case 0xfe: /* PHY_CLK_CTRL */
++            s->reg_data[addr] = value & 0x7;
++            break;
++        default:
++            hw_error("%s: unknown register 0x%02x", __FUNCTION__, addr);
++			break;
++    }
++}
++
++static uint8_t twl4030_49_read(TWL4030NodeState *s, uint8_t addr)
++{
++    TRACE("addr=0x%02x", addr);
++    switch (addr) {
++        /* AUDIO_VOICE region */
++        case 0x01 ... 0x49:
++            return s->reg_data[addr];
++        /* Test region */
++        case 0x4c ... 0x60:
++            return s->reg_data[addr];
++        /* PIH region */
++        case 0x81: /* PIH_ISR_P1 */
++        case 0x82: /* PIH_ISR_P2 */
++        case 0x83: /* PIH_SIR */
++            return s->reg_data[addr];
++        /* INTBR region */
++        case 0x85 ... 0x90:
++            if (s->reg_data[0x97] != 0x49) {
++                return 0;
++            }
++            /* fallthrough */
++        case 0x91 ... 0x97:
++            return s->reg_data[addr];
++        /* GPIO region */
++        case 0x98 ... 0xc5:
++            return s->reg_data[addr];
++        default:
++            hw_error("%s: unknown register 0x%02x", __FUNCTION__, addr);
++			break;
++    }
++    return 0;
++}
++
++static void twl4030_49_write(TWL4030NodeState *s, uint8_t addr, uint8_t value)
++{
++    TRACE("addr=0x%02x, value=0x%02x", addr, value);
++    switch (addr) {
++        /* AUDIO_VOICE region */
++        case 0x01 ... 0x49:
++            s->reg_data[addr] = value;
++            break;
++        /* Test region */
++        case 0x4c ... 0x59:
++            s->reg_data[addr] = value;
++            break;
++        case 0x5a ... 0x60:
++            /* read-only, ignore */
++            break;
++        /* PIH region */
++        case 0x81: /* PIH_ISR_P1 */
++        case 0x82: /* PIH_ISR_P2 */
++        case 0x83: /* PIH_SIR */
++            s->reg_data[addr] = value;
++            twl4030_interrupt_update(s->twl4030);
++            break;
++        /* INTBR region */
++        case 0x85 ... 0x90:
++            /* read-only, ignore */
++            break;
++        case 0x91 ... 0x97:
++            s->reg_data[addr] = value;
++            break;
++        /* GPIO region */
++        case 0x98 ... 0x9a:
++            /* read-only, ignore */
++            break;
++        case 0x9b ... 0xae:
++            s->reg_data[addr] = value;
++            break;
++        case 0xaf: /* GPIOPUPDCTR5 */
++            s->reg_data[addr] = value & 0x0f;
++            break;
++        case 0xb0 ... 0xb5:
++            s->reg_data[addr] = value;
++            break;
++	    case 0xb6: /* GPIO_IMR3A */
++            s->reg_data[addr] = value & 0x03;
++            break;
++        case 0xb7 ... 0xc4:
++            s->reg_data[addr] = value;
++            break;
++	    case 0xc5: /* GPIO_SIH_CTRL */
++            s->reg_data[addr] = value & 0x07;
++            break;
++        default:
++            hw_error("%s: unknown register 0x%02x", __FUNCTION__, addr);
++            break;
++    }
++}
++
++static uint8_t twl4030_4a_read(TWL4030NodeState *s, uint8_t addr)
++{
++    static const uint8_t twl5031_aciid_data[] = {
++        0x55, 0xaa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
++    };
++    TRACE("addr=0x%02x", addr);
++    switch (addr) {
++        /* MADC region */
++        case 0x00 ... 0x13:
++        case 0x62:
++        case 0x64 ... 0x67:
++            return s->reg_data[addr];
++        case 0x17 ... 0x36: /* RT conversion result */
++            return s->reg_data[addr];
++        case 0x37 ... 0x56: /* GP conversion result */
++            return s->reg_data[addr];
++        case 0x57 ... 0x60: /* BCI conversion result */
++            return s->reg_data[addr];
++        case 0x61: /* MADC_ISR1 */
++        case 0x63: /* MADC_ISR2 */
++            {
++                uint8_t data = s->reg_data[addr];
++                if (s->reg_data[0x67] & 0x04) { /* COR */
++                    s->reg_data[addr] = 0x00;
++                    twl4030_interrupt_update(s->twl4030);
++                }
++                return data;
++            }
++        /* MAIN_CHARGE(TWL4030) / ACCESSORY(TWL5031) region */
++        case 0x74 ... 0xa9:
++            if (s->twl4030->twl5031) {
++                switch (addr) {
++                    case 0x74: /* ACIID */
++                        if (s->twl4030->twl5031_aciid >=
++                            sizeof(twl5031_aciid_data)) {
++                            s->twl4030->twl5031_aciid = 0;
++                        }
++                        return twl5031_aciid_data[s->twl4030->twl5031_aciid++];
++                    case 0x79: /* ACIIMR_LSB */
++                    case 0x7a: /* ACIIMR_MSB */
++                    case 0x7b: /* ACIIDR_LSB */
++                    case 0x7c: /* ACIIDR_MSB */
++                    case 0x80: /* AV_CTRL */
++                    case 0x82: /* BCIA_CTRL */
++                    case 0x83: /* ACCISR1 */
++                        return s->reg_data[addr];
++                    default:
++                        hw_error("%s: unknown twl5031 register 0x%02x",
++                                 __FUNCTION__, addr);
++                        break;
++                }
++            }
++            return s->reg_data[addr];
++        /* PRECHARGE region */
++        case 0xaa ... 0xb8:
++            return s->reg_data[addr];
++        /* Interrupt region */
++        case 0xb9 ... 0xc6:
++            return s->reg_data[addr];
++        /* KEYPAD region */
++        case 0xd2 ... 0xe2:
++        case 0xe4:
++        case 0xe6 ... 0xe9:
++            return s->reg_data[addr];
++        case 0xe3: /* KEYP_ISR1 */
++        case 0xe5: /* KEYP_ISR2 */
++            {
++                uint8_t data = s->reg_data[addr];
++                if (s->reg_data[0xe9] & 0x04) { /* COR */
++                    s->reg_data[addr] = 0x00;
++                    twl4030_interrupt_update(s->twl4030);
++                }
++                return data;
++            }
++        /* LED region */
++        case 0xee: /* LEDEN */
++            return s->reg_data[addr];
++        /* PWMA region */
++        case 0xef: /* PWMAON */
++        case 0xf0: /* PWMAOFF */
++            return s->reg_data[addr];
++        /* PWMB region */
++        case 0xf1: /* PWMBON */
++        case 0xf2: /* PWMBOFF */
++            return s->reg_data[addr];
++        /* PWM0 region */
++        case 0xf8: /* PWM0ON */
++        case 0xf9: /* PWM0OFF */
++            return s->reg_data[addr];
++        /* PWM1 region */
++        case 0xfb: /* PWM1ON */
++        case 0xfc: /* PWM1OFF */
++            return s->reg_data[addr];
++        default:
++	        hw_error("%s: unknown register 0x%02x", __FUNCTION__, addr);
++            break;
++    }
++    return 0;
++}
++
++static void twl4030_4a_write(TWL4030NodeState *s, uint8_t addr, uint8_t value)
++{
++    TRACE("addr=0x%02x, value=0x%02x", addr, value);
++    switch (addr) {
++        /* MADC region */
++
++        case 0x00: /* CTRL1 */
++        case 0x01: /* CTRL2 */
++        case 0x02: /* RTSELECT_LSB */
++        case 0x03: /* RTSELECT_MSB */
++        case 0x04: /* RTAVERAGE_LSB */
++        case 0x05: /* RTAVERAGE_MSB */
++        case 0x06: /* SW1SELECT_LSB */
++        case 0x07: /* SW1SELECT_MSB */
++        case 0x08: /* SW1AVERAGE_LSB */
++        case 0x09: /* SW1AVERAGE_MSB */
++        case 0x0a: /* SW2SELECT_LSB */
++        case 0x0b: /* SW2SELECT_MSB */
++        case 0x0c: /* SW2AVERAGE_LSB */
++        case 0x0d: /* SW2AVERAGE_MSB */
++        case 0x0e: /* BCI_USBAVERAGE */
++        case 0x0f: /* ACQUISITION */
++        case 0x10: /* USBREF_LSB */
++        case 0x11: /* USBREF_MSB */
++            s->reg_data[addr] = value;
++            break;
++        case 0x12: /* CTRL_SW1 */
++        case 0x13: /* CTRL_SW2 */
++            /* always set all conversions ready, not busy */
++            s->reg_data[addr] = 0x3e;
++            if (value & 0x20) { /* SW1/SW2 */
++                s->reg_data[0x61] |= 2 << (addr - 0x12); /* SW1_ISR/SW2_ISR */
++                s->reg_data[0x63] |= 2 << (addr - 0x12); /* SW1_ISR/SW2_ISR */
++                twl4030_interrupt_update(s->twl4030);
++            }
++            break;
++        case 0x17 ... 0x60: /* conversion results */
++            /* read-only, ignore */
++            break;
++        case 0x61: /* MADC_ISR1 */
++        case 0x63: /* MADC_ISR2 */
++            if (!(s->reg_data[0x67] & 0x04)) { /* COR */
++                s->reg_data[addr] &= ~(value & 0x0f);
++                twl4030_interrupt_update(s->twl4030);
++            }
++            break;
++        case 0x62: /* MADC_IMR1 */
++        case 0x64: /* MADC_IMR2 */
++        case 0x65: /* MADC_SIR */
++            s->reg_data[addr] = value & 0x0f;
++            twl4030_interrupt_update(s->twl4030);
++            break;
++        case 0x66: /* MADC_EDR */
++            s->reg_data[addr] = value;
++            break;
++        case 0x67: /* MADC_SIH_CTRL */
++            s->reg_data[addr] = value & 0x07;
++            break;
++
++        /* MAIN_CHARGE(TWL4030) / ACCESSORY(TWL5031) region */
++
++        case 0x74: /* BCIMDEN(TWL4030) / ACIID(TWL5031) */
++            if (s->twl4030->twl5031) {
++                s->twl4030->twl5031_aciid = 0;
++            } else {
++                /* read-only */
++            }
++            break;
++        case 0x75: /* BCIMDKEY(TWL4030) / ACICOMR_LSB(TWL5031) */
++            s->reg_data[addr] = value;
++            if (!s->twl4030->twl5031) {
++                switch (value) {
++                    case 0x25: s->reg_data[0x74] = 0x12; break;
++                    case 0x26: s->reg_data[0x74] = 0x11; break;
++                    case 0x27: s->reg_data[0x74] = 0x0a; break;
++                    case 0x28: s->reg_data[0x74] = 0x06; break;
++                    case 0x29: s->reg_data[0x74] = 0x05; break;
++                    default: s->reg_data[0x74] = 0; break;
++                }
++            }
++            break;
++        case 0x76 ... 0x84:
++            if (s->twl4030->twl5031) {
++                switch (addr) {
++                    case 0x79: /* ACIIMR_LSB */
++                        s->reg_data[addr] = value;
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    case 0x7a: /* ACIIMR_MSB */
++                        s->reg_data[addr] = value & 0x01;
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    case 0x7b: /* ACIIDR_LSB */
++                        s->reg_data[addr] &= ~value;
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    case 0x7c: /* ACIIDR_MSB */
++                        s->reg_data[addr] &= ~(value & 0x01);
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    case 0x7f: /* ECI_DBI_CTRL */
++                        s->reg_data[addr] = value;
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    case 0x80: /* ACI_AV_CTRL */
++                        s->reg_data[addr] = (s->reg_data[addr] & 0x18) |
++                                            (value & ~0x18);
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    case 0x82: /* BCIA_CTRL */
++                        s->reg_data[addr] = value & 0x07;
++                        break;
++                    case 0x83: /* ACCISR1 */
++                        s->reg_data[addr] &= ~(value & 0x03);
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    case 0x84: /* ACCIMR1 */
++                        s->reg_data[addr] = value & 0x03;
++                        twl4030_interrupt_update(s->twl4030);
++                        break;
++                    default:
++                        hw_error("%s: unknown twl5031 register 0x%02x",
++                                 __FUNCTION__, addr);
++                        break;
++                }
++            } else {
++                /* read-only registers */
++            }
++            break;
++        case 0x97: /* BCICTL1 */
++            if (!s->twl4030->twl5031) {
++                s->reg_data[addr] = value;
++            } else {
++                hw_error("%s: unknown twl5031 register 0x%02x",
++                         __FUNCTION__, addr);
++            }
++            break;
++
++        /* PRECHARGE region */
++
++        case 0xaa ... 0xb8: /* FIXME: unknown registers */
++            s->reg_data[addr] = value;
++            break;
++
++        /* Interrupt region */
++
++        case 0xb9: /* BCIISR1A */
++            s->reg_data[addr] &= ~value;
++            break;
++        case 0xba: /* BCIISR2A */
++            s->reg_data[addr] &= ~(value & 0x0f);
++            break;
++        case 0xbb: /* BCIIMR1A */
++            s->reg_data[addr] = value;
++            break;
++        case 0xbc: /* BCIIMR2A */
++            s->reg_data[addr] = value & 0x0f;
++            break;
++        case 0xc6: /* BCISIHCTRL */
++            s->reg_data[addr] = value & 0x07;
++            break;
++
++        /* KEYPAD region */
++
++        case 0xd2: /* KEYP_CTRL_REG */
++            s->reg_data[addr] = value & 0x7f;
++            break;
++        case 0xd3: /* KEYP_DEB_REG */
++            s->reg_data[addr] = value & 0x3f;
++            break;
++        case 0xd5: /* LK_PTV_REG */
++            s->reg_data[addr] = value & 0xef;
++            break;
++        case 0xda: /* KEYP_SMS */
++            s->reg_data[addr] = (s->reg_data[addr] & ~0x30) | (value & 0x30);
++            twl4030_interrupt_update(s->twl4030);
++            break;
++        case 0xe3: /* KEYP_ISR1 */
++        case 0xe5: /* KEYP_ISR2 */
++            if (!(s->reg_data[0xe9] & 0x04)) { /* COR */
++                s->reg_data[addr] &= ~value;
++                twl4030_interrupt_update(s->twl4030);
++            }
++            break;
++        case 0xe4: /* KEYP_IMR1 */
++        case 0xe6: /* KEYP_IMR2 */
++        case 0xe7: /* KEYP_SIR */
++            s->reg_data[addr] = value & 0x0f;
++            twl4030_interrupt_update(s->twl4030);
++            break;
++        case 0xe9: /* KEYP_SIH_CTRL */
++            s->reg_data[addr] = value & 0x07;
++            break;
++        case 0xd4: /* LONG_KEY_REG1 */
++        case 0xd6: /* TIME_OUT_REG1 */
++        case 0xd7: /* TIME_OUT_REG2 */
++        case 0xd8: /* KBC_REG */
++        case 0xe8: /* KEYP_EDR */
++            s->reg_data[addr] = value;
++            break;
++        case 0xd9: /* KBR_REG */
++        case 0xdb ... 0xe2: /* FULL_CODE_xx_yy */
++            /* read-only, ignore */
++            break;
++
++        /* LED region */
++
++        case 0xee: /* LEDEN */
++            s->reg_data[addr] = value;
++            TRACE("LEDA power=%s/enable=%s, LEDB power=%s/enable=%s",
++                    value & 0x10 ? "on" : "off", value & 0x01 ? "yes" : "no",
++                    value & 0x20 ? "on" : "off", value & 0x02 ? "yes" : "no");
++            break;
++
++        /* PWMA/B/0/1 regions */
++
++        case 0xef: /* PWMAON */
++        case 0xf1: /* PWMBON */
++        case 0xf8: /* PWM0ON */
++        case 0xfb: /* PWM1ON */
++            s->reg_data[addr] = value;
++            break;
++        case 0xf0: /* PWMAOFF */
++        case 0xf2: /* PWMBOFF */
++        case 0xf9: /* PWM0OFF */
++        case 0xfc: /* PWM1OFF */
++            s->reg_data[addr] = value & 0x7f;
++            break;
++
++        default:
++	        hw_error("%s: unknown register 0x%02x", __FUNCTION__, addr);
++            break;
++    }
++}
++
++static inline struct tm *twl4030_gettime(void)
++{
++    time_t epoch_time = time(NULL);
++    return gmtime(&epoch_time);//localtime(&epoch_time);
++}
++
++static uint8_t twl4030_4b_read(TWL4030NodeState *s, uint8_t addr)
++{
++    uint8_t x;
++	TRACE("addr=0x%02x value=0x%02x", addr, s->reg_data[addr]);
++    switch (addr) {
++        /* SECURED_REG region */
++        case 0x00 ... 0x13:
++            return s->reg_data[addr];
++        /* BACKUP_REG region */
++        case 0x14 ... 0x1b:
++            return s->reg_data[addr];
++        /* RTC region */
++        case 0x1c: /* SECONDS_REG */
++            x = s->reg_data[addr];
++            if (x == 0xff) {
++                struct tm *t = twl4030_gettime();
++                x = ((t->tm_sec / 10) << 4) | (t->tm_sec % 10);
++            } else {
++                s->reg_data[addr] = 0xff;
++            }
++            TRACE_RTC("SECONDS_REG returns 0x%02x", x);
++            return x;
++        case 0x1d: /* MINUTES_REG */
++            x = s->reg_data[addr];
++            if (x == 0xff) {
++                struct tm *t = twl4030_gettime();
++                x = ((t->tm_min / 10) << 4) | (t->tm_min % 10);
++            } else {
++                s->reg_data[addr] = 0xff;
++            }
++            TRACE_RTC("MINUTES_REG returns 0x%02x", x);
++            return x;
++        case 0x1e: /* HOURS_REG */
++            x = s->reg_data[addr];
++            if (x == 0xff) {
++                struct tm *t = twl4030_gettime();
++                if (s->reg_data[0x29] & 0x08) { /* MODE_12_24 */
++                    int h12 = t->tm_hour;
++                    if (h12 > 11) {
++                        h12 -= 12;
++                        x = ((h12 / 10) << 4) | (h12 % 10) | 0x80; /* PM_NAM */
++                    } else {
++                        x = ((h12 / 10) << 4) | (h12 % 10);
++                    }
++                } else {
++                    x = ((t->tm_hour / 10) << 4) | (t->tm_hour % 10);
++                }
++            } else {
++                s->reg_data[addr] = 0xff;
++            }
++            TRACE_RTC("HOURS_REG returns 0x%02x", x);
++            return x;
++        case 0x1f: /* DAYS_REG */
++            x = s->reg_data[addr];
++            if (x == 0xff) {
++                struct tm *t = twl4030_gettime();
++                x = ((t->tm_mday / 10) << 4) | (t->tm_mday % 10);
++            } else {
++                s->reg_data[addr] = 0xff;
++            }
++            TRACE_RTC("DAYS_REG returns 0x%02x", x);
++            return x;
++        case 0x20: /* MONTHS_REG */
++            x = s->reg_data[addr];
++            if (x == 0xff) {
++                struct tm *t = twl4030_gettime();
++                x = (((t->tm_mon + 1) / 10) << 4) | ((t->tm_mon + 1) % 10);
++            } else {
++                s->reg_data[addr] = 0xff;
++            }
++            TRACE_RTC("MONTHS_REG returns 0x%02x", x);
++            return x;
++        case 0x21: /* YEARS_REG */
++            x = s->reg_data[addr];
++            if (x == 0xff) {
++                struct tm *t = twl4030_gettime();
++                x = (((t->tm_year % 100) / 10) << 4) | (t->tm_year % 10);
++            } else {
++                s->reg_data[addr] = 0xff;
++            }
++            TRACE_RTC("YEARS_REG returns 0x%02x", x);
++            return x;
++        case 0x22: /* WEEKS_REG */
++            x = s->reg_data[addr];
++            if (x == 0xff) {
++                struct tm *t = twl4030_gettime();
++                x = t->tm_wday;
++            } else {
++                s->reg_data[addr] = 0xff;
++            }
++            TRACE_RTC("WEEKS_REG returns 0x%02x", x);
++            return x;
++        case 0x23: /* ALARM_SECONDS_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("ALARM_SECONDS_REG returns 0x%02x", x);
++            return x;
++        case 0x24: /* ALARM_MINUTES_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("ALARM_MINUTES_REG returns 0x%02x", x);
++            return x;
++        case 0x25: /* ALARM_HOURS_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("ALARM_HOURS_REG returns 0x%02x", x);
++            return x;
++        case 0x26: /* ALARM_DAYS_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("ALARM_DAYS_REG returns 0x%02x", x);
++            return x;
++        case 0x27: /* ALARM_MONTHS_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("ALARM_MONTHS_REG returns 0x%02x", x);
++            return x;
++        case 0x28: /* ALARM_YEARS_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("ALARM_YEARS_REG returns 0x%02x", x);
++            return x;
++        case 0x29: /* RTC_CTRL_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("RTC_CTRL_REG returns 0x%02x", x);
++            return x;
++        case 0x2a: /* RTC_STATUS_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("RTC_STATUS_REG returns 0x%02x", x);
++            return x;
++        case 0x2b: /* RTC_INTERRUPTS_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("RTC_INTERRUPTS_REG returns 0x%02x", x);
++            return x;
++        case 0x2c: /* RTC_COMP_LSB_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("RTC_COMP_LSB_REG returns 0x%02x", x);
++            return x;
++        case 0x2d: /* RTC_COMP_MSB_REG */
++            x = s->reg_data[addr];
++            TRACE_RTC("RTC_CTRL_REG returns 0x%02x", x);
++            return x;
++        /* INT region */
++        case 0x2f:
++        case 0x31 ... 0x35:
++            return s->reg_data[addr];
++        case 0x2e: /* PWR_ISR1 */
++        case 0x30: /* PWR_ISR2 */
++            {
++                uint8_t data = s->reg_data[addr];
++                if (s->reg_data[0x35] & 0x04) { /* COR */
++                    s->reg_data[addr] = 0x00;
++                    twl4030_interrupt_update(s->twl4030);
++                }
++                return data;
++            }
++        /* PM_MASTER region */
++        case 0x36 ... 0x44:
++            return s->reg_data[addr];
++        case 0x45: /* STS_HW_CONDITIONS */
++            /* FIXME: force USB always connected, no VBUS (host usb) */
++            return (s->reg_data[addr] & ~0x80) | 0x04;
++        case 0x46 ... 0x5a:
++            return s->reg_data[addr];
++        /* PM_RECEIVER region */
++        case 0x5b ... 0xf1:
++            return s->reg_data[addr];
++        default:
++	        hw_error("%s: unknown register 0x%02x", __FUNCTION__, addr);
++            break;
++    }
++    return 0;
++}
++
++static void twl4030_setup_alarm(TWL4030NodeState *s)
++{
++    if (s->reg_data[0x2b] & 0x08) { /* IT_ALARM */
++        struct tm a = {
++            .tm_sec = ((s->reg_data[0x23] >> 4) & 7) * 10
++                      + (s->reg_data[0x23] & 0x0f),
++            .tm_min = ((s->reg_data[0x24] >> 4) & 7) * 10
++                      + (s->reg_data[0x24] & 0x0f),
++            .tm_hour = ((s->reg_data[0x29] & 0x08)
++                        ? (s->reg_data[0x25] >> 7) * 12 : 0)
++                       + ((s->reg_data[0x25] >> 4) & 3) * 10
++                       + (s->reg_data[0x25] & 0x0f),
++            .tm_mday = ((s->reg_data[0x26] >> 4) & 3) * 10
++                       + (s->reg_data[0x26] & 0x0f),
++            .tm_mon = ((s->reg_data[0x27] >> 4) & 1) * 10
++                      + (s->reg_data[0x27] & 0x0f)
++                      - 1,
++            .tm_year = (s->reg_data[0x28] >> 4) * 10
++                       + (s->reg_data[0x28] & 0x0f)
++                       + 100,
++            .tm_isdst = -1,
++        };
++        TRACE_RTC("enable alarm on %02d/%02d/%04d at %02d:%02d:%02d (UTC)",
++                  a.tm_mday, a.tm_mon + 1, a.tm_year + 1900,
++                  a.tm_hour, a.tm_min, a.tm_sec);
++        time_t at = mktime(&a); /* alarm time interpreted in local time */
++        if (at < 0) {
++            TRACE_RTC("unable to parse alarm calendar time");
++        } else {
++            /* fix alarm time to utc */
++            struct timezone tz;
++            struct timeval tv;
++            if (!gettimeofday(&tv, &tz)) {
++                at -= tz.tz_minuteswest * 60;
++            }
++            int64_t delta = (int64_t)difftime(at, time(NULL));
++            if (delta <= 0) {
++                TRACE_RTC("alarm is in the past");
++            } else {
++                TRACE_RTC("new alarm interrupt in %" PRId64 " seconds", delta);
++                timer_mod(s->twl4030->alarm_timer,
++                               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)
++                               + NANOSECONDS_PER_SECOND * delta);
++            }
++        }
++    } else {
++        timer_del(s->twl4030->alarm_timer);
++    }
++}
++
++static void twl4030_setup_periodic(TWL4030NodeState *s)
++{
++    if (s->reg_data[0x2b] & 0x04) { /* IT_TIMER */
++        uint32_t t = 0;
++        switch (s->reg_data[0x2b] & 3) {
++            case 0: t = 1; break;
++            case 1: t = 60; break;
++            case 2: t = 60 * 60; break;
++            case 3: t = 24 * 60 * 60; break;
++        }
++        TRACE_RTC("new periodic interrupt in %u seconds", t);
++        timer_mod(s->twl4030->periodic_timer,
++                       qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + NANOSECONDS_PER_SECOND * t);
++    } else {
++        timer_del(s->twl4030->periodic_timer);
++    }
++}
++
++static void twl4030_alarm(void *opaque)
++{
++    TWL4030State *s = opaque;
++    s->i2c[3]->reg_data[0x2a] |= 0x40;      /* RTC_STATUS_REG |= ALARM */
++    if (s->i2c[3]->reg_data[0x33] & 0xc0) { /* RTC_IT_RISING|RTC_IT_FALLING */
++        TRACE_RTC("triggering RTC alarm interrupt");
++        s->i2c[3]->reg_data[0x2e] |= 0x08;  /* PWR_ISR1 |= RTC_IT */
++        s->i2c[3]->reg_data[0x30] |= 0x08;  /* PWR_ISR2 |= RTC_IT */
++        twl4030_interrupt_update(s);
++    }
++    timer_del(s->alarm_timer);
++}
++
++static void twl4030_periodic(void *opaque)
++{
++    TWL4030State *s = opaque;
++    uint8_t b = 0x04 << (s->i2c[3]->reg_data[0x2b] & 3);
++    s->i2c[3]->reg_data[0x2a] |= b;         /* TODO: when are these cleared? */
++    if (s->i2c[3]->reg_data[0x33] & 0xc0) { /* RTC_IT_RISING|RTC_IT_FALLING */
++        TRACE_RTC("triggering RTC periodic interrupt");
++        s->i2c[3]->reg_data[0x2e] |= 0x08;  /* PWR_ISR1 |= RTC_IT */
++        s->i2c[3]->reg_data[0x30] |= 0x08;  /* PWR_ISR2 |= RTC_IT */
++        twl4030_interrupt_update(s);
++    }
++    twl4030_setup_periodic(s->i2c[3]);
++}
++
++static void twl4030_4b_write(TWL4030NodeState *s, uint8_t addr, uint8_t value)
++{
++    uint8_t seq_addr, seq_sub;
++
++	TRACE("addr=0x%02x, value=0x%02x", addr, value);
++    switch (addr) {
++        case 0x1c: /* SECONDS_REG */
++            TRACE_RTC("SECONDS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x7f;
++            break;
++        case 0x1d: /* MINUTES_REG */
++            TRACE_RTC("MINUTES_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x7f;
++            break;
++        case 0x1e: /* HOURS_REG */
++            TRACE_RTC("HOURS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0xbf;
++            break;
++        case 0x1f: /* DAYS_REG */
++            TRACE_RTC("DAYS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x3f;
++            break;
++        case 0x20: /* MONTHS_REG */
++            TRACE_RTC("MONTHS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x1f;
++            break;
++        case 0x21: /* YEARS_REG */
++            TRACE_RTC("YEARS_REG = 0x%02x", value);
++            s->reg_data[addr] = value;
++            break;
++        case 0x22: /* WEEKS_REG */
++            TRACE_RTC("WEEKS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x07;
++            break;
++        case 0x23: /* ALARM_SECONDS_REG */
++            TRACE_RTC("ALARM_SECONDS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x7f;
++            twl4030_setup_alarm(s);
++            break;
++        case 0x24: /* ALARM_MINUTES_REG */
++            TRACE_RTC("ALARM_MINUTES_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x7f;
++            twl4030_setup_alarm(s);
++            break;
++        case 0x25: /* ALARM_HOURS_REG */
++            TRACE_RTC("ALARM_HOURS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0xbf;
++            twl4030_setup_alarm(s);
++            break;
++        case 0x26: /* ALARM_DAYS_REG */
++            TRACE_RTC("ALARM_DAYS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x3f;
++            twl4030_setup_alarm(s);
++            break;
++        case 0x27: /* ALARM_MONTHS_REG */
++            TRACE_RTC("ALARM_MONTHS_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x1f;
++            twl4030_setup_alarm(s);
++            break;
++        case 0x28: /* ALARM_YEARS_REG */
++            TRACE_RTC("ALARM_YEARS_REG = 0x%02x", value);
++            s->reg_data[addr] = value;
++            twl4030_setup_alarm(s);
++            break;
++        case 0x29: /* RTC_CTRL_REG */
++            TRACE_RTC("RTC_CTRL_REG = 0x%02x", value);
++            s->reg_data[addr] = value & 0x3f;
++            s->reg_data[0x2a] = (s->reg_data[0x2a] & ~0x02) |
++                                ((value & 0x01) << 1);
++            if (value & 0x40) { /* GET_TIME */
++                struct tm *t = twl4030_gettime();
++                s->reg_data[0x1c] = ((t->tm_sec / 10) << 4) | (t->tm_sec % 10);
++                s->reg_data[0x1d] = ((t->tm_min / 10) << 4) | (t->tm_min % 10);
++                if (value & 0x08) { /* MODE_12_24 */
++                    int h12 = t->tm_hour;
++                    /* TODO: should we report hours 0-11 or 1-12? */
++                    if (h12 > 11) {
++                        h12 -= 12;
++                        s->reg_data[0x1e] = ((h12 / 10) << 4) | (h12 % 10) |
++                                            0x80; /* PM_NAM */
++                    } else {
++                        s->reg_data[0x1e] = ((h12 / 10) << 4) | (h12 % 10);
++                    }
++                } else {
++                    s->reg_data[0x1e] = ((t->tm_hour / 10) << 4) |
++                                        (t->tm_hour % 10);
++                }
++                s->reg_data[0x1f] = ((t->tm_mday / 10) << 4) |
++                                    (t->tm_mday % 10);
++                s->reg_data[0x20] = (((t->tm_mon + 1) / 10) << 4) |
++                                    ((t->tm_mon + 1) % 10);
++                s->reg_data[0x21] = (((t->tm_year % 100) / 10) << 4) |
++                                    (t->tm_year % 10);
++                s->reg_data[0x22] = t->tm_wday;
++            }
++            /* TODO: support bits 1, 2, 4 and 5 */
++            break;
++        case 0x2a: /* RTC_STATUS_REG */
++            TRACE_RTC("RTC_STATUS_REG = 0x%02x", value);
++            s->reg_data[addr] &= ~(value & 0xc0);
++            break;
++        case 0x2b: /* RTC_INTERRUPTS_REG */
++            TRACE_RTC("RTC_INTERRUPTS_REG = 0x%02x", value);
++            {
++                uint8_t change = s->reg_data[addr] ^ value;
++                s->reg_data[addr] = value & 0x0f;
++                if (change & 0x08) { /* IT_ALARM */
++                    twl4030_setup_alarm(s);
++                }
++                if (change & 0x04) { /* IT_TIMER */
++                    twl4030_setup_periodic(s);
++                }
++            }
++            break;
++        case 0x2c: /* RTC_COMP_LSB_REG */
++        case 0x2d: /* RTC_COMP_MSB_REG */
++            TRACE_RTC("RTC_COMP_%s_REG = 0x%02x",
++                      (addr == 0x2c) ? "LSB" : "MSB", value);
++            s->reg_data[addr] = value;
++            break;
++        case 0x2e: /* PWR_ISR1 */
++        case 0x30: /* PWR_ISR2 */
++            if (!(s->reg_data[0x35] & 0x04)) { /* COR */
++                s->reg_data[addr] &= ~value;
++                twl4030_interrupt_update(s->twl4030);
++            }
++            break;
++        case 0x2f: /* PWR_IMR1 */
++        case 0x31: /* PWR_IMR2 */
++            s->reg_data[addr] = value;
++            twl4030_interrupt_update(s->twl4030);
++            break;
++        case 0x33: /* PWR_EDR1 */
++        case 0x34: /* PWR_EDR2 */
++            s->reg_data[addr] = value;
++            break;
++        case 0x35: /* PWR_SIH_CTRL */
++            s->reg_data[addr] = value & 0x07;
++            break;
++        case 0x36: /* CFG_P1_TRANSITION */
++        case 0x37: /* CFG_P2_TRANSITION */
++        case 0x38: /* CFG_P3_TRANSITION */
++            if (s->twl4030->key_cfg)
++                s->reg_data[addr] = (s->reg_data[addr] & 0x40) | (value & 0xbf);
++            break;
++        case 0x39: /* CFG_P123_TRANSITION */
++            if (s->twl4030->key_cfg)
++                s->reg_data[addr] = value;
++            break;
++        case 0x3a: /* STS_BOOT */
++            s->reg_data[addr] = value;
++            break;
++        case 0x3b: /* CFG_BOOT */
++            if (s->twl4030->key_cfg)
++                s->reg_data[addr] = (s->reg_data[addr] & 0x70) | (value & 0x8f);
++            break;
++        case 0x3c: /* SHUNDAN */
++            s->reg_data[addr] = value & 0x3f;
++            break;
++        case 0x3d: /* BOOT_BCI */
++            s->reg_data[addr] = (s->reg_data[addr] & 0x20) | (value & 0x17);
++            break;
++        case 0x3e: /* CFG_PWRANA1 */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x7f;
++            break;
++        case 0x3f: /* CFG_PWRANA2 */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value;
++            break;
++        case 0x44: /* PROTECT_KEY */
++            s->twl4030->key_cfg = 0;
++            s->twl4030->key_tst = 0;
++            switch (value) {
++                case 0x0C:
++                    if (s->reg_data[addr] == 0xC0)
++                        s->twl4030->key_cfg = 1;
++                    break;
++                case 0xE0:
++                    if (s->reg_data[addr] == 0x0E)
++                        s->twl4030->key_tst = 1;
++                    break;
++                case 0xEC:
++                    if (s->reg_data[addr] == 0xCE) {
++                        s->twl4030->key_cfg = 1;
++                        s->twl4030->key_tst = 1;
++                    }
++                    break;
++                default:
++                    break;
++            }
++            s->reg_data[addr] = value;
++            break;
++        case 0x46: /* P1_SW_EVENTS */
++        case 0x47: /* P2_SW_EVENTS */
++        case 0x48: /* P3_SW_EVENTS */
++            s->reg_data[addr] = value & 0x78;
++            if (value & 0x01) { /* DEVOFF */
++                TRACE("device power off sequence requested");
++                qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
++            }
++            break;
++        case 0x4a: /* PB_CFG */
++            s->reg_data[addr] = value & 0xf;
++            break;
++        case 0x4b: /* PB_MSB */
++        case 0x4c: /* PB_LSB */
++            s->reg_data[addr] = value;
++            break;
++        case 0x52: /* SEQ_ADD_W2P */
++        case 0x53: /* SEQ_ADD_P2A */
++        case 0x54: /* SEQ_ADD_A2W */
++        case 0x55: /* SEQ_ADD_A2S */
++        case 0x56: /* SEQ_ADD_S2A12 */
++        case 0x57: /* SEQ_ADD_S2A3 */
++        case 0x58: /* SEQ_ADD_WARM */
++            if (s->twl4030->key_cfg)
++                s->reg_data[addr] = value & 0x3f;
++            break;
++        case 0x59: /* MEMORY_ADDRESS */
++            if (s->twl4030->key_cfg)
++                s->reg_data[addr] = value;
++            break;
++        case 0x5a: /* MEMORY_DATA */
++            if (s->twl4030->key_cfg) {
++                s->reg_data[addr] = value;
++                seq_addr = s->reg_data[0x59];
++                seq_sub = seq_addr & 3;
++                seq_addr >>= 2;
++                if ((seq_addr >= 0x2b && seq_addr <= 0x3e) ||
++                    (seq_addr <= 0x0e && seq_sub == 3))
++                    s->twl4030->seq_mem[seq_addr][seq_sub] = value;
++            }
++            /* TODO: check if autoincrement is write-protected as well */
++            s->reg_data[0x59]++;
++            break;
++        case 0x5e: /* WATCHDOG_CFG */
++        case 0x60: /* VIBRATOR_CFG */
++        case 0x6d: /* BB_CFG */
++        case 0x73: /* VAUX1_TYPE */
++        case 0x77: /* VAUX2_TYPE */
++        case 0x7b: /* VAUX3_TYPE */
++        case 0x7f: /* VAUX4_TYPE */
++        case 0x83: /* VMMC1_TYPE */
++        case 0x87: /* VMMC2_TYPE */
++        case 0x8b: /* VPLL1_TYPE */
++        case 0x8f: /* VPLL2_TYPE */
++        case 0x93: /* VSIM_TYPE */
++        case 0x97: /* VDAC_TYPE */
++        case 0x9b: /* VINTANA1_TYPE */
++        case 0x9f: /* VINTANA2_TYPE */
++        case 0xa3: /* VINTDIG_TYPE */
++        case 0xa7: /* VIO_TYPE */
++        case 0xaa: /* VIO_MISC_CFG */
++        case 0xb1: /* VDD1_TYPE */
++        case 0xb4: /* VDD1_MISC_CFG */
++        case 0xbd: /* VDD1_STEP */
++        case 0xbf: /* VDD2_TYPE */
++        case 0xc2: /* VDD2_MISC_CFG */
++        case 0xcb: /* VDD2_STEP */
++        case 0xcd: /* VUSB1V5_TYPE */
++        case 0xd0: /* VUSB1V8_TYPE */
++        case 0xd3: /* VUSB3V1_TYPE */
++        case 0xdb: /* REGEN_TYPE */
++        case 0xde: /* NRESPWRON_TYPE */
++        case 0xe1: /* CLKEN_TYPE */
++        case 0xe4: /* SYSEN_TYPE */
++        case 0xe7: /* HFCLKOUT_TYPE */
++        case 0xea: /* 2KCLKOUT_TYPE */
++        case 0xed: /* TRITON_RESET_TYPE */
++        case 0xf0: /* MAINREF_TYPE */
++            s->reg_data[addr] = value & 0x1f;
++            break;
++        case 0x5f: /* IT_CHECK_CFG */
++        case 0xb9: /* VDD1_VSEL */
++        case 0xbb: /* VDD1_VFLOOR */
++        case 0xbc: /* VDD1_VROOF */
++        case 0xc7: /* VDD2_VSEL */
++        case 0xc9: /* VDD2_VFLOOR */
++        case 0xca: /* VDD2_VROOF */
++            s->reg_data[addr] = value & 0x7f;
++            break;
++        case 0x61: /* DC/DC_GLOBAL_CFG */
++        case 0x68: /* MISC_CFG */
++            s->reg_data[addr] = value;
++            break;
++        case 0x62: /* VDD1_TRIM1 */
++        case 0x64: /* VDD2_TRIM1 */
++        case 0x66: /* VIO_TRIM1 */
++        case 0xac: /* VIO_TEST2 */
++        case 0xb6: /* VDD1_TEST2 */
++        case 0xc4: /* VDD2_TEST2 */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x7f;
++            break;
++        case 0x63: /* VDD1_TRIM2 */
++        case 0x65: /* VDD2_TRIM2 */
++        case 0x67: /* VIO_TRIM2 */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x3f;
++            break;
++        case 0x72: /* VAUX1_DEV_GRP */
++        case 0x76: /* VAUX2_DEV_GRP */
++        case 0x7a: /* VAUX3_DEV_GRP */
++        case 0x7e: /* VAUX4_DEV_GRP */
++        case 0x82: /* VMMC1_DEV_GRP */
++        case 0x86: /* VMMC2_DEV_GRP */
++        case 0x8a: /* VPLL1_DEV_GRP */
++        case 0x8e: /* VPLL2_DEV_GRP */
++        case 0x92: /* VSIM_DEV_GRP */
++        case 0x96: /* VDAC_DEV_GRP */
++        case 0x9a: /* VINTANA1_DEV_GRP */
++        case 0x9e: /* VINTANA2_DEV_GRP */
++        case 0xa2: /* VINTDIG_DEV_GRP */
++        case 0xa6: /* VIO_DEV_GRP */
++        case 0xb0: /* VDD1_DEV_GRP */
++        case 0xbe: /* VDD2_DEV_GRP */
++        case 0xcc: /* VUSB1V5_DEV_GRP */
++        case 0xcf: /* VUSB1V8_DEV_GRP */
++        case 0xd2: /* VUSB3V1_DEV_GRP */
++        case 0xda: /* REGEN_DEV_GRP */
++        case 0xdd: /* NRESPWRON_DEV_GRP */
++        case 0xe0: /* CLKEN_DEV_GRP */
++        case 0xe3: /* SYSEN_DEV_GRP */
++        case 0xe6: /* HFCLKOUT_DEV_GRP */
++        case 0xe9: /* 2KCLKOUT_DEV_GRP */
++        case 0xec: /* TRITON_RESET_DEV_GRP */
++        case 0xef: /* MAINREF_DEV_GRP */
++            s->reg_data[addr] = (s->reg_data[addr] & 0x0f) | (value & 0xf0);
++            break;
++        case 0x75: /* VAUX1_DEDICATED */
++        case 0x7d: /* VAUX3_DEDICATED */
++        case 0x8d: /* VPLL1_DEDICATED */
++        case 0x95: /* VSIM_DEDICATED */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x77;
++            else
++                s->reg_data[addr] = (s->reg_data[addr] & 0x70) | (value & 0x07);
++            break;
++        case 0x79: /* VAUX2_DEDICATED */
++        case 0x81: /* VAUX4_DEDICATED */
++        case 0x91: /* VPLL2_DEDICATED */
++        case 0xa5: /* VINTDIG_DEDICATED */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x7f;
++            else
++                s->reg_data[addr] = (s->reg_data[addr] & 0x70) | (value & 0x0f);
++            break;
++        case 0x85: /* VMMC1_DEDICATED */
++        case 0x99: /* VDAC_DEDICATED */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x73;
++            else
++                s->reg_data[addr] = (s->reg_data[addr] & 0x70) | (value & 0x03);
++            break;
++        case 0x89: /* VMMC2_DEDICATED */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x7f;
++            else
++                s->reg_data[addr] = (s->reg_data[addr] & 0x70) | (value & 0x0f);
++            break;
++        case 0x9d: /* VINTANA1_DEDICATED */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x70;
++            break;
++        case 0xa1: /* VINTANA2_DEDICATED */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value & 0x71;
++            else
++                s->reg_data[addr] = (s->reg_data[addr] & 0x70) | (value & 0x01);
++            break;
++        case 0x74: /* VAUX1_REMAP */
++        case 0x78: /* VAUX2_REMAP */
++        case 0x7c: /* VAUX3_REMAP */
++        case 0x80: /* VAUX4_REMAP */
++        case 0x84: /* VMMC1_REMAP */
++        case 0x88: /* VMMC2_REMAP */
++        case 0x8c: /* VPLL1_REMAP */
++        case 0x90: /* VPLL2_REMAP */
++        case 0x94: /* VSIM_REMAP */
++        case 0x98: /* VDAC_REMAP */
++        case 0x9c: /* VINTANA1_REMAP */
++        case 0xa0: /* VINTANA2_REMAP */
++        case 0xa4: /* VINTDIG_REMAP */
++        case 0xa8: /* VIO_REMAP */
++        case 0xb2: /* VDD1_REMAP */
++        case 0xc0: /* VDD2_REMAP */
++        case 0xce: /* VUSB1V5_REMAP */
++        case 0xd1: /* VUSB1V8_REMAP */
++        case 0xd4: /* VUSB3V1_REMAP */
++        case 0xdc: /* REGEN_REMAP */
++        case 0xdf: /* NRESPWRON_REMAP */
++        case 0xe2: /* CLKEN_REMAP */
++        case 0xe5: /* SYSEN_REMAP */
++        case 0xe8: /* HFCLKOUT_REMAP */
++        case 0xeb: /* 2KCLKOUT_REMAP */
++        case 0xee: /* TRITON_RESET_REMAP */
++        case 0xf1: /* MAINREF_REMAP */
++            s->reg_data[addr] = value;
++            break;
++        case 0xa9: /* VIO_CFG */
++        case 0xb3: /* VDD1_CFG */
++        case 0xc1: /* VDD2_CFG */
++            s->reg_data[addr] = value & 0x03;
++            break;
++        case 0xab: /* VIO_TEST1 */
++        case 0xb5: /* VDD1_TEST1 */
++        case 0xc3: /* VDD2_TEST1 */
++            if (s->twl4030->key_tst)
++                s->reg_data[addr] = value;
++            break;
++        case 0xad: /* VIO_OSC */
++        case 0xb7: /* VDD1_OSC */
++        case 0xc5: /* VDD2_OSC */
++            s->reg_data[addr] = value & 0x5f;
++            break;
++        case 0xae: /* VIO_RESERVED */
++        case 0xb8: /* VDD1_RESERVED */
++        case 0xc6: /* VDD2_RESERVED */
++            break;
++        case 0xaf: /* VIO_VSEL */
++            s->reg_data[addr] = value & 0x01;
++            break;
++        case 0xba: /* VDD1_VMODE_CFG */
++        case 0xc8: /* VDD2_VMODE_CFG */
++            s->reg_data[addr] = (s->reg_data[addr] & 0x38) | (value & 0x07);
++            break;
++        case 0xd8: /* VUSB_DEDICATED1 */
++            s->reg_data[addr] = value & 0x1f;
++            break;
++        case 0xd9: /* VUSB_DEDICATED2 */
++            s->reg_data[addr] = value & 0x08;
++            break;
++
++        default:
++	        hw_error("%s: unknown register 0x%02x value 0x%02x",
++                    __FUNCTION__, addr, value);
++            break;
++    }
++}
++
++/* Keyboard input and ADC callbacks are not connected in this milestone. */
++
++static void twl4030_node_reset(TWL4030NodeState *s,
++                               const uint8_t *reset_values)
++{
++    s->firstbyte = 0;
++    s->reg = 0x00;
++    memcpy(s->reg_data, reset_values, 256);
++}
++
++static void twl4030_node_init(TWL4030NodeState *s,
++                              twl4030_read_func read,
++                              twl4030_write_func write,
++                              const uint8_t *reset_values)
++{
++    s->read_func = read;
++    s->write_func = write;
++    twl4030_node_reset(s, reset_values);
++}
++
++static int twl4030_event(I2CSlave *i2c, enum i2c_event event)
++{
++    if (event == I2C_START_SEND) {
++        TWL4030NodeState *s = ((TWL4030NodeState *)i2c);
++        s->firstbyte = 1;
++    }
++    return 0;
++}
++
++static uint8_t twl4030_rx(I2CSlave *i2c)
++{
++    TWL4030NodeState *s = ((TWL4030NodeState *)i2c);
++    return s->read_func(s, s->reg++);
++}
++
++static int twl4030_tx(I2CSlave *i2c, uint8_t data)
++{
++    TWL4030NodeState *s = ((TWL4030NodeState *)i2c);
++    if (s->firstbyte) {
++        s->reg = data;
++        s->firstbyte = 0;
++    } else {
++        s->write_func(s, s->reg++, data);
++	}
++    return 0; /* Modern I2CSlave send: ACK. */
++}
++
++static void twl4030_reset(void *opaque)
++{
++    TWL4030State *s = opaque;
++
++    timer_del(s->alarm_timer);
++    timer_del(s->periodic_timer);
++
++    twl4030_node_reset(s->i2c[0], addr_48_reset_values);
++    twl4030_node_reset(s->i2c[1], addr_49_reset_values);
++    twl4030_node_reset(s->i2c[2], addr_4a_reset_values);
++    twl4030_node_reset(s->i2c[3], addr_4b_reset_values);
++
++    s->extended_key = 0;
++    s->key_cfg = 0;
++    s->key_tst = 0;
++
++    memset(s->seq_mem, 0, sizeof(s->seq_mem));
++
++    /* TODO: indicate correct reset reason */
++}
++
++
++static void n00_twl_node_class_init(ObjectClass *klass, void *data)
++{
++    I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
++    sc->event = twl4030_event;
++    sc->recv = twl4030_rx;
++    sc->send = twl4030_tx;
++}
++
++static const TypeInfo n00_twl_node_type = {
++    .name = "n00-twl5031-node",
++    .parent = TYPE_I2C_SLAVE,
++    .instance_size = sizeof(TWL4030NodeState),
++    .class_init = n00_twl_node_class_init,
++};
++
++static void n00_twl_register_types(void)
++{
++    type_register_static(&n00_twl_node_type);
++}
++type_init(n00_twl_register_types)
++
++void n00_twl5031_init(I2CBus *bus, qemu_irq irq)
++{
++    static const twl4030_read_func reads[] = {
++        twl4030_48_read, twl4030_49_read, twl4030_4a_read, twl4030_4b_read
++    };
++    static const twl4030_write_func writes[] = {
++        twl4030_48_write, twl4030_49_write, twl4030_4a_write, twl4030_4b_write
++    };
++    static const uint8_t * const resets[] = {
++        addr_48_reset_values, addr_49_reset_values,
++        addr_4a_reset_values, addr_4b_reset_values
++    };
++    TWL4030State *s = g_new0(TWL4030State, 1);
++    s->irq1 = irq;
++    s->twl5031 = 1;
++    s->alarm_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, twl4030_alarm, s);
++    s->periodic_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, twl4030_periodic, s);
++    for (int i = 0; i < 4; i++) {
++        I2CSlave *node = i2c_slave_new("n00-twl5031-node", 0x48 + i);
++        s->i2c[i] = (TWL4030NodeState *)node;
++        s->i2c[i]->twl4030 = s;
++        twl4030_node_init(s->i2c[i], reads[i], writes[i], resets[i]);
++        i2c_slave_realize_and_unref(node, bus, &error_fatal);
++    }
++    qemu_register_reset(twl4030_reset, s);
++}
+diff --git a/hw/arm/n00_dss_port.c b/hw/arm/n00_dss_port.c
+new file mode 100644
+index 0000000..4be47fc
+--- /dev/null
++++ b/hw/arm/n00_dss_port.c
+@@ -0,0 +1,2381 @@
++/*
++ * OMAP2/3 Display Subsystem.
++ *
++ * Copyright (C) 2008,2009 Nokia Corporation
++ * Original OMAP2 support written by Andrzej Zaborowski <andrew@openedhand.com>
++ * Enhancements and OMAP3 support written by Juha Riihimäki
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 or
++ * (at your option) any later version of the License.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++#include "qemu/osdep.h"
++#include "qemu/module.h"
++#include "qemu/timer.h"
++#include "qemu/log.h"
++#include "qapi/error.h"
++#include "hw/irq.h"
++#include "hw/hw.h"
++#include "exec/address-spaces.h"
++#include "hw/arm/omap.h"
++#include "hw/sysbus.h"
++#include "ui/console.h"
++#include "../display/framebuffer.h"
++
++/* Generic DPI panel only, matching Nokia n00.c's N00_FAKE_DISPLAY.
++ * The recovered DSI register model is retained for kernel clock setup,
++ * but no DSI packet/panel transport is attached in this milestone. */
++#define FROM_SYSBUS(type, dev) ((type *)(dev))
++#define sysbus_from_qdev(dev) SYS_BUS_DEVICE(dev)
++#define OMAP_FMT_plx "%" HWADDR_PRIx
++
++//#define OMAP_DSS_DEBUG
++#define OMAP_DSS_DEBUG_DISPC
++#define OMAP_DSS_DEBUG_DISS
++#define OMAP_DSS_DEBUG_DSI
++#define OMAP_DSS_DEBUG_RFBI
++//#define OMAP_DSS_DEBUG_VENC
++
++#ifdef OMAP_DSS_DEBUG
++#define TRACE(fmt,...) fprintf(stderr, "%s@%d: " fmt "\n", __FUNCTION__, \
++                               __LINE__, ##__VA_ARGS__)
++#define LAYERNAME(n) ((!(n)) ? "GFX" : ((n)==1) ? "VID1" : "VID2")
++#ifdef OMAP_DSS_DEBUG_DISPC
++#define TRACEDISPC(fmt,...) TRACE(fmt, ##__VA_ARGS__)
++#else
++#define TRACEDISPC(...)
++#endif
++#ifdef OMAP_DSS_DEBUG_DISS
++#define TRACEDISS(fmt,...) TRACE(fmt, ##__VA_ARGS__)
++#else
++#define TRACEDISS(...)
++#endif
++#ifdef OMAP_DSS_DEBUG_DSI
++#define TRACEDSI(fmt,...) TRACE(fmt, ##__VA_ARGS__)
++#else
++#define TRACEDSI(...)
++#endif
++#ifdef OMAP_DSS_DEBUG_RFBI
++#define TRACERFBI(fmt,...) TRACE(fmt, ##__VA_ARGS__)
++#else
++#define TRACERFBI(...)
++#endif
++#ifdef OMAP_DSS_DEBUG_VENC
++#define TRACEVENC(fmt,...) TRACE(fmt, ##__VA_ARGS__)
++#else
++#define TRACEVENC(...)
++#endif
++#else
++#define TRACE(...)
++#define TRACEDISPC(...)
++#define TRACEDISS(...)
++#define TRACEDSI(...)
++#define TRACERFBI(...)
++#define TRACEVENC(...)
++#undef OMAP_RO_REG
++#undef OMAP_RO_REGV
++#undef OMAP_BAD_REG
++#undef OMAP_BAD_REGV
++#define OMAP_RO_REG(...)
++#define OMAP_RO_REGV(...)
++#define OMAP_BAD_REG(...)
++#define OMAP_BAD_REGV(...)
++#endif
++
++#define OMAP_DSI_RX_FIFO_SIZE 32
++
++struct n00_dss_plane_s {
++    int enable;
++    int bpp;
++    int posx;
++    int posy;
++    int nx;
++    int ny;
++
++    int rotation_flag;
++    int gfx_format;
++    int gfx_channel;
++
++    hwaddr addr[3]; /* BA0, BA1, TABLE_BA */
++
++    uint32_t attr;
++    uint32_t tresh;
++    int rowinc;
++    int colinc;
++    int wininc;
++
++    uint32_t preload;
++
++    /* following used for planes 1 and 2 only (VID1 and VID2) */
++    uint32_t fir;
++    uint32_t fir_coef_h[8];
++    uint32_t fir_coef_hv[8];
++    uint32_t fir_coef_v[8];
++    uint32_t conv_coef[5];
++    uint32_t picture_size;
++    uint32_t accu[2];
++};
++
++struct n00_dss_panel_s {
++    int attached;
++    int invalidate;
++    QemuConsole *ds;
++    MemoryRegionSection section;
++    hwaddr mapped_base;
++    unsigned mapped_stride, mapped_rows;
++    struct {
++        uint32_t control;
++        uint32_t width;
++        uint32_t height;
++        struct n00_dss_plane_s gfx;
++        struct n00_dss_plane_s vid1;
++        struct n00_dss_plane_s vid2;
++        uint32_t *gfx_palette;
++        uint32_t gfx_palette_size;
++    } shadow;
++};
++
++struct n00_dss_s {
++    SysBusDevice busdev;
++    MemoryRegion iomem[5];
++    int32_t mpu_model;
++    qemu_irq irq;
++    qemu_irq drq;
++
++    uint32_t autoidle;
++    uint32_t control;
++    uint32_t sdi_control;
++    uint32_t pll_control;
++    uint32_t dss_status;
++
++    struct n00_dss_panel_s dig, lcd;
++
++    struct {
++        QEMUTimer *lcdframer;
++
++        uint8_t rev;
++        uint32_t idlemode;
++        uint32_t irqst;
++        uint32_t irqen;
++        uint32_t control;
++        uint32_t config;
++        uint32_t capable;
++        uint32_t timing[4];
++        uint32_t line;
++        uint32_t bg[2];
++        uint32_t trans[2];
++        uint32_t size_dig;
++        uint32_t size_lcd;
++        uint32_t global_alpha;
++        uint32_t cpr_coef_r;
++        uint32_t cpr_coef_g;
++        uint32_t cpr_coef_b;
++
++        struct n00_dss_plane_s plane[3]; /* GFX, VID1, VID2 */
++    } dispc;
++
++    struct {
++        int idlemode;
++        uint32_t control;
++        int enable;
++        int pixels;
++        int busy;
++        int skiplines;
++        uint16_t rxbuf;
++        uint32_t config[2];
++        uint32_t time[4];
++        uint32_t data[6];
++        uint16_t vsync;
++        uint16_t hsync;
++        const struct rfbi_chip_s *chip[2];
++    } rfbi;
++
++    struct {
++        QEMUTimer *xfer_timer;
++        qemu_irq drq[4];
++        /* protocol engine registers */
++        uint32_t sysconfig;
++        uint32_t irqst;
++        uint32_t irqen;
++        uint32_t ctrl;
++        uint32_t complexio_cfg1;
++        uint32_t complexio_cfg2;
++        uint32_t complexio_irqst;
++        uint32_t complexio_irqen;
++        uint32_t clk_ctrl;
++        uint32_t timing1;
++        uint32_t timing2;
++        uint32_t vm_timing1;
++        uint32_t vm_timing2;
++        uint32_t vm_timing3;
++        uint32_t vm_timing4;
++        uint32_t vm_timing5;
++        uint32_t vm_timing6;
++        uint32_t vm_timing7;
++        uint32_t clk_timing;
++        uint32_t stopclk_timing;
++        uint32_t tx_fifo_vc_size;
++        uint32_t rx_fifo_vc_size;
++        struct {
++            uint32_t ctrl;
++            uint32_t te;
++            uint32_t lp_header;
++            uint32_t lp_payload;
++            int lp_counter;
++            uint32_t sp_header;
++            uint32_t irqst;
++            uint32_t irqen;
++            uint32_t rx_fifo[OMAP_DSI_RX_FIFO_SIZE];
++            int rx_fifo_pos;
++            int rx_fifo_len;
++        } vc[4];
++        /* phy registers */
++        uint32_t phy_cfg0;
++        uint32_t phy_cfg1;
++        uint32_t phy_cfg2;
++        /* pll controller registers */
++        uint32_t pll_control;
++        uint32_t pll_go;
++        uint32_t pll_config1;
++        uint32_t pll_config2;
++    } dsi;
++};
++
++#include "ui/pixel_ops.h"
++
++#define DEPTH 8
++#include "n00_dss_drawfn.h"
++#define DEPTH 15
++#include "n00_dss_drawfn.h"
++#define DEPTH 16
++#include "n00_dss_drawfn.h"
++#define DEPTH 24
++#include "n00_dss_drawfn.h"
++#define DEPTH 32
++#include "n00_dss_drawfn.h"
++#undef DEPTH
++
++static drawfn n00_dss_linefn(const DeviceState *dev, int format, int bpp)
++{
++    switch (bpp) {
++        case 8:  return n00_dss_drawfn_8[format];
++        case 15: return n00_dss_drawfn_15[format];
++        case 16: return n00_dss_drawfn_16[format];
++        case 24: return n00_dss_drawfn_24[format];
++        case 32: return n00_dss_drawfn_32[format];
++        default:
++            hw_error("%s: unsupported host display color depth: %d\n",
++                     __FUNCTION__, bpp);
++            break;
++    }
++    return NULL;
++}
++
++/* Bytes(!) per pixel */
++static const int omap_lcd_Bpp[0x10] = {
++    0,  /* 0x0: BITMAP1 (CLUT) */
++    0,  /* 0x1: BITMAP2 (CLUT) */
++    0,  /* 0x2: BITMAP4 (CLUT) */
++    1,  /* 0x3: BITMAP8 (CLUT) */
++    2,  /* 0x4: RGB12 (unpacked 16-bit container)*/
++    2,  /* 0x5: ARGB16 */
++    2,  /* 0x6: RGB16 */
++    0,  /* 0x7: reserved */
++    4,  /* 0x8: RGB24 (unpacked in 32-bit container) */
++    3,  /* 0x9: RGB24 (packed in 24-bit container) */
++    2,  /* 0xa: YUV2 422 */
++    2,  /* 0xb: UYVY 422 */
++    4,  /* 0xc: ARGB32 */
++    4,  /* 0xd: RGBA32 */
++    4,  /* 0xe: RGBx32 (24-bit RGB aligned on MSB of the 32-bit container) */
++    0,  /* 0xf: reserved */
++};
++
++static void n00_dss_interrupt_update(struct n00_dss_s *s)
++{
++    qemu_set_irq(s->irq,
++                 (s->dsi.irqst & s->dsi.irqen)
++                 | (s->dsi.complexio_irqst & s->dsi.complexio_irqen)
++                 | (s->dsi.vc[0].irqst & s->dsi.vc[0].irqen)
++                 | (s->dsi.vc[1].irqst & s->dsi.vc[1].irqen)
++                 | (s->dsi.vc[2].irqst & s->dsi.vc[2].irqen)
++                 | (s->dsi.vc[3].irqst & s->dsi.vc[3].irqen)
++                 | (s->dispc.irqst & s->dispc.irqen));
++}
++
++static void n00_dss_framedone(void *opaque)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *)opaque;
++    if (s->dispc.control & 3) { /* DIGITALENABLE | LCDENABLE */
++        if ((s->dispc.control & (1 << 11))) { /* STALLMODE */
++            s->dispc.control &= ~1; /* LCDENABLE */
++            if ((s->rfbi.control & 1)) { /* ENABLE */
++                s->rfbi.pixels = 0;
++                s->rfbi.busy = 0;
++            }
++            if (s->dispc.lcdframer) {
++                timer_del(s->dispc.lcdframer);
++            }
++        } else {
++            if (s->dispc.lcdframer) {
++                timer_mod(s->dispc.lcdframer,
++                               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)
++                               + NANOSECONDS_PER_SECOND / 10);
++            }
++        }
++        s->dispc.irqst |= 1 | 2;    /* FRAMEDONE | VSYNC */
++        n00_dss_interrupt_update(s);
++    }
++}
++
++static void omap_rfbi_transfer_stop(struct n00_dss_s *s)
++{
++    if (!s->rfbi.busy)
++        return;
++
++    /* TODO: in non-Bypass mode we probably need to just deassert the DRQ.  */
++
++    s->rfbi.busy = 0;
++    s->rfbi.control &= ~0x10; /* ITE */
++}
++
++static void omap_rfbi_transfer_start(struct n00_dss_s *s)
++{
++    void *data;
++    hwaddr len;
++    hwaddr data_addr;
++    int pitch;
++    static void *bounce_buffer;
++    static hwaddr bounce_len;
++
++    if (!s->rfbi.enable || s->rfbi.busy)
++        return;
++
++    if (s->rfbi.control & (1 << 1)) {				/* BYPASS */
++        /* TODO: in non-Bypass mode we probably need to just assert the
++         * DRQ and wait for DMA to write the pixels.  */
++        hw_error("%s: Bypass mode unimplemented", __FUNCTION__);
++    }
++
++    if (!(s->dispc.control & (1 << 11))) /* STALLMODE */
++        return;
++
++    s->rfbi.busy = 1;
++
++    len = s->rfbi.pixels * 2;
++
++    data_addr = s->dispc.plane[0].addr[0];
++    data = cpu_physical_memory_map(data_addr, &len, 0);
++    if (data && len != s->rfbi.pixels * 2) {
++        cpu_physical_memory_unmap(data, len, 0, 0);
++        data = NULL;
++        len = s->rfbi.pixels * 2;
++    }
++    if (!data) {
++        if (len > bounce_len) {
++            bounce_buffer = g_realloc(bounce_buffer, len);
++        }
++        data = bounce_buffer;
++        cpu_physical_memory_read(data_addr, data, len);
++    }
++
++    /* TODO: negative values */
++    pitch = s->dispc.plane[0].nx + (s->dispc.plane[0].rowinc - 1) / 2;
++
++    if ((s->rfbi.control & (1 << 2)) && s->rfbi.chip[0])
++        s->rfbi.chip[0]->block(s->rfbi.chip[0]->opaque, 1, data, len, pitch);
++    if ((s->rfbi.control & (1 << 3)) && s->rfbi.chip[1])
++        s->rfbi.chip[1]->block(s->rfbi.chip[1]->opaque, 1, data, len, pitch);
++
++    if (data != bounce_buffer) {
++        cpu_physical_memory_unmap(data, len, 0, len);
++    }
++
++    omap_rfbi_transfer_stop(s);
++
++    n00_dss_framedone(s);
++}
++
++static void omap_dsi_transfer_stop(void *opaque)
++{
++    struct n00_dss_s *s = opaque;
++    timer_del(s->dsi.xfer_timer);
++}
++
++static void omap_dsi_transfer_start(struct n00_dss_s *s, int ch)
++{
++    qemu_log_mask(LOG_UNIMP, "N00: DSI panel transport not ported\n");
++}
++
++
++/* RAM-backed, non-rotated GFX plane. Positive row padding is supported.
++ * VID overlays, nonzero origin, pixel stepping and big-endian pixels are
++ * deliberately unsupported; do not read beyond RAM for malformed modes. */
++static void n00_dss_panel_update_display(struct n00_dss_panel_s *s, int lcd)
++{
++    struct n00_dss_plane_s *gfx = &s->shadow.gfx;
++    DisplaySurface *surface = qemu_console_surface(s->ds);
++    unsigned width = s->shadow.width, height = s->shadow.height;
++    unsigned format = (gfx->attr >> 1) & 15;
++    unsigned stride, rows, cols;
++    drawfn line_fn;
++    int first = 0, last = 0;
++    bool remap;
++
++    if (!width || !height || width > 2048 || height > 2048) {
++        return;
++    }
++    if (surface_width(surface) != width || surface_height(surface) != height) {
++        qemu_console_resize(s->ds, width, height);
++        surface = qemu_console_surface(s->ds);
++        s->invalidate = 1;
++    }
++    if (!(gfx->attr & 1) || !!(gfx->attr & 0x100) == !!lcd) {
++        return;
++    }
++    if ((gfx->attr & 0x3600) || gfx->posx || gfx->posy ||
++        gfx->colinc != 1 || gfx->rowinc < 1 || gfx->rowinc > 16384 ||
++        gfx->nx < 1 || gfx->ny < 1) {
++        qemu_log_mask(LOG_UNIMP, "N00: unsupported GFX origin/stride/rotation\n");
++        return;
++    }
++    line_fn = n00_dss_linefn(NULL, format, surface_bits_per_pixel(surface));
++    if (!line_fn) {
++        return;
++    }
++    cols = MIN(width, gfx->nx);
++    rows = MIN(height, gfx->ny);
++    stride = format < 3 ? (gfx->nx + (1 << (3 - format)) - 1) >> (3 - format)
++                        : gfx->nx * omap_lcd_Bpp[format];
++    stride += gfx->rowinc - 1;
++    remap = !s->section.mr || s->mapped_base != gfx->addr[0] ||
++            s->mapped_stride != stride || s->mapped_rows != rows;
++    if (remap) {
++        framebuffer_update_memory_section(&s->section, get_system_memory(),
++                                            gfx->addr[0], rows, stride);
++        s->mapped_base = gfx->addr[0];
++        s->mapped_stride = stride;
++        s->mapped_rows = rows;
++        s->invalidate = 1;
++    }
++    if (s->shadow.gfx_palette && s->shadow.gfx_palette_size) {
++        cpu_physical_memory_read(gfx->addr[2], s->shadow.gfx_palette,
++                                  s->shadow.gfx_palette_size * sizeof(uint32_t));
++    }
++    framebuffer_update_display(surface, &s->section, cols, rows, stride,
++                                surface_stride(surface),
++                                surface_bytes_per_pixel(surface),
++                                s->invalidate, line_fn, s->shadow.gfx_palette,
++                                &first, &last);
++    s->invalidate = 0;
++    if (first >= 0) {
++        dpy_gfx_update(s->ds, 0, first, cols, last - first + 1);
++    }
++}
++
++static void n00_lcd_panel_update_display(void *opaque)
++{
++    struct n00_dss_s *s = opaque;
++    if (!s->lcd.ds
++        || !(s->lcd.shadow.control & 1)           /* LCDENABLE */
++        || (s->lcd.shadow.control & (1 << 11))) { /* STALLMODE */
++        return;
++    }
++    n00_dss_panel_update_display(&s->lcd, 1);
++    n00_dss_framedone(s);
++}
++
++static void n00_lcd_panel_invalidate_display(void *opaque)
++{
++    struct n00_dss_s *s = opaque;
++    s->lcd.invalidate = 1;
++}
++
++
++static void n00_dss_panel_go(struct n00_dss_s *s,
++                              struct n00_dss_panel_s *p,
++                              uint32_t size)
++{
++    if (p->attached) {
++        p->invalidate = 1;
++        p->shadow.control = s->dispc.control;
++        p->shadow.width = (size & 0x7ff) + 1;
++        p->shadow.height = ((size >> 16) & 0x7ff) + 1;
++        p->shadow.gfx = s->dispc.plane[0];
++        p->shadow.vid1 = s->dispc.plane[1];
++        p->shadow.vid2 = s->dispc.plane[2];
++        int new_size = 0;
++        switch ((p->shadow.gfx.attr >> 1) & 0x0f) {
++            case 0: new_size = 2; break;
++            case 1: new_size = 4; break;
++            case 2: new_size = 16; break;
++            case 3: new_size = 256; break;
++            default: break;
++        }
++        if (new_size != p->shadow.gfx_palette_size) {
++            if (p->shadow.gfx_palette) {
++                g_free(p->shadow.gfx_palette);
++                p->shadow.gfx_palette = NULL;
++            }
++            if (new_size) {
++                p->shadow.gfx_palette = g_malloc(new_size *
++                                                    sizeof(uint32_t));
++            }
++            p->shadow.gfx_palette_size = new_size;
++        }
++    }
++}
++
++static void n00_dss_panel_reset(void *opaque)
++{
++    struct n00_dss_panel_s *s = opaque;
++    if (s->section.mr) {
++        memory_region_set_log(s->section.mr, false, DIRTY_MEMORY_VGA);
++        memory_region_unref(s->section.mr);
++        s->section.mr = NULL;
++    }
++    if (s->attached) {
++        s->shadow.control = 0;
++        memset(&s->shadow.gfx, 0, sizeof(s->shadow.gfx));
++        memset(&s->shadow.vid1, 0, sizeof(s->shadow.vid1));
++        memset(&s->shadow.vid2, 0, sizeof(s->shadow.vid2));
++        if (s->shadow.gfx_palette) {
++            g_free(s->shadow.gfx_palette);
++            s->shadow.gfx_palette = NULL;
++            s->shadow.gfx_palette_size = 0;
++        }
++    }
++}
++
++static void omap_dsi_reset(struct n00_dss_s *s)
++{
++    int i;
++
++    s->dsi.sysconfig = 0x11;
++    s->dsi.irqst = 0;
++    s->dsi.irqen = 0;
++    s->dsi.ctrl = 0x100;
++    s->dsi.complexio_cfg1 = 0x20000000;
++    s->dsi.complexio_cfg2 = 0;
++    s->dsi.complexio_irqst = 0;
++    s->dsi.complexio_irqen = 0;
++    s->dsi.clk_ctrl = 1;
++    s->dsi.timing1 = 0x7fff7fff;
++    s->dsi.timing2 = 0x7fff7fff;
++    s->dsi.vm_timing1 = 0;
++    s->dsi.vm_timing2 = 0;
++    s->dsi.vm_timing3 = 0;
++    s->dsi.vm_timing4 = 0;
++    s->dsi.vm_timing5 = 0;
++    s->dsi.vm_timing6 = 0;
++    s->dsi.vm_timing7 = 0;
++    s->dsi.clk_timing = 0x0101;
++    s->dsi.stopclk_timing = 0x80;
++    s->dsi.tx_fifo_vc_size = 0;
++    s->dsi.rx_fifo_vc_size = 0;
++    for (i = 0; i < 4; i++) {
++        s->dsi.vc[i].ctrl = 0;
++        s->dsi.vc[i].te = 0;
++        s->dsi.vc[i].lp_header = 0;
++        s->dsi.vc[i].lp_payload = 0;
++        s->dsi.vc[i].lp_counter = 0;
++        s->dsi.vc[i].sp_header = 0;
++        s->dsi.vc[i].irqst = 0;
++        s->dsi.vc[i].irqen = 0;
++        s->dsi.vc[i].rx_fifo_pos = 0;
++        s->dsi.vc[i].rx_fifo_len = 0;
++    }
++    if (s->mpu_model < omap3630) {
++        s->dsi.phy_cfg0 = 0x1a3c1a28;
++        s->dsi.phy_cfg1 = 0x420a1875;
++        s->dsi.phy_cfg2 = 0xb800001b;
++    } else {
++        s->dsi.phy_cfg0 = 0x1e481d3a;
++        s->dsi.phy_cfg1 = 0x420a1a6a;
++        s->dsi.phy_cfg2 = 0xb800001a;
++    }
++    s->dsi.pll_control = 0;
++    s->dsi.pll_go = 0;
++    s->dsi.pll_config1 = 0;
++    s->dsi.pll_config2 = 0;
++    n00_dss_interrupt_update(s);
++}
++
++static void omap_rfbi_reset(struct n00_dss_s *s)
++{
++    s->rfbi.idlemode = 0;
++    s->rfbi.control = 2;
++    s->rfbi.enable = 0;
++    s->rfbi.pixels = 0;
++    s->rfbi.skiplines = 0;
++    s->rfbi.busy = 0;
++    s->rfbi.config[0] = 0x00310000;
++    s->rfbi.config[1] = 0x00310000;
++    s->rfbi.time[0] = 0;
++    s->rfbi.time[1] = 0;
++    s->rfbi.time[2] = 0;
++    s->rfbi.time[3] = 0;
++    s->rfbi.data[0] = 0;
++    s->rfbi.data[1] = 0;
++    s->rfbi.data[2] = 0;
++    s->rfbi.data[3] = 0;
++    s->rfbi.data[4] = 0;
++    s->rfbi.data[5] = 0;
++    s->rfbi.vsync = 0;
++    s->rfbi.hsync = 0;
++}
++
++static void n00_dss_reset(DeviceState *dev)
++{
++    int i, j;
++
++    struct n00_dss_s *s = FROM_SYSBUS(struct n00_dss_s,
++                                       sysbus_from_qdev(dev));
++    timer_del(s->dispc.lcdframer);
++    timer_del(s->dsi.xfer_timer);
++    s->autoidle = 0x10; /* was 0 for OMAP2 but bit4 must be set for OMAP3 */
++    s->control = 0;
++    if (s->mpu_model == omap3430) {
++        s->sdi_control = 0;
++        s->pll_control = 0;
++        s->dss_status = 0x81; /* bit 7 is not present prior to OMAP3 */
++    } else { /* omap2, omap3630 */
++        s->dss_status = 0x01;
++    }
++
++    s->dispc.idlemode = 0;
++    s->dispc.irqst = 0;
++    s->dispc.irqen = 0;
++    s->dispc.control = 0;
++    s->dispc.config = 0;
++    s->dispc.capable = 0x161;
++    s->dispc.timing[0] = 0;
++    s->dispc.timing[1] = 0;
++    s->dispc.timing[2] = 0;
++    s->dispc.timing[3] = 0x00010002;
++    s->dispc.line = 0;
++    s->dispc.bg[0] = 0;
++    s->dispc.bg[1] = 0;
++    s->dispc.trans[0] = 0;
++    s->dispc.trans[1] = 0;
++    s->dispc.size_dig = 0;
++    s->dispc.size_lcd = 0;
++    s->dispc.global_alpha = 0;
++    s->dispc.cpr_coef_r = 0;
++    s->dispc.cpr_coef_g = 0;
++    s->dispc.cpr_coef_b = 0;
++
++    for (i = 0; i < 3; i++) {
++        s->dispc.plane[i].enable = 0;
++        s->dispc.plane[i].bpp = 0;
++        s->dispc.plane[i].addr[0] = 0;
++        s->dispc.plane[i].addr[1] = 0;
++        s->dispc.plane[i].addr[2] = 0;
++        s->dispc.plane[i].posx = 0;
++        s->dispc.plane[i].posy = 0;
++        s->dispc.plane[i].nx = 1;
++        s->dispc.plane[i].ny = 1;
++        s->dispc.plane[i].attr = 0;
++        s->dispc.plane[i].tresh = (s->dispc.rev < 0x30) ? 0 : 0x03ff03c0;
++        s->dispc.plane[i].rowinc = 1;
++        s->dispc.plane[i].colinc = 1;
++        s->dispc.plane[i].wininc = 0;
++        s->dispc.plane[i].preload = 0x100;
++        s->dispc.plane[i].fir = 0;
++        s->dispc.plane[i].picture_size = 0;
++        s->dispc.plane[i].accu[0] = 0;
++        s->dispc.plane[i].accu[1] = 0;
++        for (j = 0; j < 5; j++)
++            s->dispc.plane[i].conv_coef[j] = 0;
++        for (j = 0; j < 8; j++) {
++            s->dispc.plane[i].fir_coef_h[j] = 0;
++            s->dispc.plane[i].fir_coef_hv[j] = 0;
++            s->dispc.plane[i].fir_coef_v[j] = 0;
++        }
++    }
++
++    omap_dsi_reset(s);
++    omap_rfbi_reset(s);
++    n00_dss_panel_reset(&s->lcd);
++    n00_dss_panel_reset(&s->dig);
++    n00_dss_interrupt_update(s);
++}
++
++static uint32_t omap_diss_read(void *opaque, hwaddr addr)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *) opaque;
++    uint32_t x;
++
++    switch (addr) {
++    case 0x00:	/* DSS_REVISIONNUMBER */
++        TRACEDISS("DSS_REVISIONNUMBER: 0x20");
++        return 0x20;
++
++    case 0x10:	/* DSS_SYSCONFIG */
++        TRACEDISS("DSS_SYSCONFIG: 0x%08x", s->autoidle);
++        return s->autoidle;
++
++    case 0x14:	/* DSS_SYSSTATUS */
++        TRACEDISS("DSS_SYSSTATUS: 0x1");
++        return 1; /* RESETDONE */
++
++    case 0x18:  /* DSS_IRQSTATUS */
++        x = (s->dispc.irqst & s->dispc.irqen) ? 1 : 0;
++        if ((s->dsi.irqst & s->dsi.irqen)
++            | (s->dsi.complexio_irqst & s->dsi.complexio_irqen)
++            | (s->dsi.vc[0].irqst & s->dsi.vc[0].irqen)
++            | (s->dsi.vc[1].irqst & s->dsi.vc[1].irqen)
++            | (s->dsi.vc[2].irqst & s->dsi.vc[2].irqen)
++            | (s->dsi.vc[3].irqst & s->dsi.vc[3].irqen))
++            x |= 2;
++        TRACEDISS("DSS_IRQSTATUS: 0x%08x", x);
++        return x;
++
++    case 0x40:	/* DSS_CONTROL */
++        TRACEDISS("DSS_CONTROL: 0x%08x", s->control);
++        return s->control;
++
++    case 0x44:  /* DSS_SDI_CONTROL */
++        if (s->mpu_model == omap3430) {
++            TRACEDISS("DSS_SDI_CONTROL: 0x%08x", s->sdi_control);
++            return s->sdi_control;
++        }
++        break;
++
++    case 0x48: /* DSS_PLL_CONTROL */
++        if (s->mpu_model == omap3430) {
++            TRACEDISS("DSS_PLL_CONTROL: 0x%08x", s->pll_control);
++            return s->pll_control;
++        }
++        break;
++
++    case 0x50:	/* DSS_PSA_LCD_REG_1 */
++    case 0x54:	/* DSS_PSA_LCD_REG_2 */
++    case 0x58:	/* DSS_PSA_VIDEO_REG */
++        if (s->mpu_model < omap3430) {
++            TRACEDISS("DSS_PSA_xxx: 0");
++            /* TODO: fake some values according to s->control bits */
++            return 0;
++        }
++        break;
++
++    case 0x5c:
++        x = s->dss_status;
++        if (s->mpu_model < omap3430) {
++            TRACEDISS("DSS_STATUS: 0x%08x", x);
++        } else {
++            if (s->mpu_model == omap3430) {
++                s->dss_status &= ~(1 << 6); /* SDI_PLL_BUSYFLAG */
++                TRACEDISS("DSS_SDI_STATUS: 0x%08x", x);
++            } else { /* omap3630 */
++                TRACEDISS("DSS_CLK_STATUS: 0x%08x", x);
++            }
++        }
++        return x;
++    default:
++        break;
++    }
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static void omap_diss_write(void *opaque, hwaddr addr,
++                uint32_t value)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *) opaque;
++
++    switch (addr) {
++    case 0x00:	/* DSS_REVISIONNUMBER */
++    case 0x14:	/* DSS_SYSSTATUS */
++    case 0x18:  /* DSS_IRQSTATUS */
++    case 0x50:	/* DSS_PSA_LCD_REG_1 */
++    case 0x54:	/* DSS_PSA_LCD_REG_2 */
++    case 0x58:	/* DSS_PSA_VIDEO_REG */
++    case 0x5c:	/* DSS_STATUS */
++        /* quietly ignore */
++        /*OMAP_RO_REGV(addr, value);*/
++        break;
++
++    case 0x10:	/* DSS_SYSCONFIG */
++        TRACEDISS("DSS_SYSCONFIG = 0x%08x", value);
++        if (value & 2) { /* SOFTRESET */
++            n00_dss_reset(DEVICE(s));
++        }
++        if (s->mpu_model < omap3430) {
++            value &= 0x01;
++        } else {
++            value &= 0x19;
++        }
++        s->autoidle = value;
++        break;
++
++    case 0x40:	/* DSS_CONTROL */
++        TRACEDISS("DSS_CONTROL = 0x%08x", value);
++        if (s->mpu_model < omap3430) {
++            value &= 0x3dd;
++        } else {
++            value &= 0x3ff;
++        }
++        s->control = value;
++        s->dss_status &= ~0x3;
++        s->dss_status |= 1 + (s->control & 1);
++        break;
++
++    case 0x44: /* DSS_SDI_CONTROL */
++        if (s->mpu_model == omap3430) {
++            TRACEDISS("DSS_SDI_CONTROL = 0x%08x", value);
++            s->sdi_control = value & 0x000ff80f;
++        } else {
++            OMAP_BAD_REGV(addr, value);
++        }
++        break;
++
++    case 0x48: /* DSS_PLL_CONTROL */
++        if (s->mpu_model == omap3430) {
++            TRACEDISS("DSS_PLL_CONTROL = 0x%08x", value);
++            if (value & (1 << 18)) { /* SDI_PLL_SYSRESET */
++                s->dss_status |= 1 << 2;    /* SDI_PLL_RESETDONE */
++            } else {
++                s->dss_status &= ~(1 << 2); /* SDI_PLL_RESETDONE */
++            }
++            if (value & (1 << 28)) { /* SDI_PLL_GOBIT */
++                s->dss_status |= 1 << 6;    /* SDI_PLL_BUSYFLAG */
++                s->dss_status &= ~(1 << 5); /* SDI_PLL_LOCK */
++            } else {
++                if (s->pll_control & (1 << 28)) { /* SDI_PLL_GOBIT */
++                    s->dss_status &= ~(1 << 6); /* SDI_PLL_BUSYFLAG */
++                    s->dss_status |= 1 << 5;    /* SDI_PLL_LOCK */
++                }
++            }
++            s->pll_control = value;
++        } else {
++            OMAP_BAD_REGV(addr, value);
++        }
++        break;
++
++    default:
++        OMAP_BAD_REGV(addr, value);
++        break;
++    }
++}
++
++
++
++static uint32_t omap_disc_read(void *opaque, hwaddr addr)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *) opaque;
++    int n = 0;
++
++    switch (addr) {
++    case 0x000:	/* DISPC_REVISION */
++        TRACEDISPC("DISPC_REVISION: 0x%08x", s->dispc.rev);
++        return s->dispc.rev;
++    case 0x010:	/* DISPC_SYSCONFIG */
++        TRACEDISPC("DISPC_SYSCONFIG: 0x%08x", s->dispc.idlemode);
++        return s->dispc.idlemode;
++    case 0x014:	/* DISPC_SYSSTATUS */
++        TRACEDISPC("DISPC_SYSSTATUS: 1");
++        return 1;						/* RESETDONE */
++    case 0x018:	/* DISPC_IRQSTATUS */
++        TRACEDISPC("DISPC_IRQSTATUS: 0x%08x", s->dispc.irqst);
++        return s->dispc.irqst;
++    case 0x01c:	/* DISPC_IRQENABLE */
++        TRACEDISPC("DISPC_IRQENABLE: 0x%08x", s->dispc.irqen);
++        return s->dispc.irqen;
++    case 0x040:	/* DISPC_CONTROL */
++        TRACEDISPC("DISPC_CONTROL: 0x%08x", s->dispc.control);
++        return s->dispc.control;
++    case 0x044:	/* DISPC_CONFIG */
++        TRACEDISPC("DISPC_CONFIG: 0x%08x", s->dispc.config);
++        return s->dispc.config;
++    case 0x048:	/* DISPC_CAPABLE */
++        TRACEDISPC("DISPC_CAPABLE: 0x%08x", s->dispc.capable);
++        return s->dispc.capable;
++    case 0x04c:	/* DISPC_DEFAULT_COLOR0 */
++        TRACEDISPC("DISPC_DEFAULT_COLOR0: 0x%08x", s->dispc.bg[0]);
++        return s->dispc.bg[0];
++    case 0x050:	/* DISPC_DEFAULT_COLOR1 */
++        TRACEDISPC("DISPC_DEFAULT_COLOR0: 0x%08x", s->dispc.bg[1]);
++        return s->dispc.bg[1];
++    case 0x054:	/* DISPC_TRANS_COLOR0 */
++        TRACEDISPC("DISPC_TRANS_COLOR0: 0x%08x", s->dispc.trans[0]);
++        return s->dispc.trans[0];
++    case 0x058:	/* DISPC_TRANS_COLOR1 */
++        TRACEDISPC("DISPC_TRANS_COLOR0: 0x%08x", s->dispc.trans[1]);
++        return s->dispc.trans[1];
++    case 0x05c:	/* DISPC_LINE_STATUS */
++        TRACEDISPC("DISPC_LINE_STATUS: 0x7ff");
++        return 0x7ff;
++    case 0x060:	/* DISPC_LINE_NUMBER */
++        TRACEDISPC("DISPC_LINE_NUMBER: 0x%08x", s->dispc.line);
++        return s->dispc.line;
++    case 0x064:	/* DISPC_TIMING_H */
++        TRACEDISPC("DISPC_TIMING_H: 0x%08x", s->dispc.timing[0]);
++        return s->dispc.timing[0];
++    case 0x068:	/* DISPC_TIMING_V */
++        TRACEDISPC("DISPC_TIMING_H: 0x%08x", s->dispc.timing[1]);
++        return s->dispc.timing[1];
++    case 0x06c:	/* DISPC_POL_FREQ */
++        TRACEDISPC("DISPC_POL_FREQ: 0x%08x", s->dispc.timing[2]);
++        return s->dispc.timing[2];
++    case 0x070:	/* DISPC_DIVISOR */
++        TRACEDISPC("DISPC_DIVISOR: 0x%08x", s->dispc.timing[3]);
++        return s->dispc.timing[3];
++    case 0x074: /* DISPC_GLOBAL_ALPHA */
++        TRACEDISPC("DISPC_GLOBAL_ALPHA: 0x%08x", s->dispc.global_alpha);
++        return s->dispc.global_alpha;
++    case 0x078:	/* DISPC_SIZE_DIG */
++        TRACEDISPC("DISPC_SIZE_DIG: 0x%08x", s->dispc.size_dig);
++        return s->dispc.size_dig;
++    case 0x07c:	/* DISPC_SIZE_LCD */
++        TRACEDISPC("DISPC_SIZE_LCD: 0x%08x", s->dispc.size_lcd);
++        return s->dispc.size_lcd;
++    case 0x14c:	/* DISPC_VID2_BA0 */
++        n++;
++    case 0x0bc:	/* DISPC_VID1_BA0 */
++        n++;
++    case 0x080:	/* DISPC_GFX_BA0 */
++        TRACEDISPC("DISPC_%s_BA0: " OMAP_FMT_plx, LAYERNAME(n),
++                   s->dispc.plane[n].addr[0]);
++        return s->dispc.plane[n].addr[0];
++    case 0x150:	/* DISPC_VID2_BA1 */
++        n++;
++    case 0x0c0:	/* DISPC_VID1_BA1 */
++        n++;
++    case 0x084:	/* DISPC_GFX_BA1 */
++        TRACEDISPC("DISPC_%s_BA1: " OMAP_FMT_plx, LAYERNAME(n),
++                   s->dispc.plane[n].addr[1]);
++        return s->dispc.plane[n].addr[1];
++    case 0x154:	/* DISPC_VID2_POSITION */
++        n++;
++    case 0x0c4:	/* DISPC_VID1_POSITION */
++        n++;
++    case 0x088:	/* DISPC_GFX_POSITION */
++        TRACEDISPC("DISPC_%s_POSITION: 0x%08x", LAYERNAME(n),
++                   (s->dispc.plane[n].posy << 16) | s->dispc.plane[n].posx);
++        return (s->dispc.plane[n].posy << 16) | s->dispc.plane[n].posx;
++    case 0x158:	/* DISPC_VID2_SIZE */
++        n++;
++    case 0x0c8:	/* DISPC_VID1_SIZE */
++        n++;
++    case 0x08c:	/* DISPC_GFX_SIZE */
++        TRACEDISPC("DISPC_%s_SIZE: 0x%08x", LAYERNAME(n),
++                   ((s->dispc.plane[n].ny - 1) << 16)
++                   | (s->dispc.plane[n].nx - 1));
++        return ((s->dispc.plane[n].ny - 1) << 16) | (s->dispc.plane[n].nx - 1);
++    case 0x15c:	/* DISPC_VID2_ATTRIBUTES */
++        n++;
++    case 0x0cc:	/* DISPC_VID1_ATTRIBUTES */
++        n++;
++    case 0x0a0:	/* DISPC_GFX_ATTRIBUTES */
++        TRACEDISPC("DISPC_%s_ATTRIBUTES: 0x%08x", LAYERNAME(n),
++                   s->dispc.plane[n].attr);
++        return s->dispc.plane[n].attr;
++    case 0x160:	/* DISPC_VID2_FIFO_THRESHOLD */
++        n++;
++    case 0x0d0:	/* DISPC_VID1_FIFO_THRESHOLD */
++        n++;
++    case 0x0a4:	/* DISPC_GFX_FIFO_TRESHOLD */
++        TRACEDISPC("DISPC_%s_THRESHOLD: 0x%08x", LAYERNAME(n),
++                   s->dispc.plane[n].tresh);
++        return s->dispc.plane[n].tresh;
++    case 0x164:	/* DISPC_VID2_FIFO_SIZE_STATUS */
++        n++;
++    case 0x0d4:	/* DISPC_VID1_FIFO_SIZE_STATUS */
++        n++;
++    case 0x0a8:	/* DISPC_GFX_FIFO_SIZE_STATUS */
++        TRACEDISPC("DISPC_%s_FIFO_SIZE_STATUS: 0x%08x", LAYERNAME(n),
++                   s->dispc.rev < 0x30 ? 256 : 1024);
++        return s->dispc.rev < 0x30 ? 256 : 1024;
++    case 0x168:	/* DISPC_VID2_ROW_INC */
++        n++;
++    case 0x0d8:	/* DISPC_VID1_ROW_INC */
++        n++;
++    case 0x0ac:	/* DISPC_GFX_ROW_INC */
++        TRACEDISPC("DISPC_%s_ROW_INC: 0x%08x", LAYERNAME(n),
++                   s->dispc.plane[n].rowinc);
++        return s->dispc.plane[n].rowinc;
++    case 0x16c:	/* DISPC_VID2_PIXEL_INC */
++        n++;
++    case 0x0dc:	/* DISPC_VID1_PIXEL_INC */
++        n++;
++    case 0x0b0:	/* DISPC_GFX_PIXEL_INC */
++        TRACEDISPC("DISPC_%s_PIXEL_INC: 0x%08x", LAYERNAME(n),
++                   s->dispc.plane[n].colinc);
++        return s->dispc.plane[n].colinc;
++    case 0x0b4:	/* DISPC_GFX_WINDOW_SKIP */
++        TRACEDISPC("DISPC_GFX_WINDOW_SKIP: 0x%08x", s->dispc.plane[0].wininc);
++        return s->dispc.plane[0].wininc;
++    case 0x0b8:	/* DISPC_GFX_TABLE_BA */
++        TRACEDISPC("DISPC_GFX_TABLE_BA: " OMAP_FMT_plx,
++                   s->dispc.plane[0].addr[2]);
++        return s->dispc.plane[0].addr[2];
++    case 0x170:	/* DISPC_VID2_FIR */
++        n++;
++    case 0x0e0:	/* DISPC_VID1_FIR */
++        n++;
++        TRACEDISPC("DISPC_%s_FIR: 0x%08x", LAYERNAME(n),
++                   s->dispc.plane[n].fir);
++        return s->dispc.plane[n].fir;
++    case 0x174:	/* DISPC_VID2_PICTURE_SIZE */
++        n++;
++    case 0x0e4:	/* DISPC_VID1_PICTURE_SIZE */
++        n++;
++        TRACEDISPC("DISPC_%s_PICTURE_SIZE: 0x%08x", LAYERNAME(n),
++                   s->dispc.plane[n].picture_size);
++        return s->dispc.plane[n].picture_size;
++    case 0x178:	/* DISPC_VID2_ACCU0 */
++    case 0x17c:	/* DISPC_VID2_ACCU1 */
++        n++;
++    case 0x0e8:	/* DISPC_VID1_ACCU0 */
++    case 0x0ec:	/* DISPC_VID1_ACCU1 */
++        n++;
++        TRACEDISPC("DISPC_%s_ACCU%d: 0x%08x", LAYERNAME(n),
++                   (int)((addr >> 1) & 1),
++                   s->dispc.plane[n].accu[(addr >> 1 ) & 1]);
++        return s->dispc.plane[n].accu[(addr >> 1) & 1];
++    case 0x180 ... 0x1bc:	/* DISPC_VID2_FIR_COEF */
++        n++;
++    case 0x0f0 ... 0x12c:	/* DISPC_VID1_FIR_COEF */
++        n++;
++        if (addr & 4) {
++            TRACEDISPC("DISPC_%s_FIR_COEF_HV%d: 0x%08x", LAYERNAME(n),
++                       (int)((addr - ((n > 1) ? 0x180 : 0xf0)) / 8),
++                       s->dispc.plane[n].fir_coef_hv[
++                           (addr - ((n > 1) ? 0x180 : 0xf0)) / 8]);
++            return s->dispc.plane[n].fir_coef_hv[
++                (addr - ((n > 1) ? 0x180 : 0xf0)) / 8];
++        }
++        TRACEDISPC("DISPC_%s_FIR_COEF_H%d: 0x%08x", LAYERNAME(n),
++                   (int)((addr - ((n > 1) ? 0x180 : 0xf0)) / 8),
++                   s->dispc.plane[n].fir_coef_h[
++                       (addr - ((n > 1) ? 0x180 : 0xf0)) / 8]);
++        return s->dispc.plane[n].fir_coef_h[
++            (addr - ((n > 1) ? 0x180 : 0xf0)) / 8];
++    case 0x1c0 ... 0x1d0: /* DISPC_VID2_CONV_COEFi */
++        n++;
++    case 0x130 ... 0x140: /* DISPC_VID1_CONV_COEFi */
++        n++;
++        TRACEDISPC("DISPC_%s_CONV_COEF%d: 0x%08x", LAYERNAME(n),
++                   (int)((addr - ((n > 1) ? 0x1c0 : 0x130)) / 4),
++                   s->dispc.plane[n].conv_coef[
++                       (addr - ((n > 1) ? 0x1c0 : 0x130)) / 4]);
++        return s->dispc.plane[n].conv_coef[
++            (addr - ((n > 1) ? 0x1c0 : 0x130)) / 4];
++    case 0x1d4:	/* DISPC_DATA_CYCLE1 */
++    case 0x1d8:	/* DISPC_DATA_CYCLE2 */
++    case 0x1dc:	/* DISPC_DATA_CYCLE3 */
++        TRACEDISPC("DISPC_DATA_CYCLE%d: 0", (int)((addr - 0x1d4) / 4));
++        return 0;
++    case 0x200 ... 0x21c: /* DISPC_VID2_FIR_COEF_Vi */
++        n++;
++    case 0x1e0 ... 0x1fc: /* DISPC_VID1_FIR_COEF_Vi */
++        n++;
++        TRACEDISPC("DISPC_%s_FIR_COEF_V%d: 0x%08x", LAYERNAME(n),
++                   (int)((addr & 0x01f) / 4),
++                   s->dispc.plane[n].fir_coef_v[(addr & 0x01f) / 4]);
++        return s->dispc.plane[n].fir_coef_v[(addr & 0x01f) / 4];
++    case 0x220: /* DISPC_CPR_COEF_R */
++        TRACEDISPC("DISPC_CPR_COEF_R: 0x%08x", s->dispc.cpr_coef_r);
++        return s->dispc.cpr_coef_r;
++    case 0x224: /* DISPC_CPR_COEF_G */
++        TRACEDISPC("DISPC_CPR_COEF_G: 0x%08x", s->dispc.cpr_coef_g);
++        return s->dispc.cpr_coef_g;
++    case 0x228: /* DISPC_CPR_COEF_B */
++        TRACEDISPC("DISPC_CPR_COEF_B: 0x%08x", s->dispc.cpr_coef_b);
++        return s->dispc.cpr_coef_b;
++    case 0x234: /* DISPC_VID2_PRELOAD */
++        n++;
++    case 0x230: /* DISPC_VID1_PRELOAD */
++        n++;
++    case 0x22c: /* DISPC_GFX_PRELOAD */
++        TRACEDISPC("DISPC_%s_PRELOAD: 0x%08x", LAYERNAME(n),
++                   s->dispc.plane[n].preload);
++        return s->dispc.plane[n].preload;
++    default:
++        break;
++    }
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static void omap_disc_write(void *opaque, hwaddr addr,
++                uint32_t value)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *) opaque;
++    uint32_t n = 0;
++
++    switch (addr) {
++    case 0x000: /* DISPC_REVISION */
++    case 0x014: /* DISPC_SYSSTATUS */
++    case 0x05c: /* DISPC_LINE_STATUS */
++    case 0x0a8: /* DISPC_GFX_FIFO_SIZE_STATUS */
++        /* quietly ignore */
++        /*OMAP_RO_REGV(addr, value);*/
++        break;
++    case 0x010:	/* DISPC_SYSCONFIG */
++        TRACEDISPC("DISPC_SYSCONFIG = 0x%08x", value);
++        if (value & 2) { /* SOFTRESET */
++            n00_dss_reset(DEVICE(s));
++        }
++        s->dispc.idlemode = value & ((s->dispc.rev < 0x30) ? 0x301b : 0x331f);
++        break;
++    case 0x018:	/* DISPC_IRQSTATUS */
++        TRACEDISPC("DISPC_IRQSTATUS = 0x%08x", value);
++        s->dispc.irqst &= ~value;
++        n00_dss_interrupt_update(s);
++        break;
++    case 0x01c:	/* DISPC_IRQENABLE */
++        TRACEDISPC("DISPC_IRQENABLE = 0x%08x", value);
++        s->dispc.irqen = value & ((s->dispc.rev < 0x30) ? 0xffff : 0x1ffff);
++        n00_dss_interrupt_update(s);
++        break;
++    case 0x040:	/* DISPC_CONTROL */
++        TRACEDISPC("DISPC_CONTROL = 0x%08x", value);
++        n = s->dispc.control; /* cache old value */
++        /* always clear GODIGITAL and GOLCD to signal completed shadowing */
++        if (s->dispc.rev < 0x30) {
++            s->dispc.control = value & 0x07ff9f9f;
++        } else {
++            s->dispc.control = (value & 0xffff9b9f)
++                | (s->dispc.control & 0x6000);
++        }
++        if (value & (1 << 12))			/* OVERLAY_OPTIMIZATION */
++            if (~((s->dispc.plane[1].attr | s->dispc.plane[2].attr) & 1)) {
++                 TRACEDISPC("Overlay Optimization when no overlay "
++                            "region effectively exists leads to "
++                            "unpredictable behaviour!");
++            }
++        if ((value & 0x21)) { /* GOLCD | LCDENABLE */
++            n00_dss_panel_go(s, &s->lcd, s->dispc.size_lcd);
++        }
++        if ((value & 0x42)) { /* GODIGITAL | DIGITALENABLE */
++            n00_dss_panel_go(s, &s->dig, s->dispc.size_dig);
++        }
++        if (value & 1) { /* LCDENABLE */
++            if ((value & (1 << 11))) { /* STALLMODE */
++                if ((s->rfbi.control & 0x11) && /* ITE | ENABLE */
++                    !(s->rfbi.config[0] & s->rfbi.config[1] & 0xc)) { /* TRIGGERMODE */
++                    omap_rfbi_transfer_start(s);
++                }
++                if (s->dsi.ctrl & 1) { /* IF_EN */
++                    int ch;
++                    for (ch = 0; ch < 4; ch++) {
++                        if ((s->dsi.vc[ch].ctrl & 1) &&     /* VC_EN */
++                            (s->dsi.vc[ch].te >> 30) & 3) { /* TE_START | TE_EN */
++                            omap_dsi_transfer_start(s, ch);
++                        }
++                    }
++                }
++            } else if (s->dispc.lcdframer) {
++                timer_mod(s->dispc.lcdframer,
++                               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)
++                               + NANOSECONDS_PER_SECOND / 10);
++            }
++        } else if (n & 1) { /* enable -> disable, signal wip frame done */
++            s->dispc.control |= 1;
++            n00_dss_framedone(s);
++            s->dispc.control &= ~1;
++        }
++        break;
++    case 0x044:	/* DISPC_CONFIG */
++        TRACEDISPC("DISPC_CONFIG = 0x%08x", value);
++        s->dispc.config = value & 0x3fff;
++        /* XXX:
++         * bits 2:1 (LOADMODE) reset to 0 after set to 1 and palette loaded
++         * bits 2:1 (LOADMODE) reset to 2 after set to 3 and palette loaded
++         */
++        break;
++    case 0x048:	/* DISPC_CAPABLE */
++        TRACEDISPC("DISPC_CAPABLE = 0x%08x", value);
++        s->dispc.capable = value & 0x3ff;
++        break;
++    case 0x04c:	/* DISPC_DEFAULT_COLOR0 */
++        TRACEDISPC("DISPC_DEFAULT_COLOR0 = 0x%08x", value);
++        s->dispc.bg[0] = value & 0xffffff;
++        break;
++    case 0x050:	/* DISPC_DEFAULT_COLOR1 */
++        TRACEDISPC("DISPC_DEFAULT_COLOR1 = 0x%08x", value);
++        s->dispc.bg[1] = value & 0xffffff;
++        break;
++    case 0x054:	/* DISPC_TRANS_COLOR0 */
++        TRACEDISPC("DISPC_TRANS_COLOR0 = 0x%08x", value);
++        s->dispc.trans[0] = value & 0xffffff;
++        break;
++    case 0x058:	/* DISPC_TRANS_COLOR1 */
++        TRACEDISPC("DISPC_TRANS_COLOR1 = 0x%08x", value);
++        s->dispc.trans[1] = value & 0xffffff;
++        break;
++    case 0x060:	/* DISPC_LINE_NUMBER */
++        TRACEDISPC("DISPC_LINE_NUMBER = 0x%08x", value);
++        s->dispc.line = value & 0x7ff;
++        break;
++    case 0x064:	/* DISPC_TIMING_H */
++        TRACEDISPC("DISPC_TIMING_H = 0x%08x", value);
++        s->dispc.timing[0] = value & 0x0ff0ff3f;
++        break;
++    case 0x068:	/* DISPC_TIMING_V */
++        TRACEDISPC("DISPC_TIMING_V = 0x%08x", value);
++        s->dispc.timing[1] = value & 0x0ff0ff3f;
++        break;
++    case 0x06c:	/* DISPC_POL_FREQ */
++        TRACEDISPC("DISPC_POL_FREQ = 0x%08x", value);
++        s->dispc.timing[2] = value & 0x0003ffff;
++        break;
++    case 0x070:	/* DISPC_DIVISOR */
++        TRACEDISPC("DISPC_DIVISOR = 0x%08x", value);
++        s->dispc.timing[3] = value & 0x00ff00ff;
++        break;
++    case 0x074: /* DISPC_GLOBAL_ALPHA */
++        TRACEDISPC("DISPC_GLOBAL_ALPHA = 0x%08x", value);
++        s->dispc.global_alpha = value & 0x00ff00ff;
++        break;
++    case 0x078:	/* DISPC_SIZE_DIG */
++        TRACEDISPC("DISPC_SIZE_DIG = 0x%08x (%dx%d)",
++                   value, (value & 0x7ff) + 1, ((value >> 16) & 0x7ff) + 1);
++        s->dispc.size_dig = value;
++        break;
++    case 0x07c:	/* DISPC_SIZE_LCD */
++        TRACEDISPC("DISPC_SIZE_LCD = 0x%08x (%dx%d)",
++                   value, (value & 0x7ff) + 1, ((value >> 16) & 0x7ff) + 1);
++        s->dispc.size_lcd = value;
++        break;
++    case 0x14c:	/* DISPC_VID2_BA0 */
++        n++;
++    case 0x0bc: /* DISPC_VID1_BA0 */
++        n++;
++    case 0x080:	/* DISPC_GFX_BA0 */
++        TRACEDISPC("DISPC_%s_BA0 = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].addr[0] = (hwaddr) value;
++        break;
++    case 0x150:	/* DISPC_VID2_BA1 */
++        n++;
++    case 0x0c0:	/* DISPC_VID1_BA1 */
++        n++;
++    case 0x084:	/* DISPC_GFX_BA1 */
++        TRACEDISPC("DISPC_%s_BA1 = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].addr[1] = (hwaddr) value;
++        break;
++    case 0x154:	/* DISPC_VID2_POSITION */
++        n++;
++    case 0x0c4:	/* DISPC_VID1_POSITION */
++        n++;
++    case 0x088:	/* DISPC_GFX_POSITION */
++        s->dispc.plane[n].posx = ((value >>  0) & 0x7ff);		/* GFXPOSX */
++        s->dispc.plane[n].posy = ((value >> 16) & 0x7ff);		/* GFXPOSY */
++        TRACEDISPC("DISPC_%s_POSITION = 0x%08x (%d,%d)", LAYERNAME(n),
++                 value, s->dispc.plane[n].posx, s->dispc.plane[n].posy);
++        break;
++    case 0x158:	/* DISPC_VID2_SIZE */
++        n++;
++    case 0x0c8:	/* DISPC_VID1_SIZE */
++        n++;
++    case 0x08c:	/* DISPC_GFX_SIZE */
++        s->dispc.plane[n].nx = ((value >>  0) & 0x7ff) + 1;		/* GFXSIZEX */
++        s->dispc.plane[n].ny = ((value >> 16) & 0x7ff) + 1;		/* GFXSIZEY */
++        TRACEDISPC("DISPC_%s_SIZE = 0x%08x (%dx%d)", LAYERNAME(n),
++                 value, s->dispc.plane[n].nx, s->dispc.plane[n].ny);
++        break;
++    case 0x0a0:	/* DISPC_GFX_ATTRIBUTES */
++        TRACEDISPC("DISPC_GFX_ATTRIBUTES = 0x%08x", value);
++        if (s->mpu_model < omap3630) {
++            value &= 0xffff;
++        } else {
++            value &= 0x1000ffff;
++        }
++        s->dispc.plane[0].attr = value;
++        if (value & (3 << 9)) {
++            hw_error("%s: Big-endian pixel format not supported",
++                     __FUNCTION__);
++        }
++        s->dispc.plane[0].enable = value & 1;
++        s->dispc.plane[0].bpp = (value >> 1) & 0xf;
++        s->dispc.plane[0].rotation_flag = (value >> 12) & 0x3;
++        s->dispc.plane[0].gfx_format = (value >> 1) & 0xf;
++        s->dispc.plane[0].gfx_channel = (value >> 8) & 0x1;
++        break;
++    case 0x160:	/* DISPC_VID2_FIFO_TRESHOLD */
++        n++;
++    case 0x0d0:	/* DISPC_VID1_FIFO_TRESHOLD */
++        n++;
++    case 0x0a4:	/* DISPC_GFX_FIFO_THRESHOLD */
++        TRACEDISPC("DISPC_%s_FIFO_THRESHOLD = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].tresh = value & ((s->dispc.rev < 0x30)
++                                       ? 0x01ff01ff : 0x0fff0fff);
++        break;
++    case 0x168:	/* DISPC_VID2_ROW_INC */
++        n++;
++    case 0x0d8:	/* DISPC_VID1_ROW_INC */
++        n++;
++    case 0x0ac:	/* DISPC_GFX_ROW_INC */
++        TRACEDISPC("DISPC_%s_ROW_INC = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].rowinc = value;
++        break;
++    case 0x16c:	/* DISPC_VID2_PIXEL_INC */
++        n++;
++    case 0x0dc:	/* DISPC_VID1_PIXEL_INC */
++        n++;
++    case 0x0b0:	/* DISPC_GFX_PIXEL_INC */
++        TRACEDISPC("DISPC_%s_PIXEL_INC = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].colinc = value;
++        break;
++    case 0x0b4:	/* DISPC_GFX_WINDOW_SKIP */
++        TRACEDISPC("DISPC_GFX_WINDOW_SKIP = 0x%08x", value);
++        s->dispc.plane[0].wininc = value;
++        break;
++    case 0x0b8:	/* DISPC_GFX_TABLE_BA */
++        TRACEDISPC("DISPC_GFX_TABLE_BA = 0x%08x", value);
++        s->dispc.plane[0].addr[2] = (hwaddr) value;
++        break;
++    case 0x15c:	/* DISPC_VID2_ATTRIBUTES */
++        n++;
++    case 0x0cc:	/* DISPC_VID1_ATTRIBUTES */
++        n++;
++        TRACEDISPC("DISPC_%s_ATTRIBUTES = 0x%08x", LAYERNAME(n), value);
++        if (s->mpu_model < omap3630) {
++            value &= 0x01ffffff;
++        } else {
++            value &= 0x11ffffff;
++        }
++        s->dispc.plane[n].attr = value;
++        break;
++    case 0x170:	/* DISPC_VID2_FIR */
++        n++;
++    case 0x0e0:	/* DISPC_VID1_FIR */
++        n++;
++        TRACEDISPC("DISPC_%s_FIR = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].fir = value & 0x1fff1fff;
++        break;
++    case 0x174:	/* DISPC_VID2_PICTURE_SIZE */
++        n++;
++    case 0x0e4:	/* DISPC_VID1_PICTURE_SIZE */
++        n++;
++        TRACEDISPC("DISPC_%s_PICTURE_SIZE = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].picture_size = value & 0x07ff07ff;
++        break;
++    case 0x178:	/* DISPC_VID2_ACCU0 */
++    case 0x17c:	/* DISPC_VID2_ACCU1 */
++        n++;
++    case 0x0e8:	/* DISPC_VID1_ACCU0 */
++    case 0x0ec:	/* DISPC_VID1_ACCU1 */
++        n++;
++        TRACEDISPC("DISPC_%s_ACCU%d = 0x%08x", LAYERNAME(n),
++                 (int)((addr >> 1) & 1), value);
++        s->dispc.plane[n].accu[(addr >> 1) & 1] = value & 0x03ff03ff;
++        break;
++    case 0x180 ... 0x1bc:	/* DISPC_VID2_FIR_COEF */
++        n++;
++    case 0x0f0 ... 0x12c:	/* DISPC_VID1_FIR_COEF */
++        n++;
++        if (addr & 4) {
++            TRACEDISPC("DISPC_%s_FIR_COEF_HV%d = 0x%08x", LAYERNAME(n),
++                     (int)((addr - ((n > 1) ? 0x180 : 0xf0)) / 8), value);
++            s->dispc.plane[n].fir_coef_hv[(addr - ((n > 1) ? 0x180 : 0xf0)) / 8] = value;
++        } else {
++            TRACEDISPC("DISPC_%s_FIR_COEF_H%d = 0x%08x", LAYERNAME(n),
++                     (int)((addr - ((n > 1) ? 0x180 : 0xf0)) / 8), value);
++            s->dispc.plane[n].fir_coef_h[(addr - ((n > 1) ? 0x180 : 0xf0)) / 8] = value;
++        }
++        break;
++    case 0x1c0 ... 0x1d0: /* DISPC_VID2_CONV_COEFi */
++        n++;
++    case 0x130 ... 0x140: /* DISPC_VID1_CONV_COEFi */
++        n++;
++        TRACEDISPC("DISPC_%s_CONV_COEF%d = 0x%08x", LAYERNAME(n),
++                 (int)((addr - ((n > 1) ? 0x1c0 : 0x130)) / 4), value);
++        s->dispc.plane[n].conv_coef[(addr - ((n > 1) ? 0x1c0 : 0x130)) / 4] = value;
++        break;
++    case 0x1d4:	/* DISPC_DATA_CYCLE1 */
++    case 0x1d8:	/* DISPC_DATA_CYCLE2 */
++    case 0x1dc:	/* DISPC_DATA_CYCLE3 */
++        TRACEDISPC("DISPC_DATA_CYCLE%d = 0x%08x (ignored)",
++                 (int)((addr - 0x1d4) / 4), value);
++        break;
++    case 0x200 ... 0x21c: /* DISPC_VID2_FIR_COEF_Vi */
++        n++;
++    case 0x1e0 ... 0x1fc: /* DISPC_VID1_FIR_COEF_Vi */
++        n++;
++        TRACEDISPC("DISPC_%s_FIR_COEF_V%d = 0x%08x", LAYERNAME(n),
++                 (int)((addr & 0x01f) / 4), value);
++        s->dispc.plane[n].fir_coef_v[(addr & 0x01f) / 4] = value & 0x0000ffff;
++        break;
++    case 0x220: /* DISPC_CPR_COEF_R */
++        TRACEDISPC("DISPC_CPR_COEF_R = 0x%08x", value);
++        s->dispc.cpr_coef_r = value & 0xffbffbff;
++        break;
++    case 0x224: /* DISPC_CPR_COEF_G */
++        TRACEDISPC("DISPC_CPR_COEF_G = 0x%08x", value);
++        s->dispc.cpr_coef_g = value & 0xffbffbff;
++        break;
++    case 0x228: /* DISPC_CPR_COEF_B */
++        TRACEDISPC("DISPC_CPR_COEF_B = 0x%08x", value);
++        s->dispc.cpr_coef_b = value & 0xffbffbff;
++        break;
++    case 0x234: /* DISPC_VID2_PRELOAD */
++        n++;
++    case 0x230: /* DISPC_VID1_PRELOAD */
++        n++;
++    case 0x22c: /* DISPC_GFX_PRELOAD */
++        TRACEDISPC("DISPC_%s_PRELOAD = 0x%08x", LAYERNAME(n), value);
++        s->dispc.plane[n].preload = value & 0x0fff;
++        break;
++    default:
++        OMAP_BAD_REGV(addr, value);
++        break;
++    }
++}
++
++
++
++static uint32_t omap_rfbi_read(void *opaque, hwaddr addr)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *) opaque;
++
++    switch (addr) {
++    case 0x00:	/* RFBI_REVISION */
++        TRACERFBI("RFBI_REVISION: 0x10");
++        return 0x10;
++
++    case 0x10:	/* RFBI_SYSCONFIG */
++        TRACERFBI("RFBI_SYSCONFIG: 0x%08x", s->rfbi.idlemode);
++        return s->rfbi.idlemode;
++
++    case 0x14:	/* RFBI_SYSSTATUS */
++        TRACERFBI("RFBI_SYSSTATUS: 0x%08x", 1 | (s->rfbi.busy << 8));
++        return 1 | (s->rfbi.busy << 8); /* RESETDONE */
++
++    case 0x40:	/* RFBI_CONTROL */
++        TRACERFBI("RFBI_CONTROL: 0x%08x", s->rfbi.control);
++        return s->rfbi.control;
++
++    case 0x44:	/* RFBI_PIXELCNT */
++        TRACERFBI("RFBI_PIXELCNT: 0x%08x", s->rfbi.pixels);
++        return s->rfbi.pixels;
++
++    case 0x48:	/* RFBI_LINE_NUMBER */
++        TRACERFBI("RFBI_LINE_NUMBER: 0x%08x", s->rfbi.skiplines);
++        return s->rfbi.skiplines;
++
++    case 0x58:	/* RFBI_READ */
++    case 0x5c:	/* RFBI_STATUS */
++        TRACERFBI("RFBI_READ/STATUS: 0x%08x", s->rfbi.rxbuf);
++        return s->rfbi.rxbuf;
++
++    case 0x60:	/* RFBI_CONFIG0 */
++        TRACERFBI("RFBI_CONFIG0: 0x%08x", s->rfbi.config[0]);
++        return s->rfbi.config[0];
++    case 0x64:	/* RFBI_ONOFF_TIME0 */
++        TRACERFBI("RFBI_ONOFF_TIME0: 0x%08x", s->rfbi.time[0]);
++        return s->rfbi.time[0];
++    case 0x68:	/* RFBI_CYCLE_TIME0 */
++        TRACERFBI("RFBI_CYCLE_TIME0: 0x%08x", s->rfbi.time[1]);
++        return s->rfbi.time[1];
++    case 0x6c:	/* RFBI_DATA_CYCLE1_0 */
++        TRACERFBI("RFBI_DATA_CYCLE1_0: 0x%08x", s->rfbi.data[0]);
++        return s->rfbi.data[0];
++    case 0x70:	/* RFBI_DATA_CYCLE2_0 */
++        TRACERFBI("RFBI_DATA_CYCLE2_0: 0x%08x", s->rfbi.data[1]);
++        return s->rfbi.data[1];
++    case 0x74:	/* RFBI_DATA_CYCLE3_0 */
++        TRACERFBI("RFBI_DATA_CYCLE3_0: 0x%08x", s->rfbi.data[2]);
++        return s->rfbi.data[2];
++
++    case 0x78:	/* RFBI_CONFIG1 */
++        TRACERFBI("RFBI_CONFIG1: 0x%08x", s->rfbi.config[1]);
++        return s->rfbi.config[1];
++    case 0x7c:	/* RFBI_ONOFF_TIME1 */
++        TRACERFBI("RFBI_ONOFF_TIME1: 0x%08x", s->rfbi.time[2]);
++        return s->rfbi.time[2];
++    case 0x80:	/* RFBI_CYCLE_TIME1 */
++        TRACERFBI("RFBI_CYCLE_TIME1: 0x%08x", s->rfbi.time[3]);
++        return s->rfbi.time[3];
++    case 0x84:	/* RFBI_DATA_CYCLE1_1 */
++        TRACERFBI("RFBI_DATA_CYCLE1_1: 0x%08x", s->rfbi.data[3]);
++        return s->rfbi.data[3];
++    case 0x88:	/* RFBI_DATA_CYCLE2_1 */
++        TRACERFBI("RFBI_DATA_CYCLE2_1: 0x%08x", s->rfbi.data[4]);
++        return s->rfbi.data[4];
++    case 0x8c:	/* RFBI_DATA_CYCLE3_1 */
++        TRACERFBI("RFBI_DATA_CYCLE3_1: 0x%08x", s->rfbi.data[5]);
++        return s->rfbi.data[5];
++
++    case 0x90:	/* RFBI_VSYNC_WIDTH */
++        TRACERFBI("RFBI_VSYNC_WIDTH: 0x%08x", s->rfbi.vsync);
++        return s->rfbi.vsync;
++    case 0x94:	/* RFBI_HSYNC_WIDTH */
++        TRACERFBI("RFBI_HSYNC_WIDTH: 0x%08x", s->rfbi.hsync);
++        return s->rfbi.hsync;
++    }
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static void omap_rfbi_write(void *opaque, hwaddr addr,
++                uint32_t value)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *) opaque;
++
++    switch (addr) {
++    case 0x10:	/* RFBI_SYSCONFIG */
++        TRACERFBI("RFBI_SYSCONFIG = 0x%08x", value);
++        if (value & 2)						/* SOFTRESET */
++            omap_rfbi_reset(s);
++        s->rfbi.idlemode = value & 0x19;
++        break;
++
++    case 0x40:	/* RFBI_CONTROL */
++        TRACERFBI("RFBI_CONTROL = 0x%08x", value);
++        if (s->dispc.rev < 0x30)
++            s->rfbi.control = value & 0x1f;
++        else
++            s->rfbi.control = value & 0x1ff;
++        s->rfbi.enable = value & 1;
++        if ((s->dispc.control & 1) && /* LCDENABLE */
++            (value & 0x10) &&         /* ITE */
++            !(s->rfbi.config[0] & s->rfbi.config[1] & 0xc)) /* TRIGGERMODE */
++            omap_rfbi_transfer_start(s);
++        break;
++
++    case 0x44:	/* RFBI_PIXELCNT */
++        TRACERFBI("RFBI_PIXELCNT = 0x%08x", value);
++        s->rfbi.pixels = value;
++        break;
++
++    case 0x48:	/* RFBI_LINE_NUMBER */
++        TRACERFBI("RFBI_LINE_NUMBER = 0x%08x", value);
++        s->rfbi.skiplines = value & 0x7ff;
++        break;
++
++    case 0x4c:	/* RFBI_CMD */
++        TRACERFBI("RFBI_CMD = 0x%08x", value);
++        if ((s->rfbi.control & (1 << 2)) && s->rfbi.chip[0])
++            s->rfbi.chip[0]->write(s->rfbi.chip[0]->opaque, 0, value & 0xffff);
++        if ((s->rfbi.control & (1 << 3)) && s->rfbi.chip[1])
++            s->rfbi.chip[1]->write(s->rfbi.chip[1]->opaque, 0, value & 0xffff);
++        break;
++    case 0x50:	/* RFBI_PARAM */
++        TRACERFBI("RFBI_PARAM = 0x%08x", value);
++        if ((s->rfbi.control & (1 << 2)) && s->rfbi.chip[0])
++            s->rfbi.chip[0]->write(s->rfbi.chip[0]->opaque, 1, value & 0xffff);
++        if ((s->rfbi.control & (1 << 3)) && s->rfbi.chip[1])
++            s->rfbi.chip[1]->write(s->rfbi.chip[1]->opaque, 1, value & 0xffff);
++        break;
++    case 0x54:	/* RFBI_DATA */
++        TRACERFBI("RFBI_DATA = 0x%08x", value);
++        /* TODO: take into account the format set up in s->rfbi.config[?] and
++         * s->rfbi.data[?], but special-case the most usual scenario so that
++         * speed doesn't suffer.  */
++        if ((s->rfbi.control & (1 << 2)) && s->rfbi.chip[0]) {
++            s->rfbi.chip[0]->write(s->rfbi.chip[0]->opaque, 1, value & 0xffff);
++            s->rfbi.chip[0]->write(s->rfbi.chip[0]->opaque, 1, value >> 16);
++        }
++        if ((s->rfbi.control & (1 << 3)) && s->rfbi.chip[1]) {
++            s->rfbi.chip[1]->write(s->rfbi.chip[1]->opaque, 1, value & 0xffff);
++            s->rfbi.chip[1]->write(s->rfbi.chip[1]->opaque, 1, value >> 16);
++        }
++        if (!-- s->rfbi.pixels)
++            omap_rfbi_transfer_stop(s);
++        break;
++    case 0x58:	/* RFBI_READ */
++        TRACERFBI("RFBI_READ = 0x%08x", value);
++        if ((s->rfbi.control & (1 << 2)) && s->rfbi.chip[0])
++            s->rfbi.rxbuf = s->rfbi.chip[0]->read(s->rfbi.chip[0]->opaque, 1);
++        else if ((s->rfbi.control & (1 << 3)) && s->rfbi.chip[1])
++            s->rfbi.rxbuf = s->rfbi.chip[0]->read(s->rfbi.chip[0]->opaque, 1);
++        if (!-- s->rfbi.pixels)
++            omap_rfbi_transfer_stop(s);
++        break;
++
++    case 0x5c:	/* RFBI_STATUS */
++        TRACERFBI("RFBI_STATUS = 0x%08x", value);
++        if ((s->rfbi.control & (1 << 2)) && s->rfbi.chip[0])
++            s->rfbi.rxbuf = s->rfbi.chip[0]->read(s->rfbi.chip[0]->opaque, 0);
++        else if ((s->rfbi.control & (1 << 3)) && s->rfbi.chip[1])
++            s->rfbi.rxbuf = s->rfbi.chip[0]->read(s->rfbi.chip[0]->opaque, 0);
++        if (!-- s->rfbi.pixels)
++            omap_rfbi_transfer_stop(s);
++        break;
++
++    case 0x60:	/* RFBI_CONFIG0 */
++        TRACERFBI("RFBI_CONFIG0 = 0x%08x", value);
++        s->rfbi.config[0] = value & 0x003f1fff;
++        break;
++
++    case 0x64:	/* RFBI_ONOFF_TIME0 */
++        TRACERFBI("RFBI_ONOFF_TIME0 = 0x%08x", value);
++        s->rfbi.time[0] = value & 0x3fffffff;
++        break;
++    case 0x68:	/* RFBI_CYCLE_TIME0 */
++        TRACERFBI("RFBI_CYCLE_TIME0 = 0x%08x", value);
++        s->rfbi.time[1] = value & 0x0fffffff;
++        break;
++    case 0x6c:	/* RFBI_DATA_CYCLE1_0 */
++        TRACERFBI("RFBI_DATA_CYCLE1_0 = 0x%08x", value);
++        s->rfbi.data[0] = value & 0x0f1f0f1f;
++        break;
++    case 0x70:	/* RFBI_DATA_CYCLE2_0 */
++        TRACERFBI("RFBI_DATA_CYCLE2_0 = 0x%08x", value);
++        s->rfbi.data[1] = value & 0x0f1f0f1f;
++        break;
++    case 0x74:	/* RFBI_DATA_CYCLE3_0 */
++        TRACERFBI("RFBI_DATA_CYCLE3_0 = 0x%08x", value);
++        s->rfbi.data[2] = value & 0x0f1f0f1f;
++        break;
++    case 0x78:	/* RFBI_CONFIG1 */
++        TRACERFBI("RFBI_CONFIG1 = 0x%08x", value);
++        s->rfbi.config[1] = value & 0x003f1fff;
++        break;
++
++    case 0x7c:	/* RFBI_ONOFF_TIME1 */
++        TRACERFBI("RFBI_ONOFF_TIME1 = 0x%08x", value);
++        s->rfbi.time[2] = value & 0x3fffffff;
++        break;
++    case 0x80:	/* RFBI_CYCLE_TIME1 */
++        TRACERFBI("RFBI_CYCLE_TIME1 = 0x%08x", value);
++        s->rfbi.time[3] = value & 0x0fffffff;
++        break;
++    case 0x84:	/* RFBI_DATA_CYCLE1_1 */
++        TRACERFBI("RFBI_DATA_CYCLE1_1 = 0x%08x", value);
++        s->rfbi.data[3] = value & 0x0f1f0f1f;
++        break;
++    case 0x88:	/* RFBI_DATA_CYCLE2_1 */
++        TRACERFBI("RFBI_DATA_CYCLE2_1 = 0x%08x", value);
++        s->rfbi.data[4] = value & 0x0f1f0f1f;
++        break;
++    case 0x8c:	/* RFBI_DATA_CYCLE3_1 */
++        TRACERFBI("RFBI_DATA_CYCLE3_1 = 0x%08x", value);
++        s->rfbi.data[5] = value & 0x0f1f0f1f;
++        break;
++
++    case 0x90:	/* RFBI_VSYNC_WIDTH */
++        TRACERFBI("RFBI_VSYNC_WIDTH = 0x%08x", value);
++        s->rfbi.vsync = value & 0xffff;
++        break;
++    case 0x94:	/* RFBI_HSYNC_WIDTH */
++        TRACERFBI("RFBI_HSYNC_WIDTH = 0x%08x", value);
++        s->rfbi.hsync = value & 0xffff;
++        break;
++
++    default:
++        OMAP_BAD_REGV(addr, value);
++        break;
++    }
++}
++
++
++
++static uint32_t omap_venc_read(void *opaque, hwaddr addr)
++{
++    switch (addr) {
++    case 0x00:	/* REV_ID */
++        return 0x2;
++    case 0x04:	/* STATUS */
++    case 0x08:	/* F_CONTROL */
++    case 0x10:	/* VIDOUT_CTRL */
++    case 0x14:	/* SYNC_CTRL */
++    case 0x1c:	/* LLEN */
++    case 0x20:	/* FLENS */
++    case 0x24:	/* HFLTR_CTRL */
++    case 0x28:	/* CC_CARR_WSS_CARR */
++    case 0x2c:	/* C_PHASE */
++    case 0x30:	/* GAIN_U */
++    case 0x34:	/* GAIN_V */
++    case 0x38:	/* GAIN_Y */
++    case 0x3c:	/* BLACK_LEVEL */
++    case 0x40:	/* BLANK_LEVEL */
++    case 0x44:	/* X_COLOR */
++    case 0x48:	/* M_CONTROL */
++    case 0x4c:	/* BSTAMP_WSS_DATA */
++    case 0x50:	/* S_CARR */
++    case 0x54:	/* LINE21 */
++    case 0x58:	/* LN_SEL */
++    case 0x5c:	/* L21__WC_CTL */
++    case 0x60:	/* HTRIGGER_VTRIGGER */
++    case 0x64:	/* SAVID__EAVID */
++    case 0x68:	/* FLEN__FAL */
++    case 0x6c:	/* LAL__PHASE_RESET */
++    case 0x70:	/* HS_INT_START_STOP_X */
++    case 0x74:	/* HS_EXT_START_STOP_X */
++    case 0x78:	/* VS_INT_START_X */
++    case 0x7c:	/* VS_INT_STOP_X__VS_INT_START_Y */
++    case 0x80:	/* VS_INT_STOP_Y__VS_INT_START_X */
++    case 0x84:	/* VS_EXT_STOP_X__VS_EXT_START_Y */
++    case 0x88:	/* VS_EXT_STOP_Y */
++    case 0x90:	/* AVID_START_STOP_X */
++    case 0x94:	/* AVID_START_STOP_Y */
++    case 0xa0:	/* FID_INT_START_X__FID_INT_START_Y */
++    case 0xa4:	/* FID_INT_OFFSET_Y__FID_EXT_START_X */
++    case 0xa8:	/* FID_EXT_START_Y__FID_EXT_OFFSET_Y */
++    case 0xb0:	/* TVDETGP_INT_START_STOP_X */
++    case 0xb4:	/* TVDETGP_INT_START_STOP_Y */
++    case 0xb8:	/* GEN_CTRL */
++    case 0xc4:	/* DAC_TST__DAC_A */
++    case 0xc8:	/* DAC_B__DAC_C */
++       return 0;
++    default:
++        break;
++    }
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static void omap_venc_write(void *opaque, hwaddr addr,
++                uint32_t value)
++{
++    switch (addr) {
++    case 0x00: /* REV_ID */
++    case 0x04: /* STATUS */
++        /* read-only, ignore */
++        break;
++    case 0x08:	/* F_CONTROL */
++    case 0x10:	/* VIDOUT_CTRL */
++    case 0x14:	/* SYNC_CTRL */
++    case 0x1c:	/* LLEN */
++    case 0x20:	/* FLENS */
++    case 0x24:	/* HFLTR_CTRL */
++    case 0x28:	/* CC_CARR_WSS_CARR */
++    case 0x2c:	/* C_PHASE */
++    case 0x30:	/* GAIN_U */
++    case 0x34:	/* GAIN_V */
++    case 0x38:	/* GAIN_Y */
++    case 0x3c:	/* BLACK_LEVEL */
++    case 0x40:	/* BLANK_LEVEL */
++    case 0x44:	/* X_COLOR */
++    case 0x48:	/* M_CONTROL */
++    case 0x4c:	/* BSTAMP_WSS_DATA */
++    case 0x50:	/* S_CARR */
++    case 0x54:	/* LINE21 */
++    case 0x58:	/* LN_SEL */
++    case 0x5c:	/* L21__WC_CTL */
++    case 0x60:	/* HTRIGGER_VTRIGGER */
++    case 0x64:	/* SAVID__EAVID */
++    case 0x68:	/* FLEN__FAL */
++    case 0x6c:	/* LAL__PHASE_RESET */
++    case 0x70:	/* HS_INT_START_STOP_X */
++    case 0x74:	/* HS_EXT_START_STOP_X */
++    case 0x78:	/* VS_INT_START_X */
++    case 0x7c:	/* VS_INT_STOP_X__VS_INT_START_Y */
++    case 0x80:	/* VS_INT_STOP_Y__VS_INT_START_X */
++    case 0x84:	/* VS_EXT_STOP_X__VS_EXT_START_Y */
++    case 0x88:	/* VS_EXT_STOP_Y */
++    case 0x90:	/* AVID_START_STOP_X */
++    case 0x94:	/* AVID_START_STOP_Y */
++    case 0xa0:	/* FID_INT_START_X__FID_INT_START_Y */
++    case 0xa4:	/* FID_INT_OFFSET_Y__FID_EXT_START_X */
++    case 0xa8:	/* FID_EXT_START_Y__FID_EXT_OFFSET_Y */
++    case 0xb0:	/* TVDETGP_INT_START_STOP_X */
++    case 0xb4:	/* TVDETGP_INT_START_STOP_Y */
++    case 0xb8:	/* GEN_CTRL */
++    case 0xc4:	/* DAC_TST__DAC_A */
++    case 0xc8:	/* DAC_B__DAC_C */
++        break;
++    default:
++        OMAP_BAD_REGV(addr, value);
++        break;
++    }
++}
++
++
++
++
++static uint32_t omap_dsi_pull_rx_fifo(struct n00_dss_s *s, int ch)
++{
++    int v = 0;
++
++    if (!s->dsi.vc[ch].rx_fifo_len) {
++        TRACEDSI("vc%d rx fifo underflow!", ch);
++    } else {
++        v = s->dsi.vc[ch].rx_fifo[s->dsi.vc[ch].rx_fifo_pos++];
++        s->dsi.vc[ch].rx_fifo_len--;
++        if (s->dsi.vc[ch].rx_fifo_pos >= OMAP_DSI_RX_FIFO_SIZE)
++            s->dsi.vc[ch].rx_fifo_pos = 0;
++    }
++
++    return v;
++}
++
++static uint32_t omap_dsi_read(void *opaque, hwaddr addr)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *)opaque;
++    uint32_t x, y;
++
++    switch (addr) {
++    case 0x000: /* DSI_REVISION */
++        TRACEDSI("DSI_REVISION = 0x10");
++        return 0x10;
++    case 0x010: /* DSI_SYSCONFIG */
++        TRACEDSI("DSI_SYSCONFIG = 0x%04x", s->dsi.sysconfig);
++        return s->dsi.sysconfig;
++    case 0x014: /* DSI_SYSSTATUS */
++        TRACEDSI("DSI_SYSSTATUS = 0x01");
++        return 1; /* RESET_DONE */
++    case 0x018: /* DSI_IRQSTATUS */
++        TRACEDSI("DSI_IRQSTATUS = 0x%08x", s->dsi.irqst);
++        return s->dsi.irqst;
++    case 0x01c: /* DSI_IRQENABLE */
++        TRACEDSI("DSI_IRQENABLE = 0x%08x", s->dsi.irqen);
++        return s->dsi.irqen;
++    case 0x040: /* DSI_CTRL */
++        TRACEDSI("DSI_CTRL = 0x%08x", s->dsi.ctrl);
++        return s->dsi.ctrl;
++    case 0x048: /* DSI_COMPLEXIO_CFG1 */
++        TRACEDSI("DSI_COMPLEXIO_CFG1 = 0x%08x", s->dsi.complexio_cfg1);
++        return s->dsi.complexio_cfg1;
++    case 0x04c: /* DSI_COMPLEXIO_IRQSTATUS */
++        TRACEDSI("DSI_COMPLEXIO_IRQSTATUS = 0x%08x", s->dsi.complexio_irqst);
++        return s->dsi.complexio_irqst;
++    case 0x050: /* DSI_COMPLEXIO_IRQENABLE */
++        TRACEDSI("DSI_COMPLEXIO_IRQENABLE = 0x%08x", s->dsi.complexio_irqen);
++        return s->dsi.complexio_irqen;
++    case 0x054: /* DSI_CLK_CTRL */
++        TRACEDSI("DSI_CLK_CTRL = 0x%08x", s->dsi.clk_ctrl);
++        return s->dsi.clk_ctrl;
++    case 0x058: /* DSI_TIMING1 */
++        TRACEDSI("DSI_TIMING1 = 0x%08x", s->dsi.timing1);
++        return s->dsi.timing1;
++    case 0x05c: /* DSI_TIMING2 */
++        TRACEDSI("DSI_TIMING2 = 0x%08x", s->dsi.timing2);
++        return s->dsi.timing2;
++    case 0x060: /* DSI_VM_TIMING1 */
++        TRACEDSI("DSI_VM_TIMING1 = 0x%08x", s->dsi.vm_timing1);
++        return s->dsi.vm_timing1;
++    case 0x064: /* DSI_VM_TIMING2 */
++        TRACEDSI("DSI_VM_TIMING2 = 0x%08x", s->dsi.vm_timing2);
++        return s->dsi.vm_timing2;
++    case 0x068: /* DSI_VM_TIMING3 */
++        TRACEDSI("DSI_VM_TIMING3 = 0x%08x", s->dsi.vm_timing3);
++        return s->dsi.vm_timing3;
++    case 0x06c: /* DSI_CLK_TIMING */
++        TRACEDSI("DSI_CLK_TIMING = 0x%08x", s->dsi.clk_timing);
++        return s->dsi.clk_timing;
++    case 0x070: /* DSI_TX_FIFO_VC_SIZE */
++        TRACEDSI("DSI_TX_FIFO_VC_SIZE = 0x%08x", s->dsi.tx_fifo_vc_size);
++        return s->dsi.tx_fifo_vc_size;
++    case 0x074: /* DSI_RX_FIFO_VC_SIZE */
++        TRACEDSI("DSI_RX_FIFO_VC_SIZE = 0x%08x", s->dsi.rx_fifo_vc_size);
++        return s->dsi.rx_fifo_vc_size;
++    case 0x078: /* DSI_COMPLEXIO_CFG_2 */
++        TRACEDSI("DSI_COMPLEXIO_CFG_2 = 0x%08x", s->dsi.complexio_cfg2);
++        return s->dsi.complexio_cfg2;
++    case 0x07c: /* DSI_RX_FIFO_VC_FULLNESS */
++        TRACEDSI("DSI_RX_FIFO_VC_FULLNESS = 0x00");
++        return 0;
++    case 0x080: /* DSI_VM_TIMING4 */
++        TRACEDSI("DSI_VM_TIMING4 = 0x%08x", s->dsi.vm_timing4);
++        return s->dsi.vm_timing4;
++    case 0x084: /* DSI_TX_FIFO_VC_EMPTINESS */
++        TRACEDSI("DSI_TX_FIFO_VC_EMPTINESS = 0x7f7f7f7f");
++        return 0x7f7f7f7f;
++    case 0x088: /* DSI_VM_TIMING5 */
++        TRACEDSI("DSI_VM_TIMING5 = 0x%08x", s->dsi.vm_timing5);
++        return s->dsi.vm_timing5;
++    case 0x08c: /* DSI_VM_TIMING6 */
++        TRACEDSI("DSI_VM_TIMING6 = 0x%08x", s->dsi.vm_timing6);
++        return s->dsi.vm_timing6;
++    case 0x090: /* DSI_VM_TIMING7 */
++        TRACEDSI("DSI_VM_TIMING7 = 0x%08x", s->dsi.vm_timing7);
++        return s->dsi.vm_timing7;
++    case 0x094: /* DSI_STOPCLK_TIMING */
++        TRACEDSI("DSI_STOPCLK_TIMING = 0x%08x", s->dsi.stopclk_timing);
++        return s->dsi.stopclk_timing;
++    case 0x100 ... 0x17c: /* DSI_VCx_xxx */
++        x = (addr >> 5) & 3;
++        switch (addr & 0x1f) {
++        case 0x00: /* DSI_VCx_CTRL */
++            TRACEDSI("DSI_VC%d_CTRL = 0x%08x", x, s->dsi.vc[x].ctrl);
++            return s->dsi.vc[x].ctrl;
++        case 0x04: /* DSI_VCx_TE */
++            TRACEDSI("DSI_VC%d_TE = 0x%08x", x, s->dsi.vc[x].te);
++            return s->dsi.vc[x].te;
++        case 0x08: /* DSI_VCx_LONG_PACKET_HEADER */
++            /* write-only */
++            TRACEDSI("DSI_VC%d_LONG_PACKET_HEADER = 0", x);
++            return 0;
++        case 0x0c: /* DSI_VCx_LONG_PACKET_PAYLOAD */
++            /* write-only */
++            TRACEDSI("DSI_VC%d_LONG_PACKET_PAYLOAD = 0", x);
++            return 0;
++        case 0x10: /* DSI_VCx_SHORT_PACKET_HEADER */
++            if (s->dsi.vc[x].ctrl & (1 << 20)) { /* RX_FIFO_NOT_EMPTY */
++                y = omap_dsi_pull_rx_fifo(s, x);
++                TRACEDSI("DSI_VC%d_SHORT_PACKET_HEADER = 0x%08x", x, y);
++                if (!s->dsi.vc[x].rx_fifo_len)
++                    s->dsi.vc[x].ctrl &= ~(1 << 20); /* RX_FIFO_NOT_EMPTY */
++                return y;
++            }
++            TRACEDSI("vc%d rx fifo underflow!", x);
++            return 0;
++        case 0x18: /* DSI_VCx_IRQSTATUS */
++            TRACEDSI("DSI_VC%d_IRQSTATUS = 0x%08x", x, s->dsi.vc[x].irqst);
++            return s->dsi.vc[x].irqst;
++        case 0x1c: /* DSI_VCx_IRQENABLE */
++            TRACEDSI("DSI_VC%d_IRQENABLE = 0x%08x", x, s->dsi.vc[x].irqen);
++            return s->dsi.vc[x].irqen;
++        default:
++            OMAP_BAD_REG(addr);
++        }
++        break;
++    case 0x200: /* DSI_PHY_CFG0 */
++        TRACEDSI("DSI_PHY_CFG0 = 0x%08x", s->dsi.phy_cfg0);
++        return s->dsi.phy_cfg0;
++    case 0x204: /* DSI_PHY_CFG1 */
++        TRACEDSI("DSI_PHY_CFG1 = 0x%08x", s->dsi.phy_cfg1);
++        return s->dsi.phy_cfg1;
++    case 0x208: /* DSI_PHY_CFG2 */
++        TRACEDSI("DSI_PHY_CFG2 = 0x%08x", s->dsi.phy_cfg2);
++        return s->dsi.phy_cfg2;
++     case 0x214: /* DSI_PHY_CFG5 */
++        TRACEDSI("DSI_PHY_CFG5 = 0xfc000000");
++        return 0xfc000000; /* all resets done */
++    case 0x300: /* DSI_PLL_CONTROL */
++        TRACEDSI("DSI_PLL_CONTROL = 0x%08x", s->dsi.pll_control);
++        return s->dsi.pll_control;
++    case 0x304: /* DSI_PLL_STATUS */
++        x = 1; /* DSI_PLLCTRL_RESET_DONE */
++        if ((s->dsi.clk_ctrl >> 28) & 3) { /* DSI PLL control powered? */
++            if (((s->dsi.pll_config1 >> 1) & 0x7f) &&  /* DSI_PLL_REGN */
++                ((s->dsi.pll_config1 >> 8) & 0x7ff)) { /* DSI_PLL_REGM */
++                x |= 2; /* DSI_PLL_LOCK */
++            }
++        }
++        if ((s->dsi.pll_config2 >> 20) & 1) /* DSI_HSDIVBYPASS */
++            x |= (1 << 9);                  /* DSI_BYPASSACKZ */
++        if ((s->dsi.pll_config2 >> 18) & 1) /* DSI_PROTO_CLOCK_EN */
++            x |= (1 << 8);                  /* DSIPROTO_CLOCK_ACK */
++        if ((s->dsi.pll_config2 >> 16) & 1) /* DSS_CLOCK_EN */
++            x |= (1 << 7);                  /* DSS_CLOCK_ACK */
++        if (!((s->dsi.pll_config2 >> 13) & 1)) /* DSI_PLL_REFEN */
++            x |= (1 << 3);                     /* DSI_PLL_LOSSREF */
++        TRACEDSI("DSI_PLL_STATUS = 0x%08x", x);
++        return x;
++    case 0x308: /* DSI_PLL_GO */
++        TRACEDSI("DSI_PLL_GO = 0x%08x", s->dsi.pll_go);
++        return s->dsi.pll_go;
++    case 0x30c: /* DSI_PLL_CONFIGURATION1 */
++        TRACEDSI("DSI_PLL_CONFIGURATION1 = 0x%08x", s->dsi.pll_config1);
++        return s->dsi.pll_config1;
++    case 0x310: /* DSI_PLL_CONFIGURATION2 */
++        TRACEDSI("DSI_PLL_CONFIGURATION2 = 0x%08x", s->dsi.pll_config2);
++        return s->dsi.pll_config2;
++    default:
++        break;
++    }
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static void omap_dsi_txdone(struct n00_dss_s *s, int ch, int bta)
++{
++    if (bta) {
++        s->dsi.vc[ch].irqst |= 0x20;       /* BTA_IRQ */
++        if (s->dsi.vc[ch].rx_fifo_len)
++            s->dsi.vc[ch].ctrl |= 1 << 20; /* RX_FIFO_NOT_EMPTY */
++    } else {
++        s->dsi.vc[ch].irqst |= 0x04;       /* PACKET_SENT_IRQ */
++    }
++    s->dsi.irqst |= 1 << ch;               /* VIRTUAL_CHANNELx_IRQ */
++    n00_dss_interrupt_update(s);
++}
++
++static void omap_dsi_short_write(struct n00_dss_s *s, int ch)
++{
++    qemu_log_mask(LOG_UNIMP, "N00: no DSI panel attached\n");
++}
++
++static void omap_dsi_long_write(struct n00_dss_s *s, int ch)
++{
++    qemu_log_mask(LOG_UNIMP, "N00: no DSI panel attached\n");
++}
++
++static void omap_dsi_write(void *opaque, hwaddr addr,
++                           uint32_t value)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *)opaque;
++    uint32_t x;
++
++    switch (addr) {
++    case 0x000: /* DSI_REVISION */
++    case 0x014: /* DSI_SYSSTATUS */
++    case 0x07c: /* DSI_RX_FIFO_VC_FULLNESS */
++    case 0x084: /* DSI_RX_FIFO_VC_EMPTINESS */
++    case 0x214: /* DSI_PHY_CFG5 */
++    case 0x304: /* DSI_PLL_STATUS */
++        /* read-only, ignore */
++        break;
++    case 0x010: /* DSI_SYSCONFIG */
++        TRACEDSI("DSI_SYSCONFIG = 0x%08x", value);
++        if (value & 2) /* SOFT_RESET */
++            omap_dsi_reset(s);
++        else
++            s->dsi.sysconfig = value;
++        break;
++    case 0x018: /* DSI_IRQSTATUS */
++        TRACEDSI("DSI_IRQSTATUS = 0x%08x", value);
++        s->dsi.irqst &= ~(value & 0x1fc3b0);
++        n00_dss_interrupt_update(s);
++        break;
++    case 0x01c: /* DSI_IRQENABLE */
++        TRACEDSI("DSI_IRQENABLE = 0x%08x", value);
++        s->dsi.irqen = value & 0x1fc3b0;
++        n00_dss_interrupt_update(s);
++        break;
++    case 0x040: /* DSI_CTRL */
++        TRACEDSI("DSI_CTRL = 0x%08x", value);
++        s->dsi.ctrl = value & 0x7ffffff;
++        break;
++    case 0x048: /* DSI_COMPLEXIO_CFG_1 */
++        TRACEDSI("DSI_COMPLEXIO_CFG1 = 0x%08x", value);
++        value |= 1 << 29;    /* RESET_DONE */
++        value |= 1 << 21;    /* LDO_POWER_GOOD_STATE */
++        value &= ~(1 << 30); /* GOBIT */
++        /* copy PWR_CMD directly to PWR_STATUS */
++        value &= ~(3 << 25);
++        value |= (value >> 2) & (3 << 25);
++        /* TODO: notify screen refresh control about PWR_STATUS */
++        s->dsi.complexio_cfg1 = value;
++        break;
++    case 0x04c: /* DSI_COMPLEXIO_IRQSTATUS */
++        TRACEDSI("DSI_COMPLEXIO_IRQSTATUS = 0x%08x", value);
++        s->dsi.complexio_irqst &= ~(value & 0xc3f39ce7);
++        if (s->dsi.complexio_irqst & s->dsi.complexio_irqen)
++            s->dsi.irqst |= (1 << 10);  /* COMPLEXIO_ERR_IRQ */
++        else
++            s->dsi.irqst &= ~(1 << 10); /* COMPLEXIO_ERR_IRQ */
++        n00_dss_interrupt_update(s);
++        break;
++    case 0x050: /* DSI_COMPLEXIO_IRQENABLE */
++        TRACEDSI("DSI_COMPLEXIO_IRQENABLE = 0x%08x", value);
++        s->dsi.complexio_irqen = value & 0xc3f39ce7;
++        n00_dss_interrupt_update(s);
++        break;
++    case 0x054: /* DSI_CLK_CTRL */
++        TRACEDSI("DSI_CLK_CTRL = 0x%08x", value);
++        value &= 0xc03fffff;
++        /* copy PLL_PWR_CMD directly to PLL_PWR_STATUS */
++        value |= (value >> 2) & (3 << 28);
++        s->dsi.clk_ctrl = value;
++        break;
++    case 0x058: /* DSI_TIMING1 */
++        TRACEDSI("DSI_TIMING1 = 0x%08x", value);
++        value &= ~(1 << 15); /* deassert ForceTxStopMode signal */
++        s->dsi.timing1 = value;
++        break;
++    case 0x05c: /* DSI_TIMING2 */
++        TRACEDSI("DSI_TIMING2 = 0x%08x", value);
++        s->dsi.timing2 = value;
++        break;
++    case 0x060: /* DSI_VM_TIMING1 */
++        TRACEDSI("DSI_VM_TIMING1 = 0x%08x", value);
++        s->dsi.vm_timing1 = value;
++        break;
++    case 0x064: /* DSI_VM_TIMING2 */
++        TRACEDSI("DSI_VM_TIMING2 = 0x%08x", value);
++        s->dsi.vm_timing2 = value & 0x0fffffff;
++        break;
++    case 0x068: /* DSI_VM_TIMING3 */
++        TRACEDSI("DSI_VM_TIMING3 = 0x%08x", value);
++        s->dsi.vm_timing3 = value;
++        break;
++    case 0x06c: /* DSI_CLK_TIMING */
++        TRACEDSI("DSI_CLK_TIMING = 0x%08x", value);
++        s->dsi.clk_timing = value & 0xffff;
++        break;
++    case 0x070: /* DSI_TX_FIFO_VC_SIZE */
++        TRACEDSI("DSI_TX_FIFO_VC_SIZE = 0x%08x", value);
++        s->dsi.tx_fifo_vc_size = value & 0xf7f7f7f7;
++        break;
++    case 0x074: /* DSI_RX_FIFO_VC_SIZE */
++        TRACEDSI("DSI_RX_FIFO_VC_SIZE = 0x%08x", value);
++        s->dsi.rx_fifo_vc_size = value & 0xf7f7f7f7;
++        break;
++    case 0x078: /* DSI_COMPLEXIO_CFG_2 */
++        TRACEDSI("DSI_COMPLEXIO_CFG_2 = 0x%08x", value);
++        s->dsi.complexio_cfg2 = (value & 0xfffcffff)
++                                | (s->dsi.complexio_cfg2 & (3 << 16));
++        if (((value >> 5) & 3)) {
++            s->dsi.complexio_irqst |= (1 << 30); /* ULPSACTIVENOT_ALL0_IRQ */
++            s->dsi.irqst |= (1 << 10);           /* COMPLEXIO_ERR_IRQ */
++            n00_dss_interrupt_update(s);
++        }
++        break;
++    case 0x080: /* DSI_VM_TIMING4 */
++        TRACEDSI("DSI_VM_TIMING4 = 0x%08x", value);
++        s->dsi.vm_timing4 = value;
++        break;
++    case 0x088: /* DSI_VM_TIMING5 */
++        TRACEDSI("DSI_VM_TIMING5 = 0x%08x", value);
++        s->dsi.vm_timing5 = value;
++        break;
++    case 0x08c: /* DSI_VM_TIMING6 */
++        TRACEDSI("DSI_VM_TIMING6 = 0x%08x", value);
++        s->dsi.vm_timing6 = value;
++        break;
++    case 0x090: /* DSI_VM_TIMING7 */
++        TRACEDSI("DSI_VM_TIMING7 = 0x%08x", value);
++        s->dsi.vm_timing7 = value;
++        break;
++    case 0x094: /* DSI_STOPCLK_TIMING */
++        TRACEDSI("DSI_STOPCLK_TIMING = 0x%08x", value);
++        s->dsi.stopclk_timing = value & 0xff;
++        break;
++    case 0x100 ... 0x17c: /* DSI_VCx_xxx */
++        x = (addr >> 5) & 3;
++        switch (addr & 0x1f) {
++        case 0x00: /* DSI_VCx_CTRL */
++            TRACEDSI("DSI_VC%d_CTRL = 0x%08x", x, value);
++            if (((value >> 27) & 7) != 4) /* DMA_RX_REQ_NB */
++                hw_error("%s: RX DMA mode not implemented", __FUNCTION__);
++            if (((value >> 21) & 7) != 4) /* DMA_TX_REQ_NB */
++                hw_error("%s: TX DMA mode not implemented", __FUNCTION__);
++            if (value & 1) { /* VC_EN */
++                s->dsi.vc[x].ctrl &= ~0x40;  /* BTA_EN */
++                s->dsi.vc[x].ctrl |= 0x8001; /* VC_BUSY | VC_EN */
++            } else {
++                /* clear VC_BUSY and VC_EN, assign writable bits */
++                s->dsi.vc[x].ctrl = (s->dsi.vc[x].ctrl & 0x114020) |
++                                    (value & 0x3fee039f);
++            }
++            if (value & 0x40) /* BTA_EN */
++                omap_dsi_txdone(s, x, 1);
++            break;
++        case 0x04: /* DSI_VCx_TE */
++            TRACEDSI("DSI_VC%d_TE = 0x%08x", x, value);
++            value &= 0xc0ffffff;
++            /* according to the OMAP3 TRM the TE_EN bit in this
++             * register is protected by VCx_CTRL VC_EN bit but
++             * let's forget that */
++            s->dsi.vc[x].te = value;
++            if (s->dispc.control & 1) /* LCDENABLE */
++                omap_dsi_transfer_start(s, x);
++            break;
++        case 0x08: /* DSI_VCx_LONG_PACKET_HEADER */
++            TRACEDSI("DSI_VC%d_LONG_PACKET_HEADER id=0x%02x, len=0x%04x, ecc=0x%02x",
++                     x, value & 0xff, (value >> 8) & 0xffff, (value >> 24) & 0xff);
++            s->dsi.vc[x].lp_header = value;
++            s->dsi.vc[x].lp_counter = (value >> 8) & 0xffff;
++            break;
++        case 0x0c: /* DSI_VCx_LONG_PACKET_PAYLOAD */
++            TRACEDSI("DSI_VC%d_LONG_PACKET_PAYLOAD = 0x%08x", x, value);
++            s->dsi.vc[x].lp_payload = value;
++            if ((s->dsi.vc[x].te >> 30) & 3) { /* TE_START | TE_EN */
++                int tx_dma = (s->dsi.vc[x].ctrl >> 21) & 7; /* DMA_TX_REQ_NB */
++                if (tx_dma < 4)
++                    qemu_irq_lower(s->dsi.drq[tx_dma]);
++            }
++            omap_dsi_long_write(s, x);
++            break;
++        case 0x10: /* DSI_VCx_SHORT_PACKET_HEADER */
++            TRACEDSI("DSI_VC%d_SHORT_PACKET_HEADER = 0x%08x", x, value);
++            s->dsi.vc[x].sp_header = value;
++            omap_dsi_short_write(s, x);
++            break;
++        case 0x18: /* DSI_VCx_IRQSTATUS */
++            TRACEDSI("DSI_VC%d_IRQSTATUS = 0x%08x", x, value);
++            s->dsi.vc[x].irqst &= ~(value & 0x1ff);
++            if (s->dsi.vc[x].irqst & s->dsi.vc[x].irqen)
++                s->dsi.irqst |= 1 << x;    /* VIRTUAL_CHANNELx_IRQ */
++            else
++                s->dsi.irqst &= ~(1 << x); /* VIRTUAL_CHANNELx_IRQ */
++            n00_dss_interrupt_update(s);
++            break;
++        case 0x1c: /* DSI_VCx_IRQENABLE */
++            TRACEDSI("DSI_VC%d_IRQENABLE = 0x%08x", x, value);
++            s->dsi.vc[x].irqen = value & 0x1ff;
++            n00_dss_interrupt_update(s);
++            break;
++        default:
++            OMAP_BAD_REGV(addr, value);
++            break;
++        }
++        break;
++    case 0x200: /* DSI_PHY_CFG0 */
++        TRACEDSI("DSI_PHY_CFG0 = 0x%08x", value);
++        s->dsi.phy_cfg0 = value;
++        break;
++    case 0x204: /* DSI_PHY_CFG1 */
++        TRACEDSI("DSI_PHY_CFG1 = 0x%08x", value);
++        s->dsi.phy_cfg1 = value;
++        break;
++    case 0x208: /* DSI_PHY_CFG2 */
++        TRACEDSI("DSI_PHY_CFG2 = 0x%08x", value);
++        if (s->mpu_model >= omap3630) {
++            value &= 0xff0000ff;
++        }
++        s->dsi.phy_cfg2 = value;
++        break;
++    case 0x300: /* DSI_PLL_CONTROL */
++        TRACEDSI("DSI_PLL_CONTROL = 0x%08x", value);
++        s->dsi.pll_control = value & 0x1f;
++        break;
++    case 0x308: /* DSI_PLL_GO */
++        TRACEDSI("DSI_PLL_GO = 0x%08x", value);
++        /* TODO: check if we need to update something here */
++        value &= ~1; /* mark it done */
++        s->dsi.pll_go = value & 1;
++        break;
++    case 0x30c: /* DSI_PLL_CONFIGURATION1 */
++        TRACEDSI("DSI_PLL_CONFIGURATION1 = 0x%08x", value);
++        s->dsi.pll_config1 = value & 0x7ffffff;
++        break;
++    case 0x310: /* DSI_PLL_CONFIGURATION2 */
++        TRACEDSI("DSI_PLL_CONFIGURATION2 = 0x%08x", value);
++        if (s->mpu_model < omap3630) {
++            value &= 0x1fffff;
++        } else {
++            value &= 0x1fffe1;
++        }
++        s->dsi.pll_config2 = value;
++        break;
++    default:
++        OMAP_BAD_REGV(addr, value);
++        break;
++    }
++}
++
++
++
++
++static uint64_t omap_diss_mmio_read(void *opaque, hwaddr addr, unsigned size)
++{
++    return omap_diss_read(opaque, addr);
++}
++static void omap_diss_mmio_write(void *opaque, hwaddr addr,
++                            uint64_t value, unsigned size)
++{
++    omap_diss_write(opaque, addr, value);
++}
++static const MemoryRegionOps omap_diss_ops = {
++    .read = omap_diss_mmio_read,
++    .write = omap_diss_mmio_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static uint64_t omap_disc_mmio_read(void *opaque, hwaddr addr, unsigned size)
++{
++    return omap_disc_read(opaque, addr);
++}
++static void omap_disc_mmio_write(void *opaque, hwaddr addr,
++                            uint64_t value, unsigned size)
++{
++    omap_disc_write(opaque, addr, value);
++}
++static const MemoryRegionOps omap_disc_ops = {
++    .read = omap_disc_mmio_read,
++    .write = omap_disc_mmio_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static uint64_t omap_rfbi_mmio_read(void *opaque, hwaddr addr, unsigned size)
++{
++    return omap_rfbi_read(opaque, addr);
++}
++static void omap_rfbi_mmio_write(void *opaque, hwaddr addr,
++                            uint64_t value, unsigned size)
++{
++    omap_rfbi_write(opaque, addr, value);
++}
++static const MemoryRegionOps omap_rfbi_ops = {
++    .read = omap_rfbi_mmio_read,
++    .write = omap_rfbi_mmio_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static uint64_t omap_venc_mmio_read(void *opaque, hwaddr addr, unsigned size)
++{
++    return omap_venc_read(opaque, addr);
++}
++static void omap_venc_mmio_write(void *opaque, hwaddr addr,
++                            uint64_t value, unsigned size)
++{
++    omap_venc_write(opaque, addr, value);
++}
++static const MemoryRegionOps omap_venc_ops = {
++    .read = omap_venc_mmio_read,
++    .write = omap_venc_mmio_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static uint64_t omap_dsi_mmio_read(void *opaque, hwaddr addr, unsigned size)
++{
++    return omap_dsi_read(opaque, addr);
++}
++static void omap_dsi_mmio_write(void *opaque, hwaddr addr,
++                            uint64_t value, unsigned size)
++{
++    omap_dsi_write(opaque, addr, value);
++}
++static const MemoryRegionOps omap_dsi_ops = {
++    .read = omap_dsi_mmio_read,
++    .write = omap_dsi_mmio_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static const GraphicHwOps n00_lcd_ops = {
++    .invalidate = n00_lcd_panel_invalidate_display,
++    .gfx_update = n00_lcd_panel_update_display,
++};
++
++static void n00_dss_instance_init(Object *obj)
++{
++    struct n00_dss_s *s = (struct n00_dss_s *)obj;
++    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
++    static const MemoryRegionOps * const ops[] = {
++        &omap_diss_ops, &omap_disc_ops, &omap_rfbi_ops,
++        &omap_venc_ops, &omap_dsi_ops
++    };
++    s->mpu_model = omap3430;
++    s->dispc.rev = 0x30;
++    sysbus_init_irq(dev, &s->irq);
++    sysbus_init_irq(dev, &s->drq);
++    for (int i = 0; i < 4; i++) {
++        sysbus_init_irq(dev, &s->dsi.drq[i]);
++    }
++    for (int i = 0; i < 5; i++) {
++        memory_region_init_io(&s->iomem[i], obj, ops[i], s, "n00.dss", 0x400);
++        sysbus_init_mmio(dev, &s->iomem[i]);
++    }
++    s->dispc.lcdframer = timer_new_ns(QEMU_CLOCK_VIRTUAL, n00_dss_framedone, s);
++    s->dsi.xfer_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, omap_dsi_transfer_stop, s);
++    s->lcd.attached = 1;
++    s->lcd.invalidate = 1;
++    s->lcd.ds = graphic_console_init(DEVICE(obj), 0, &n00_lcd_ops, s);
++}
++
++static void n00_dss_class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++    dc->reset = n00_dss_reset;
++    dc->desc = "Nokia OMAP3 DSS generic DPI port (no DSI panel/VID overlays)";
++}
++
++static const TypeInfo n00_dss_type = {
++    .name = "n00-omap3-dss",
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(struct n00_dss_s),
++    .instance_init = n00_dss_instance_init,
++    .class_init = n00_dss_class_init,
++};
++static void n00_dss_register_types(void)
++{
++    type_register_static(&n00_dss_type);
++}
++type_init(n00_dss_register_types)
+diff --git a/hw/arm/n00_dss_drawfn.h b/hw/arm/n00_dss_drawfn.h
+new file mode 100644
+index 0000000..fb6e9da
+--- /dev/null
++++ b/hw/arm/n00_dss_drawfn.h
+@@ -0,0 +1,284 @@
++/*
++ * QEMU OMAP DSS display plane rendering emulation templates
++ *
++ * Copyright (c) 2008 yajin  <yajin@vm-kernel.org>
++ * Copyright (c) 2008-2009 Nokia Corporation
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 or
++ * (at your option) version 3 of the License.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++
++#if DEPTH == 8
++#define PIXEL_TYPE		uint8_t
++#define COPY_PIXEL1(to, from)	*to ++ = from
++#elif DEPTH == 15 || DEPTH == 16
++#define PIXEL_TYPE		uint16_t
++#define COPY_PIXEL1(to, from)	*to ++ = from
++#elif DEPTH == 24
++#define PIXEL_TYPE		uint8_t
++#define COPY_PIXEL1(to, from)	\
++    *to ++ = from; *to ++ = (from) >> 8; *to ++ = (from) >> 16
++#elif DEPTH == 32
++#define PIXEL_TYPE		uint32_t
++#define COPY_PIXEL1(to, from)	*to ++ = from
++#else
++#error unknown bit depth
++#endif
++
++#ifdef WORDS_BIGENDIAN
++#define SWAP_WORDS	1
++#endif
++
++static void glue(n00_dss_draw_line1_, DEPTH)(void *opaque,
++                                              uint8_t *dest_,
++                                              const uint8_t *src,
++                                              int width,
++                                              int pixelsize)
++{
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    const uint32_t *palette = opaque;
++    unsigned int r, g, b;
++    const uint8_t *end = src + (width >> 3);
++    while (src < end) {
++        uint8_t data = ldub_p(src++);
++        int i = 8;
++        for (; i--; data <<= 1) {
++            uint32_t color = palette[data >> 7];
++            b = color & 0xff;
++            g = (color >> 8) & 0xff;
++            r = (color >> 16) & 0xff;
++            COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++        }
++    }
++}
++
++static void glue(n00_dss_draw_line2_, DEPTH)(void *opaque,
++                                              uint8_t *dest_,
++                                              const uint8_t *src,
++                                              int width,
++                                              int pixelsize)
++{
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    const uint32_t *palette = opaque;
++    unsigned int r, g, b;
++    const uint8_t *end = src + (width >> 2);
++    while (src < end) {
++        uint8_t data = ldub_p(src++);
++        uint32_t color = palette[data >> 6];
++        b = color & 0xff;
++        g = (color >> 8) & 0xff;
++        r = (color >> 16) & 0xff;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++        color = palette[(data >> 4) & 3];
++        b = color & 0xff;
++        g = (color >> 8) & 0xff;
++        r = (color >> 16) & 0xff;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++        color = palette[(data >> 2) & 3];
++        b = color & 0xff;
++        g = (color >> 8) & 0xff;
++        r = (color >> 16) & 0xff;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++        color = palette[data & 3];
++        b = color & 0xff;
++        g = (color >> 8) & 0xff;
++        r = (color >> 16) & 0xff;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++}
++
++static void glue(n00_dss_draw_line4_, DEPTH)(void *opaque,
++                                              uint8_t *dest_,
++                                              const uint8_t *src,
++                                              int width,
++                                              int pixelsize)
++{
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    const uint32_t *palette = opaque;
++    unsigned int r, g, b;
++    const uint8_t *end = src + (width >> 1);
++    while (src < end) {
++        uint8_t data = ldub_p(src++);
++        uint32_t color = palette[data >> 4];
++        b = color & 0xff;
++        g = (color >> 8) & 0xff;
++        r = (color >> 16) & 0xff;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++        color = palette[data & 0x0f];
++        b = color & 0xff;
++        g = (color >> 8) & 0xff;
++        r = (color >> 16) & 0xff;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++}
++
++static void glue(n00_dss_draw_line8_, DEPTH)(void *opaque,
++                                              uint8_t *dest_,
++                                              const uint8_t *src,
++                                              int width,
++                                              int pixelsize)
++{
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    const uint32_t *palette = opaque;
++    unsigned int r, g, b;
++    const uint8_t *end = src + width;
++    while (src < end) {
++        uint32_t color = palette[ldub_p(src++)];
++        b = color & 0xff;
++        g = (color >> 8) & 0xff;
++        r = (color >> 16) & 0xff;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++}
++
++static void glue(n00_dss_draw_line12_, DEPTH)(void *opaque,
++                                               uint8_t *dest_,
++                                               const uint8_t *src_,
++                                               int width,
++                                               int pixelsize)
++{
++    const uint16_t *src = (const uint16_t *)src_;
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    uint16_t data;
++    unsigned int r, g, b;
++    const uint16_t *end = src + width;
++    while (src < end) {
++        data = lduw_le_p(src++);
++        b = (data & 0x0f) << 4;
++        g = (data & 0xf0);
++        r = (data & 0xf00) >> 4;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++}
++
++static void glue(n00_dss_draw_line16_, DEPTH)(void *opaque,
++                                               uint8_t *dest_,
++                                               const uint8_t *src_,
++                                               int width,
++                                               int pixelsize)
++{
++#if !defined(SWAP_WORDS) && DEPTH == 16
++    memcpy(dest_, src_, width << 1);
++#else
++    const uint16_t *src = (const uint16_t *)src_;
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    uint16_t data;
++    unsigned int r, g, b;
++    const uint16_t *end = src + width;
++    while (src < end) {
++        data = lduw_le_p(src++);
++        b = (data & 0x1f) << 3;
++        g = (data & 0x7e0) >> 3;
++        r = data >> 8;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++#endif
++}
++
++static void glue(n00_dss_draw_line24a_, DEPTH)(void *opaque,
++                                                uint8_t *dest_,
++                                                const uint8_t *src,
++                                                int width,
++                                                int pixelsize)
++{
++#if !defined(SWAP_WORDS) && DEPTH == 32
++    memcpy(dest_, src, width << 2);
++#else
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    unsigned int r, g, b;
++    const uint8_t *end = src + (width << 2);
++    while (src < end) {
++        b = ldub_p(src++);
++        g = ldub_p(src++);
++        r = ldub_p(src++);
++        src++;
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++#endif
++}
++
++static void glue(n00_dss_draw_line24b_, DEPTH)(void *opaque,
++                                                uint8_t *dest_,
++                                                const uint8_t *src,
++                                                int width,
++                                                int pixelsize)
++{
++#if DEPTH == 24
++    memcpy(dest_, src, width * 3);
++#else
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    unsigned int r, g, b;
++    const uint8_t *end = src + width * 3;
++    while (src < end) {
++        b = ldub_p(src++);
++        g = ldub_p(src++);
++        r = ldub_p(src++);
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++#endif
++}
++
++static void glue(n00_dss_draw_line24c_, DEPTH)(void *opaque,
++                                                uint8_t *dest_,
++                                                const uint8_t *src,
++                                                int width,
++                                                int pixelsize)
++{
++    PIXEL_TYPE *dest = (PIXEL_TYPE *)dest_;
++    unsigned int r, g, b;
++    const uint8_t *end = src + (width << 2);
++    while (src < end) {
++        src++;
++        b = ldub_p(src++);
++        g = ldub_p(src++);
++        r = ldub_p(src++);
++        COPY_PIXEL1(dest, glue(rgb_to_pixel, DEPTH)(r, g, b));
++    }
++}
++
++/* No rotation */
++static const drawfn glue(n00_dss_drawfn_, DEPTH)[0x10] = {
++    (drawfn)glue(n00_dss_draw_line1_, DEPTH),
++    (drawfn)glue(n00_dss_draw_line2_, DEPTH),
++    (drawfn)glue(n00_dss_draw_line4_, DEPTH),
++    (drawfn)glue(n00_dss_draw_line8_, DEPTH),
++    (drawfn)glue(n00_dss_draw_line12_, DEPTH),
++    NULL, /* ARGB16 */
++    (drawfn)glue(n00_dss_draw_line16_, DEPTH),
++    NULL,
++    (drawfn)glue(n00_dss_draw_line24a_, DEPTH),
++    (drawfn)glue(n00_dss_draw_line24b_, DEPTH),
++    NULL, /* YUV2 4:2:2 */
++    NULL, /* UYVY 4:2:2 */
++    (drawfn)glue(n00_dss_draw_line24a_, DEPTH), /* FIXME: handle alpha */
++    (drawfn)glue(n00_dss_draw_line24c_, DEPTH), /* FIXME: handle alpha */
++    (drawfn)glue(n00_dss_draw_line24c_, DEPTH),
++    NULL,
++};
++
++/* 90deg, 180deg and 270deg rotation */
++//static omap3_lcd_panel_fn_t glue(omap3_lcd_panel_draw_fn_r_, DEPTH)[0x10] = {
++//    /* TODO */
++//    [0 ... 0xf] = NULL,
++//};
++
++#undef DEPTH
++#undef SKIP_PIXEL
++#undef COPY_PIXEL
++#undef COPY_PIXEL1
++#undef PIXEL_TYPE
++
++#undef SWAP_WORDS

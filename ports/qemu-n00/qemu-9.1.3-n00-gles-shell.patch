@@ -1,0 +1,130 @@
+diff --git a/hw/arm/n00_gles_port.c b/hw/arm/n00_gles_port.c
+index f2d0188..4e7c393 100644
+--- a/hw/arm/n00_gles_port.c
++++ b/hw/arm/n00_gles_port.c
+@@ -168,6 +168,18 @@ static float float_arg(N00Client *c, unsigned n)
+     return value;
+ }
+ 
++/* AAPCS-VFP allocates float arguments independently of core-register integers.
++ * TexParameterf has two integers followed by one float: r0/r1 + s0 for ABI 2,
++ * versus r0/r1/r2 for ABI 1. Never treat the C argument index as a VFP index.
++ */
++static float mixed_float_arg(N00Client *c, unsigned core_slot, unsigned vfp_slot)
++{
++    uint32_t bits = c->abi == 2 ? c->fp[vfp_slot] : arg(c, core_slot);
++    float value;
++    memcpy(&value, &bits, sizeof(value));
++    return value;
++}
++
+ static uint32_t make_handle(N00GLES *s, void *object, enum HandleKind kind,
+                             N00Client *owner, unsigned version)
+ {
+diff --git a/hw/arm/n00_gles_render.inc b/hw/arm/n00_gles_render.inc
+index 7ba98b5..965319b 100644
+--- a/hw/arm/n00_gles_render.inc
++++ b/hw/arm/n00_gles_render.inc
+@@ -52,6 +52,10 @@ static bool render_error(N00Client *c, GLenum error)
+         c->gl_error = error;
+     }
+     c->s->render_rejects++;
++    if (c->s->trace) {
++        fprintf(stderr, "N00_GLES render-reject client=%u call=%u error=%04x r0=%08x\n",
++                c->nr, c->call, error, c->regs[0]);
++    }
+     return false;
+ }
+ 
+@@ -276,9 +280,19 @@ static void render_texture(N00Client *c, N00GL *gl, uint32_t *a, bool sub)
+         render_error(c, GL_INVALID_ENUM);
+         return;
+     }
++    bool rgb565 = a[6] == GL_RGB && a[7] == GL_UNSIGNED_SHORT_5_6_5;
++    if (rgb565) {
++        components = 2; /* two bytes per pixel, not three byte components */
++    }
+     if (a[0] != GL_TEXTURE_2D || a[1] > 12 || width > 4096 || height > 4096 ||
+-        a[7] != GL_UNSIGNED_BYTE || (!sub && (a[2] != a[6] || a[5])) ||
++        (a[7] != GL_UNSIGNED_BYTE && !rgb565) || (!sub && (a[2] != a[6] || a[5])) ||
+         (sub && ((int32_t)a[2] < 0 || (int32_t)a[3] < 0))) {
++        if (c->s->trace) {
++            fprintf(stderr,
++                    "N00_GLES texture-reject client=%u sub=%u level=%u "
++                    "size=%ux%u internal=%04x format=%04x type=%04x border=%u\n",
++                    c->nr, sub, a[1], width, height, a[2], a[6], a[7], a[5]);
++        }
+         render_error(c, GL_INVALID_VALUE);
+         return;
+     }
+@@ -416,19 +430,26 @@ static bool call_render(N00Client *c)
+         }
+         CASE(Uniform1i) : gl->Uniform1i(arg(c, 0), arg(c, 1));
+         break;
+-        CASE(Uniform4fv) : CASE(UniformMatrix4fv) :
++        CASE(Uniform1fv) : CASE(Uniform4fv) : CASE(UniformMatrix4fv) :
+         {
+             bool matrix = c->call == N00_es20_glUniformMatrix4fv;
++            bool scalar = c->call == N00_es20_glUniform1fv;
+             ARGS(matrix ? 4 : 3);
+             if (a[1] > 4096 || (matrix && a[2])) {
+                 render_error(c, GL_INVALID_VALUE);
+                 break;
+             }
+-            size_t bytes = (size_t)a[1] * (matrix ? 16 : 4) * sizeof(GLfloat);
++            size_t bytes = (size_t)a[1] *
++                           (matrix   ? 16
++                            : scalar ? 1
++                                     : 4) *
++                           sizeof(GLfloat);
+             GLfloat *values = g_malloc(MAX(bytes, 1));
+             if (guest_copy(c, a[matrix ? 3 : 2], values, bytes, false)) {
+                 if (matrix) {
+                     gl->UniformMatrix4fv(a[0], a[1], GL_FALSE, values);
++                } else if (scalar) {
++                    gl->Uniform1fv(a[0], a[1], values);
+                 } else {
+                     gl->Uniform4fv(a[0], a[1], values);
+                 }
+@@ -607,6 +628,23 @@ static bool call_render(N00Client *c)
+         break;
+         CASE(TexParameteri) : gl->TexParameteri(arg(c, 0), arg(c, 1), arg(c, 2));
+         break;
++        CASE(TexParameterf)
++            : gl->TexParameterf(arg(c, 0), arg(c, 1), mixed_float_arg(c, 2, 0));
++        break;
++        CASE(BlendFunc) : gl->BlendFunc(arg(c, 0), arg(c, 1));
++        break;
++        CASE(ClearDepthf) : gl->ClearDepthf(float_arg(c, 0));
++        break;
++        CASE(DepthFunc) : gl->DepthFunc(arg(c, 0));
++        break;
++        CASE(DepthMask) : gl->DepthMask(arg(c, 0) != 0);
++        break;
++        CASE(StencilFunc) : gl->StencilFunc(arg(c, 0), arg(c, 1), arg(c, 2));
++        break;
++        CASE(StencilMask) : gl->StencilMask(arg(c, 0));
++        break;
++        CASE(StencilOp) : gl->StencilOp(arg(c, 0), arg(c, 1), arg(c, 2));
++        break;
+         CASE(TexImage2D) : ARGS(9);
+         render_texture(c, gl, a, false);
+         break;
+diff --git a/hw/arm/n00_gles_render_api.def b/hw/arm/n00_gles_render_api.def
+index bbcf046..f6a233e 100644
+--- a/hw/arm/n00_gles_render_api.def
++++ b/hw/arm/n00_gles_render_api.def
+@@ -36,3 +36,12 @@ N00_GL(DisableVertexAttribArray)
+ N00_GL(VertexAttribPointer)
+ N00_GL(DrawArrays)
+ N00_GL(DrawElements)
++N00_GL(BlendFunc)
++N00_GL(ClearDepthf)
++N00_GL(DepthFunc)
++N00_GL(DepthMask)
++N00_GL(StencilFunc)
++N00_GL(StencilMask)
++N00_GL(StencilOp)
++N00_GL(TexParameterf)
++N00_GL(Uniform1fv)
+

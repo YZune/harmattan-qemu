@@ -1,0 +1,1184 @@
+diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
+index ecf814d..abde922 100644
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -44,12 +44,37 @@
+ 
+ void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base);
+ void n00_twl5031_init(I2CBus *bus, qemu_irq irq);
++void n00_mxt_init(I2CBus *bus, DeviceState *gpio);
+ #ifdef CONFIG_N00_GLES
+ void n00_gles_init(ARMCPU *cpu);
+ #endif
+ 
+-static void n00_display_init(DeviceState *intc, qemu_irq *drq)
++static DeviceState *n00_gpio_init(DeviceState *intc, omap_clk clock)
+ {
++    static const hwaddr base[] = {
++        0x48310000, 0x49050000, 0x49052000,
++        0x49054000, 0x49056000, 0x49058000
++    };
++    DeviceState *dev = qdev_new(TYPE_OMAP2_GPIO);
++    SysBusDevice *bus = SYS_BUS_DEVICE(dev);
++    qdev_prop_set_int32(dev, "mpu_model", omap3430);
++    /* The retained GPIO model only checks clock connection, not frequency.
++     * Use the same bootstrap clock catalogue as the INTC/timer milestone. */
++    omap2_gpio_set_iclk(OMAP2_GPIO(dev), clock);
++    for (int i = 0; i < 6; i++) {
++        omap2_gpio_set_fclk(OMAP2_GPIO(dev), i, clock);
++    }
++    sysbus_realize_and_unref(bus, &error_fatal);
++    for (int i = 0; i < 6; i++) {
++        sysbus_mmio_map(bus, i, base[i]);
++        sysbus_connect_irq(bus, i * 3, qdev_get_gpio_in(intc, 29 + i));
++    }
++    return dev;
++}
++
++static void n00_display_init(DeviceState *intc, struct omap_mpu_state_s *mpu)
++{
++    qemu_irq *drq = mpu->drq;
+     static const hwaddr i2c_base[] = { 0x48070000, 0x48072000, 0x48060000 };
+     static const int i2c_irq[] = { 56, 57, 61 };
+     static const int i2c_tx[] = { 27, 29, 25 };
+@@ -67,6 +92,8 @@ static void n00_display_init(DeviceState *intc, qemu_irq *drq)
+     }
+     n00_twl5031_init(I2C_BUS(qdev_get_child_bus(i2c, "n00-i2c1")),
+                      qdev_get_gpio_in(intc, 7));
++    mpu->gpio = n00_gpio_init(intc, omap_findclk(mpu, "wu_l4_iclk"));
++    n00_mxt_init(I2C_BUS(qdev_get_child_bus(i2c, "n00-i2c2")), mpu->gpio);
+     bus = SYS_BUS_DEVICE(qdev_new("n00-omap3-dss"));
+     sysbus_realize_and_unref(bus, &error_fatal);
+     for (int i = 0; i < 5; i++) {
+@@ -319,7 +346,9 @@ static struct arm_boot_info n00_port_spike_binfo = {
+     .loader_start = N00_SDRAM_BASE,
+     .board_id = N00_RX71_MACHINE_ID,
+     /* RX-71 >= 0x2100 uses the board's fixed VEMMC regulator. */
+-    .board_revision = 0x2100,
++    /* RX-71 selects MXT at/above 0x3000 and GPIO81 reset at 0x3102.
++     * 0x3102 retains the Himalaya display/configuration (not Pyrenees). */
++    .board_revision = 0x3102,
+ };
+ 
+ static int n00_dma_address_valid(struct omap_mpu_state_s *mpu,
+@@ -440,7 +469,7 @@ static void n00_port_spike_init(MachineState *machine)
+     soc_dma_port_add_mem(mpu->dma, memory_region_get_ram_ptr(sram),
+                          N00_SRAM_BASE, N00_SRAM_SIZE);
+     n00_mmc2_init(intc, mpu->drq);
+-    n00_display_init(intc, mpu->drq);
++    n00_display_init(intc, mpu);
+ #ifdef CONFIG_N00_GLES
+     n00_gles_init(cpu);
+ #endif
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+index 3afc86a..d259cdb 100644
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -2,6 +2,7 @@ arm_ss = ss.source_set()
+ arm_ss.add(files('boot.c'))
+ arm_ss.add(files('n00_port_spike.c', 'n00_sdrc_port.c', 'n00_mmc_port.c'))
+ arm_ss.add(files('n00_i2c_port.c', 'n00_twl4030_port.c', 'n00_dss_port.c'))
++arm_ss.add(files('n00_mxt_port.c'))
+ if get_option('n00_dgles_dir') != ''
+   n00_dgles = get_option('n00_dgles_dir')
+   arm_ss.add(files('n00_gles_port.c'), declare_dependency(
+diff --git a/hw/arm/n00_mxt_port.c b/hw/arm/n00_mxt_port.c
+new file mode 100644
+index 0000000..da3fb2a
+--- /dev/null
++++ b/hw/arm/n00_mxt_port.c
+@@ -0,0 +1,1094 @@
++/*
++ * Nokia OMAP3 development board
++ *
++ * Copyright (C) 2009-2010 Nokia Corporation
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 or
++ * (at your option) version 3 of the License.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++
++/* Forward port of the MXT section of Nokia hw/n00.c, revision
++ * 32530f6ab08f80a53bf56843ab793eefde75a67f. Normal pointer input only;
++ * the legacy fake second cursor and Alt-key hook are not retained.
++ */
++#include "qemu/osdep.h"
++#include "qemu/module.h"
++#include "qemu/log.h"
++#include "qapi/error.h"
++#include "hw/i2c/i2c.h"
++#include "hw/irq.h"
++#include "hw/hw.h"
++#include "ui/input.h"
++
++#define N00_DISPLAY_WIDTH 854
++#define N00_DISPLAY_HEIGHT 480
++#define N00_TS_IRQ_GPIO 61
++#define N00_TS_RESET_GPIO 81
++void n00_mxt_init(I2CBus *bus, DeviceState *gpio);
++#define N00_MXT(obj) OBJECT_CHECK(MXTState, (obj), "n00-mxt")
++#define N00_MXTBL(obj) OBJECT_CHECK(MXTBLState, (obj), "n00-mxtbl")
++#define N00_TRACE(fmt, ...) \
++    fprintf(stderr, "N00_MXT " fmt "\n", ##__VA_ARGS__)
++//#define DEBUG_MXT
++
++#ifdef DEBUG_MXT
++#define TRACE_MXT(...) N00_TRACE(__VA_ARGS__)
++#else
++#define TRACE_MXT(...)
++#endif
++
++#define N00_MXT_NUM_FINGERS 2
++#define N00_MXT_MSG_QUEUESIZE (40 * 8)
++
++typedef struct mxtbl_s {
++    I2CSlave i2c;
++    qemu_irq *irq;
++    int firstbyte;
++    uint8_t cmd;
++    uint8_t status;
++} MXTBLState;
++
++typedef struct mxt_s {
++    I2CSlave i2c;
++    qemu_irq irq;
++    QemuInputHandlerState *input;
++    int abs_x, abs_y, buttons;
++    int reset;
++    int address;
++    int reg;
++    uint8_t check;
++    uint8_t cached_tx;
++    uint8_t powercfg[3];
++    struct {
++        int swapxy;
++        int mirror_x;
++        int mirror_y;
++        int res_x;
++        int res_y;
++        struct {
++            int x;
++            int y;
++            int contact;
++        } finger[N00_MXT_NUM_FINGERS];
++        uint8_t reg[31];
++    } touch;
++    uint8_t selftest[6];
++    uint8_t comms[2];
++    uint8_t otg[19];
++    struct {
++        uint8_t data[N00_MXT_MSG_QUEUESIZE];
++        int used;
++        int read_pos, write_pos;
++        int end_counter;
++    } msg_queue;
++    MXTBLState *bl;
++} MXTState;
++
++static const uint8_t mxt_ib[] = {
++    /* header */
++    0x80, /* family id */
++    0x00, /* variant id */
++    0x00, /* version */
++    0x00, /* build */
++    0x40, /* matrix x */
++    0x40, /* matrix y */
++    0x07, /* num objects */
++    /* #1: msg processor */
++    0x05,       /* type */
++    0x00, 0x01, /* address */
++    0x08,       /* size - 1 */
++    0x00,       /* inst - 1 */
++    0x01,       /* rids/inst */
++    /* #2: cmd processor */
++    0x06,       /* type */
++    0x00, 0x02, /* address */
++    0xff,       /* size - 1 */
++    0x00,       /* inst - 1 */
++    0x01,       /* rids/inst */
++    /* #3: powerconfig */
++    0x07,       /* type */
++    0x00, 0x03, /* address */
++    0x02,       /* size - 1 */
++    0x00,       /* inst - 1 */
++    0x01,       /* rids/inst */
++    /* #4: touch */
++    0x09,                /* type */
++    0x00, 0x04,          /* address */
++    0x1e,                /* size - 1 */
++    0x00,                /* inst - 1 */
++    N00_MXT_NUM_FINGERS, /* rids/inst */
++    /* #5: commsconfig */
++    0x12,       /* type */
++    0x00, 0x06, /* address */
++    0x01,       /* size - 1 */
++    0x00,       /* inst - 1 */
++    0x01,       /* rids/inst */
++    /* #6: onetouchgesture */
++    0x18,       /* type */
++    0x00, 0x07, /* address */
++    0x12,       /* size - 1 */
++    0x00,       /* inst - 1 */
++    0x01,       /* rids/inst */
++    /* #7: selftest */
++    0x19,       /* type */
++    0x00, 0x05, /* address */
++    0x05,       /* size - 1 */
++    0x00,       /* inst - 1 */
++    0x01,       /* rids/inst */
++    /* crc24 placeholder */
++    0,0,0
++};
++
++static void mxt_reset(DeviceState *dev)
++{
++    MXTState *s = N00_MXT(dev);
++    s->buttons = 0;
++    s->address = 0;
++    s->reg = 0;
++    s->check = 0;
++    //memset(s->powercfg, 0, sizeof(s->powercfg));
++    memset(s->touch.finger, 0, sizeof(s->touch.finger));
++    //memset(s->selftest, 0, sizeof(s->selftest));
++    //memset(s->comms, 0, sizeof(s->comms));
++    memset(s->otg, 0, sizeof(s->otg));
++    s->msg_queue.used = 0;
++    s->msg_queue.read_pos = 0;
++    s->msg_queue.write_pos = 0;
++    s->msg_queue.end_counter = 0;
++    qemu_irq_raise(s->irq);
++}
++
++static uint8_t mxt_crc8(uint8_t crc, uint8_t c)
++{
++    uint8_t fb;
++    int i;
++
++    for (i = 0; i < 8; i++) {
++        fb = (crc ^ c) & 0x01;
++        c >>= 1;
++        crc >>= 1;
++        if (fb) {
++            crc ^= 0x8c;
++        }
++    }
++
++    return crc;
++}
++
++static uint32_t mxt_crc24_sub(uint32_t crc, uint8_t b0, uint8_t b1)
++{
++    uint32_t r = ((crc) << 1) ^ (uint32_t)((uint16_t)(b1 << 8) | b0);
++    if (r & (1 << 24)) {
++        r ^= 0x80001b;
++    }
++    return r;
++}
++
++static uint32_t mxt_crc24(uint32_t crc, const uint8_t *data, int len)
++{
++    const int swords = len >> 1;
++    int i;
++
++    for (i = 0; i < swords; i++) {
++        crc = mxt_crc24_sub(crc, data[i * 2], data[i * 2 + 1]);
++    }
++    if (len & 1) {
++        crc = mxt_crc24_sub(crc, data[len - 1], 0);
++    }
++    return crc & 0x00ffffff;
++}
++
++static uint8_t mxt_add_msg_queue_byte(MXTState *s, uint8_t d, uint8_t crc)
++{
++    if (s->msg_queue.used < N00_MXT_MSG_QUEUESIZE) {
++        s->msg_queue.data[s->msg_queue.write_pos++] = d;
++        if (s->msg_queue.write_pos >= N00_MXT_MSG_QUEUESIZE) {
++            s->msg_queue.write_pos = 0;
++        }
++        s->msg_queue.used++;
++        return mxt_crc8(crc, d);
++    }
++    qemu_log_mask(LOG_GUEST_ERROR, "%s: message queue full\n", __FUNCTION__);
++    return 0;
++}
++
++static void mxt_add_msg_queue(MXTState *s, uint8_t x0, uint8_t x1, uint8_t x2,
++                              uint8_t x3, uint8_t x4, uint8_t x5, uint8_t x6,
++                              uint8_t x7)
++{
++    if (s->msg_queue.used <= N00_MXT_MSG_QUEUESIZE - 9) {
++        uint8_t crc = mxt_add_msg_queue_byte(s, x0, 0);
++        crc = mxt_add_msg_queue_byte(s, x1, crc);
++        crc = mxt_add_msg_queue_byte(s, x2, crc);
++        crc = mxt_add_msg_queue_byte(s, x3, crc);
++        crc = mxt_add_msg_queue_byte(s, x4, crc);
++        crc = mxt_add_msg_queue_byte(s, x5, crc);
++        crc = mxt_add_msg_queue_byte(s, x6, crc);
++        crc = mxt_add_msg_queue_byte(s, x7, crc);
++        mxt_add_msg_queue_byte(s, crc, crc);
++        qemu_irq_lower(s->irq);
++    } else {
++        fprintf(stderr, "%s: message queue full, dropping "
++                "%02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x\n", __FUNCTION__,
++                x0, x1, x2, x3, x4, x5, x6, x7);
++    }
++}
++
++#define MXT_CRC24_CFG(data) \
++    for (i = 0; i < sizeof(data); i++, count++) { \
++        if ((count & 1)) { \
++            b1 = data[i]; \
++            crc = mxt_crc24_sub(crc, b0, b1); \
++        } else { \
++            b0 = data[i]; \
++        } \
++    }
++
++static void mxt_add_cmd_msg(MXTState *s, uint8_t flags)
++{
++    uint8_t b0 = 0, b1 = 0, i;
++    uint32_t crc = 0, count = 0;
++    MXT_CRC24_CFG(s->powercfg);
++    MXT_CRC24_CFG(s->touch.reg);
++    MXT_CRC24_CFG(s->comms);
++    MXT_CRC24_CFG(s->selftest);
++    MXT_CRC24_CFG(s->otg);
++    if ((count & 1)) {
++        crc = mxt_crc24_sub(crc, b0, 0);
++    }
++    crc &= 0x00ffffff;
++    mxt_add_msg_queue(s, 2,     /* cmd message */
++                      flags,
++                      crc & 0xff,
++                      (crc >> 8) & 0xff,
++                      (crc >> 16) & 0xff,
++                      0, 0, 0); /* unknown */
++}
++
++static int mxt_rx_msg(MXTState *s, int addr)
++{
++    int result = 0xff;
++
++    s->reg--; /* freeze register ptr */
++    if (!s->msg_queue.end_counter) {
++        if (s->msg_queue.used) {
++            result = s->msg_queue.data[s->msg_queue.read_pos++];
++            if (s->msg_queue.read_pos >= N00_MXT_MSG_QUEUESIZE) {
++                s->msg_queue.read_pos = 0;
++            }
++            s->msg_queue.used--;
++        } else {
++            s->msg_queue.end_counter = 1;
++        }
++    }
++
++    if (s->msg_queue.end_counter) {
++        if (s->msg_queue.end_counter++ < 9) {
++            result = 0xff;
++        } else {
++            s->msg_queue.end_counter = 0;
++            result = 0xc9;       /* crc for a message full of 0xff's */
++            qemu_irq_raise(s->irq);
++        }
++    }
++
++    TRACE_MXT("0x%02x", result);
++    return result;
++}
++
++static void mxt_tx_cmd(MXTState *s, int addr, uint8_t data)
++{
++    switch (addr) {
++    case 0:
++        switch (data) {
++        case 0x01:
++        case 0xa5:
++            TRACE_MXT("command: reset");
++            mxt_reset(&s->i2c.qdev);
++            mxt_add_cmd_msg(s, 0x80);
++            mxt_add_cmd_msg(s, 0x00);
++            if (data == 0xa5) {
++                s->bl->status = 0xc0; /* flash mode, waiting command */
++            }
++            break;
++        default:
++            TRACE_MXT("unknown value (0x%02x) written to reset reg", data);
++        }
++        break;
++    case 1:
++        if (data == 0x55) {
++            TRACE_MXT("command: backup");
++        } else {
++            TRACE_MXT("unknown value (0x%02x) written to backup reg", data);
++        }
++        break;
++    case 2:
++        if (data == 0x01) {
++            TRACE_MXT("command: calibrate");
++            mxt_add_cmd_msg(s, 0x10); /* device calibrating */
++            mxt_add_cmd_msg(s, 0x00);
++        } else {
++            TRACE_MXT("unknown value (0x%02x) written to calibration reg",
++                      data);
++        }
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown cmd reg %d (value 0x%02x)\n", __FUNCTION__,
++                 addr, data);
++        break;
++    }
++}
++
++static int mxt_rx_powercfg(MXTState *s, int addr)
++{
++    int result = -1;
++    switch (addr) {
++    case 0x00: /* idleacqint */
++    case 0x01: /* actvacqint */
++    case 0x02: /* act2idleto */
++        result = s->powercfg[addr];
++        TRACE_MXT("reg 0x%02x = 0x%02x", addr, result);
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown power config reg %d\n", __FUNCTION__, addr);
++        break;
++    }
++    return result;
++}
++
++static void mxt_tx_powercfg(MXTState *s, int addr, uint8_t data)
++{
++    switch (addr) {
++    case 0x00: /* idleacqint */
++    case 0x01: /* actvacqint */
++    case 0x02: /* act2idleto */
++        TRACE_MXT("reg 0x%02x = 0x%02x", addr, data);
++        s->powercfg[addr] = data;
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown power config reg %d (value 0x%02x)\n", __FUNCTION__,
++                 addr, data);
++        break;
++    }
++}
++
++static int mxt_rx_touch(MXTState *s, int addr)
++{
++    int result = -1;
++    switch (addr) {
++    case 0x00 ... 0x1e:
++        result = s->touch.reg[addr];
++        TRACE_MXT("reg[0x%02x] = 0x%02x", addr, result);
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown touch reg %d\n", __FUNCTION__, addr);
++        break;
++    }
++    return result;
++}
++
++static void mxt_tx_touch(MXTState *s, int addr, uint8_t data)
++{
++    switch (addr) {
++    case 0x00 ... 0x08:
++    case 0x0a ... 0x11:
++    case 0x16 ... 0x1e:
++        TRACE_MXT("reg[0x%02x] = 0x%02x", addr, data);
++        s->touch.reg[addr] = data;
++        break;
++    case 0x09:
++        TRACE_MXT("orientation = 0x%02x", data);
++        s->touch.reg[addr] = data;
++        s->touch.swapxy = data & 1;
++        /* TODO: invertx/y flags */
++        break;
++    case 0x12 ... 0x13:
++        s->touch.reg[addr] = data;
++        s->touch.res_x = (((int)s->touch.reg[0x13]) << 8) |
++                         (s->touch.reg[0x12]);
++        TRACE_MXT("x range = %d", s->touch.res_x);
++        break;
++    case 0x14 ... 0x15:
++        s->touch.reg[addr] = data;
++        s->touch.res_y = (((int)s->touch.reg[0x15]) << 8) |
++                         (s->touch.reg[0x14]);
++        TRACE_MXT("y range = %d", s->touch.res_y);
++        break;
++    default:
++        fprintf(stderr, "%s: unknown touch reg %d (value 0x%02x)\n", __FUNCTION__,
++               addr, data);
++        break;
++    }
++}
++
++static int mxt_rx_selftest(MXTState *s, int addr)
++{
++    int result = 1;
++    switch (addr) {
++    case 0x00 ... 0x05:
++        result = s->selftest[addr];
++        TRACE_MXT("reg[0x%02x] = 0x%02x", addr, result);
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown selftest reg %d\n", __FUNCTION__, addr);
++        break;
++    }
++    return result;
++}
++
++static void mxt_tx_selftest(MXTState *s, int addr, uint8_t data)
++{
++    switch (addr) {
++    case 0x00:          /* control */
++    case 0x02 ... 0x05: /* hisglim, losiglim */
++        TRACE_MXT("reg[0x%02x] = 0x%02x", addr, data);
++        s->selftest[addr] = data;
++        break;
++    case 0x01:          /* cmd */
++        TRACE_MXT("cmd 0x%02x", data);
++        s->selftest[1] = data;
++        if ((s->selftest[0] & 3) == 3) { /* enable | rpten */
++            mxt_add_msg_queue(s,
++                              4 + N00_MXT_NUM_FINGERS + 2, /*selftest message*/
++                              0xfe, /* test passed */
++                              0, 0, 0, 0, 0, 0); /* info(??) */
++        }
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown selftest reg %d (value 0x%02x)\n", __FUNCTION__,
++                 addr, data);
++        break;
++    }
++}
++
++static int mxt_rx_comms(MXTState *s, int addr)
++{
++    int result = -1;
++    switch (addr) {
++    case 0x00: /* control */
++    case 0x01: /* command */
++        result = s->comms[addr];
++        TRACE_MXT("reg[0x%02x] = 0x%02x", addr, result);
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown commsconfig reg %d\n", __FUNCTION__, addr);
++        break;
++    }
++    return result;
++}
++
++static void mxt_tx_comms(MXTState *s, int addr, uint8_t data)
++{
++    switch (addr) {
++    case 0x00: /* control */
++    case 0x01: /* command */
++        TRACE_MXT("reg[0x%02x] = 0x%02x", addr, data);
++        s->comms[addr] = data;
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown commsconfig reg %d (value 0x%02x)\n",
++                 __FUNCTION__, addr, data);
++        break;
++    }
++}
++
++static int mxt_rx_otg(MXTState *s, int addr)
++{
++    int result = -1;
++    switch (addr) {
++    case 0x00: /* control */
++        result = s->otg[0];
++        TRACE_MXT("ctrl = 0x%02x", result);
++        break;
++    case 0x01: /* numgest */
++        result = s->otg[1];
++        TRACE_MXT("numgest = 0x%02x", result);
++        break;
++    case 0x02 ... 0x03: /* gesten */
++        result = s->otg[addr];
++        TRACE_MXT("gesten%d = 0x%02x", addr - 0x02, result);
++        break;
++    case 0x04: /* process */
++        result = s->otg[4];
++        TRACE_MXT("process = 0x%02x", result);
++        break;
++    case 0x05: /* tapto */
++        result = s->otg[5];
++        TRACE_MXT("tapto = 0x%02x", result);
++        break;
++    case 0x06: /* flickto */
++        result = s->otg[6];
++        TRACE_MXT("flickto = 0x%02x", result);
++        break;
++    case 0x07: /* dragto */
++        result = s->otg[7];
++        TRACE_MXT("dragto = 0x%02x", result);
++        break;
++    case 0x08: /* spressto */
++        result = s->otg[8];
++        TRACE_MXT("spressto = 0x%02x", result);
++        break;
++    case 0x09: /* lpressto */
++        result = s->otg[9];
++        TRACE_MXT("lpressto = 0x%02x", result);
++        break;
++    case 0x0a: /* represstapto */
++        result = s->otg[10];
++        TRACE_MXT("represstapto = 0x%02x", result);
++        break;
++    case 0x0b ... 0x0c: /* flickthr */
++        result = s->otg[addr];
++        TRACE_MXT("flickthr%d = 0x%02x", addr - 0x0b, result);
++        break;
++    case 0x0d ... 0x0e: /* dragthr */
++        result = s->otg[addr];
++        TRACE_MXT("dragthr%d = 0x%02x", addr - 0x0d, result);
++        break;
++    case 0x0f ... 0x10: /* tapthr */
++        result = s->otg[addr];
++        TRACE_MXT("tapthr%d = 0x%02x", addr - 0x0f, result);
++        break;
++    case 0x11 ... 0x12: /* throwthr */
++        result = s->otg[addr];
++        TRACE_MXT("throwthr%d = 0x%02x", addr - 0x11, result);
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown otg reg %d\n", __FUNCTION__, addr);
++        break;
++    }
++    return result;
++}
++
++static void mxt_tx_otg(MXTState *s, int addr, uint8_t data)
++{
++    switch (addr) {
++    case 0x00: /* control */
++        TRACE_MXT("ctrl = 0x%02x", data);
++        s->otg[0] = data;
++        break;
++    case 0x01: /* numgest */
++        TRACE_MXT("numgest = 0%02x", data);
++        s->otg[1] = data;
++        break;
++    case 0x02 ... 0x03: /* gesten */
++        s->otg[addr] = data;
++        TRACE_MXT("gesten = 0x%02x%02x", s->otg[2], s->otg[3]);
++        break;
++    case 0x04: /* process */
++        TRACE_MXT("process = 0x%02x", data);
++        s->otg[4] = data;
++        break;
++    case 0x05: /* tapto */
++        TRACE_MXT("tapto = 0x%02x", data);
++        s->otg[5] = data;
++        break;
++    case 0x06: /* flickto */
++        TRACE_MXT("flickto = 0x%02x", data);
++        s->otg[6] = data;
++        break;
++    case 0x07: /* dragto */
++        TRACE_MXT("dragto = 0x%02x", data);
++        s->otg[7] = data;
++        break;
++    case 0x08: /* spressto */
++        TRACE_MXT("spressto = 0x%02x", data);
++        s->otg[8] = data;
++        break;
++    case 0x09: /* lpressto */
++        TRACE_MXT("lpressto = 0x%02x", data);
++        s->otg[9] = data;
++        break;
++    case 0x0a: /* represstapto */
++        TRACE_MXT("represstapto = 0x%02x", data);
++        s->otg[10] = data;
++        break;
++    case 0x0b ... 0x0c: /* flickthr */
++        s->otg[addr] = data;
++        TRACE_MXT("flickthr = 0x%02x%02x", s->otg[11], s->otg[12]);
++        break;
++    case 0x0d ... 0x0e: /* dragthr */
++        s->otg[addr] = data;
++        TRACE_MXT("dragthr = 0x%02x%02x", s->otg[13], s->otg[14]);
++        break;
++    case 0x0f ... 0x10: /* tapthr */
++        s->otg[addr] = data;
++        TRACE_MXT("tapthr = 0x%02x%02x", s->otg[15], s->otg[16]);
++        break;
++    case 0x11 ... 0x12: /* throwthr */
++        s->otg[addr] = data;
++        TRACE_MXT("throwthr = 0x%02x%02x", s->otg[17], s->otg[18]);
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown otg reg %d (value 0x%02x)\n",
++                 __FUNCTION__, addr, data);
++        break;
++    }
++}
++
++static uint8_t mxt_rx(I2CSlave *i2c)
++{
++    MXTState *s = N00_MXT(i2c);
++    int value = -1;
++    if (!s->reset) {
++        if (s->reg < sizeof(mxt_ib)) {
++            if (s->reg < sizeof(mxt_ib) - 3) {
++                value = mxt_ib[s->reg];
++            } else {
++                value = (int)mxt_crc24(0, mxt_ib, sizeof(mxt_ib) - 3);
++                value >>= (3 - (sizeof(mxt_ib) - s->reg)) * 8;
++                value &= 0xff;
++            }
++            TRACE_MXT("read info block @ 0x%02x returns 0x%02x", s->reg, value);
++        } else switch (s->reg) {
++        case 0x0100 ... 0x01ff:
++            value = mxt_rx_msg(s, s->reg & 0xff);
++            break;
++        case 0x0300 ... 0x03ff:
++            value = mxt_rx_powercfg(s, s->reg & 0xff);
++            break;
++        case 0x0400 ... 0x04ff:
++            value = mxt_rx_touch(s, s->reg & 0xff);
++            break;
++        case 0x0500 ... 0x05ff:
++            value = mxt_rx_selftest(s, s->reg & 0xff);
++            break;
++        case 0x0600 ... 0x06ff:
++            value = mxt_rx_comms(s, s->reg & 0xff);
++            break;
++        case 0x0700 ... 0x07ff:
++            value = mxt_rx_otg(s, s->reg & 0xff);
++            break;
++        default:
++            qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown reg=0x%04x\n", __FUNCTION__, s->reg);
++            break;
++        }
++        s->reg++;
++    }
++    return value;
++}
++
++static void mxt_tx_data(MXTState *s, uint8_t data)
++{
++    switch (s->reg) {
++    case 0x0200 ... 0x02ff:
++        mxt_tx_cmd(s, s->reg & 0xff, data);
++        break;
++    case 0x0300 ... 0x03ff:
++        mxt_tx_powercfg(s, s->reg & 0xff, data);
++        break;
++    case 0x0400 ... 0x04ff:
++        mxt_tx_touch(s, s->reg & 0xff, data);
++        break;
++    case 0x0500 ... 0x05ff:
++        mxt_tx_selftest(s, s->reg & 0xff, data);
++        break;
++    case 0x0600 ... 0x06ff:
++        mxt_tx_comms(s, s->reg & 0xff, data);
++        break;
++    case 0x0700 ... 0x07ff:
++        mxt_tx_otg(s, s->reg & 0xff, data);
++        break;
++    default:
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown reg=0x%04x, data=0x%02x\n", __FUNCTION__,
++                 s->reg, data);
++        break;
++    }
++    s->reg++;
++}
++
++static int mxt_tx(I2CSlave *i2c, uint8_t data)
++{
++    MXTState *s = N00_MXT(i2c);
++    if (s->reset) {
++        return -1;
++    }
++    if (s->address < 2) {
++        if (s->address) {
++            s->check = data >> 7;
++            s->reg |= (uint16_t)(data & 0x7f) << 8;
++            TRACE_MXT("set address to 0x%04x", s->reg);
++        } else {
++            s->reg = data;
++        }
++        s->address++;
++    } else {
++        if (s->check) {
++            if (s->check > 1) {
++                mxt_tx_data(s, s->cached_tx);
++            }
++            s->check = 2;
++            s->cached_tx = data;
++        } else {
++            mxt_tx_data(s, data);
++        }
++    }
++    return 0;
++}
++
++static int mxt_event(I2CSlave *i2c, enum i2c_event event)
++{
++    MXTState *s = N00_MXT(i2c);
++    if (!s->reset) {
++        switch (event) {
++            case I2C_START_SEND:
++                s->address = 0;
++                break;
++            case I2C_FINISH:
++                if (s->check) {
++                    /* last received byte was crc, ignore */
++                    s->check = 0;
++                }
++                if (s->reg <= sizeof(mxt_ib)) {
++                    s->reg = 0;
++                }
++                break;
++            default:
++                break;
++        }
++    }
++    return 0;
++}
++
++static void mxt_irq_handler(void *opaque, int n, int level)
++{
++    MXTState *s = opaque;
++    if (n) {
++        qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown input line %d\n", __FUNCTION__, n);
++    } else {
++        TRACE_MXT("reset line state = %d", level);
++        if (!level) {
++            s->reset = 1;
++        } else {
++            if (s->reset) {
++                s->reset = 0;
++                mxt_reset(&s->i2c.qdev);
++                mxt_add_cmd_msg(s, 0x80); /* reset completed */
++                mxt_add_cmd_msg(s, 0x00);
++            }
++        }
++    }
++}
++
++static void mxt_report_touch(MXTState *s, int n)
++{
++    if ((s->otg[0] & 3) == 3) {
++        /* should determine which gesture(s) is/are enabled etc. */
++        mxt_add_msg_queue(s,
++                          4 + N00_MXT_NUM_FINGERS + 1, /* otg message */
++                          0x01, /* gesture */
++                          0, 0, 0, 0, 0, 0);
++    }
++    if ((s->touch.reg[0] & 3) == 3) {
++        int x = s->touch.swapxy ? s->touch.finger[n].y : s->touch.finger[n].x;
++        int y = s->touch.swapxy ? s->touch.finger[n].x : s->touch.finger[n].y;
++        if (g_getenv("N00_INPUT_TRACE")) {
++            fprintf(stderr, "N00_MXT report finger=%d x=%d y=%d down=%d\n",
++                    n, x, y, s->touch.finger[n].contact);
++        }
++        mxt_add_msg_queue(s, 4 + n, /* touch finger n message */
++                          s->touch.finger[n].contact ? 0x80 : 0x20,
++                          (x >> 2) & 0xff,
++                          (y >> 2) & 0xff,
++                          ((x & 0x03) << 6) | ((y & 0x03) << 2),
++                          0x01,   /* area? */
++                          0x00,   /* amplitude? */
++                          0x00);  /* vector? */
++    }
++}
++
++static void mxt_mouse(void *opaque, int x, int y, int z, int bs)
++{
++    MXTState *s = (MXTState *)opaque;
++
++    if (s->reset) {
++        return;
++    }
++    if ((bs & 0x09) || s->touch.finger[0].contact ||
++        s->touch.finger[1].contact) {
++        int x1 = ((x + 1) * s->touch.res_x) >> 15;
++        int y1 = ((y + 1) * s->touch.res_y) >> 15;
++        if (x1 < 0) {
++            x1 = 0;
++        }
++        if (y1 < 0) {
++            y1 = 0;
++        }
++        if (x1 > s->touch.res_x) {
++            x1 = s->touch.res_x;
++        }
++        if (y1 > s->touch.res_y) {
++            y1 = s->touch.res_y;
++        }
++        int x2 = s->touch.res_x - x1 - 1;
++        int y2 = s->touch.res_y - y1 - 1;
++        if (x2 < 0) {
++            x2 = 0;
++        }
++        if (y2 < 0) {
++            y2 = 0;
++        }
++        s->touch.finger[0].x = s->touch.mirror_x ? (s->touch.res_x - x1) : x1;
++        s->touch.finger[0].y = s->touch.mirror_y ? (s->touch.res_y - y1) : y1;
++        int f0 = s->touch.finger[0].contact || (bs & 0x01);
++        s->touch.finger[0].contact = bs & 0x01;
++        s->touch.finger[1].x = s->touch.mirror_x ? (s->touch.res_x - x2) : x2;
++        s->touch.finger[1].y = s->touch.mirror_y ? (s->touch.res_y - y2) : y2;
++        int f1 = s->touch.finger[1].contact || (bs & 0x08);
++        s->touch.finger[1].contact = !!(bs & 0x08);
++        if (f0) {
++            mxt_report_touch(s, 0);
++        }
++        if (f1) {
++            mxt_report_touch(s, 1);
++        }
++        TRACE_MXT("1:(%d,%d,%d), 2:(%d,%d,%d)",
++                  s->touch.swapxy ? s->touch.finger[0].y
++                                  : s->touch.finger[0].x,
++                  s->touch.swapxy ? s->touch.finger[0].x
++                                  : s->touch.finger[0].y,
++                  s->touch.finger[0].contact,
++                  s->touch.swapxy ? s->touch.finger[1].y
++                                  : s->touch.finger[1].x,
++                  s->touch.swapxy ? s->touch.finger[1].x
++                                  : s->touch.finger[1].y,
++                  s->touch.finger[1].contact);
++    }
++}
++
++static void mxt_input_event(DeviceState *dev, QemuConsole *src,
++                            InputEvent *event)
++{
++    MXTState *s = N00_MXT(dev);
++    if (event->type == INPUT_EVENT_KIND_ABS) {
++        InputMoveEvent *move = event->u.abs.data;
++        int value = MIN(INPUT_EVENT_ABS_MAX, MAX(INPUT_EVENT_ABS_MIN,
++                                               move->value));
++        if (move->axis == INPUT_AXIS_X) {
++            s->abs_x = value;
++        } else if (move->axis == INPUT_AXIS_Y) {
++            s->abs_y = value;
++        }
++    } else if (event->type == INPUT_EVENT_KIND_BTN) {
++        InputBtnEvent *button = event->u.btn.data;
++        int mask = button->button == INPUT_BUTTON_LEFT ? 1 :
++                   button->button == INPUT_BUTTON_RIGHT ? 8 : 0;
++        if (button->down) {
++            s->buttons |= mask;
++        } else {
++            s->buttons &= ~mask;
++        }
++    }
++}
++
++static void mxt_input_sync(DeviceState *dev)
++{
++    MXTState *s = N00_MXT(dev);
++    if (g_getenv("N00_INPUT_TRACE")) {
++        fprintf(stderr, "N00_MXT input x=%d y=%d buttons=%d res=%dx%d swap=%d mirror=%d,%d\n",
++                s->abs_x, s->abs_y, s->buttons, s->touch.res_x,
++                s->touch.res_y, s->touch.swapxy, s->touch.mirror_x,
++                s->touch.mirror_y);
++    }
++    mxt_mouse(s, s->abs_x, s->abs_y, 0, s->buttons);
++}
++
++static const QemuInputHandler mxt_input_handler = {
++    .name = "N00 MXT Touchscreen",
++    .mask = INPUT_EVENT_MASK_ABS | INPUT_EVENT_MASK_BTN,
++    .event = mxt_input_event,
++    .sync = mxt_input_sync,
++};
++
++static void mxt_realize(DeviceState *dev, Error **errp)
++{
++    MXTState *s = N00_MXT(dev);
++    qdev_init_gpio_in(dev, mxt_irq_handler, 1);
++    qdev_init_gpio_out(dev, &s->irq, 1);
++    s->input = qemu_input_handler_register(dev, &mxt_input_handler);
++    s->bl->irq = &s->irq;
++}
++
++static void mxt_unrealize(DeviceState *dev)
++{
++    MXTState *s = N00_MXT(dev);
++    qemu_input_handler_unregister(s->input);
++}
++
++static uint8_t mxtbl_rx(I2CSlave *i2c)
++{
++    MXTBLState *s = N00_MXTBL(i2c);
++    uint8_t value = s->status;
++    switch (value) {
++    case 0x02: /* crc check -> crc pass */
++        s->status = 0x04;
++        break;
++    case 0x04: /* crc pass -> waiting frame data */
++        s->status = 0x80;
++        break;
++    default:
++        break;
++    }
++    TRACE_MXT("return 0x%02x", value);
++    return value;
++}
++
++static int mxtbl_tx(I2CSlave *i2c, uint8_t data)
++{
++    MXTBLState *s = N00_MXTBL(i2c);
++    if ((s->status & 0x87)) {
++        if ((s->status & 0x40)) {
++            if (s->firstbyte) {
++                s->cmd = data;
++            } else {
++                if (!(s->cmd | data)) {
++                    TRACE_MXT("flash mode reset");
++                    s->status = 0;
++                    qemu_irq_raise(*(s->irq));
++                } else if (s->cmd == 0xdc && data == 0xaa) {
++                    TRACE_MXT("flash unlock");
++                    s->status = 0x80;
++                    qemu_irq_lower(*(s->irq));
++                } else {
++                    qemu_log_mask(LOG_GUEST_ERROR, "%s: unknown command sequence 0x%02x 0x%02x\n",
++                             __FUNCTION__, s->cmd, data);
++                }
++            }
++            s->firstbyte = !s->firstbyte;
++        } else {
++            if (s->status == 0x80) {
++                /* waiting frame data -> crc check */
++                s->status = 0x02;
++            }
++        }
++    } else {
++        TRACE_MXT("received 0x%02x, not in flash mode -> ignored", data);
++    }
++    return 0;
++}
++
++static int mxtbl_event(I2CSlave *i2c, enum i2c_event event)
++{
++    return 0;
++}
++
++static void mxtbl_realize(DeviceState *dev, Error **errp)
++{
++    MXTBLState *s = N00_MXTBL(dev);
++    s->firstbyte = 1;
++    s->status = 0;
++}
++
++static void mxt_class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++    I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
++    dc->realize = mxt_realize;
++    dc->unrealize = mxt_unrealize;
++    dc->reset = mxt_reset;
++    dc->user_creatable = false;
++    sc->event = mxt_event;
++    sc->recv = mxt_rx;
++    sc->send = mxt_tx;
++}
++
++static void mxtbl_class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++    I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
++    dc->realize = mxtbl_realize;
++    dc->user_creatable = false;
++    sc->event = mxtbl_event;
++    sc->recv = mxtbl_rx;
++    sc->send = mxtbl_tx;
++}
++
++static const TypeInfo mxt_types[] = {
++    { .name = "n00-mxt", .parent = TYPE_I2C_SLAVE,
++      .instance_size = sizeof(MXTState), .class_init = mxt_class_init },
++    { .name = "n00-mxtbl", .parent = TYPE_I2C_SLAVE,
++      .instance_size = sizeof(MXTBLState), .class_init = mxtbl_class_init },
++};
++DEFINE_TYPES(mxt_types)
++
++void n00_mxt_init(I2CBus *bus, DeviceState *gpio)
++{
++    I2CSlave *node = i2c_slave_new("n00-mxt", 0x4b);
++    DeviceState *dev = DEVICE(node);
++    MXTState *s = N00_MXT(node);
++    I2CSlave *bl = i2c_slave_new("n00-mxtbl", 0x25);
++    s->bl = N00_MXTBL(bl);
++    i2c_slave_realize_and_unref(bl, bus, &error_fatal);
++    s->touch.swapxy = 1;
++    s->touch.res_x = N00_DISPLAY_WIDTH;
++    s->touch.res_y = N00_DISPLAY_HEIGHT;
++    /* The shipped RX-71 kernel swaps and inverts the panel coordinates,
++     * then scales 854 columns to its 864-column framebuffer. Cancel the
++     * X inversion here so QEMU absolute input uses framebuffer coordinates.
++     * Display rotation belongs to the frontend, not a second device swap. */
++    s->touch.mirror_x = 1;
++    i2c_slave_realize_and_unref(node, bus, &error_fatal);
++    qdev_connect_gpio_out(dev, 0,
++                         qdev_get_gpio_in(gpio, N00_TS_IRQ_GPIO));
++    qdev_connect_gpio_out(gpio, N00_TS_RESET_GPIO,
++                         qdev_get_gpio_in(dev, 0));
++
++    /* setup himalaya specific configuration values */
++    s->powercfg[0] = 0x14;
++    s->powercfg[1] = 0x0a;
++    s->powercfg[2] = 0x32;
++    s->touch.reg[0] = 0x8f;
++    s->touch.reg[1] = 0x00;
++    s->touch.reg[2] = 0x00;
++    s->touch.reg[3] = 0x13;
++    s->touch.reg[4] = 0x0b;
++    s->touch.reg[5] = 0x00;
++    s->touch.reg[6] = 0x30;
++    s->touch.reg[7] = 0x46;
++    s->touch.reg[8] = 0x02;
++    s->touch.reg[9] = (s->touch.swapxy ? 0x01 : 0x00);
++    s->touch.reg[10] = 0x00;
++    s->touch.reg[11] = 0x0a;
++    s->touch.reg[12] = 0x06;
++    s->touch.reg[13] = 0x0e;
++    s->touch.reg[14] = N00_MXT_NUM_FINGERS;
++    s->touch.reg[15] = 0x05;
++    s->touch.reg[16] = 0x0a;
++    s->touch.reg[17] = 0x00;
++    s->touch.reg[18] = (s->touch.swapxy ? s->touch.res_y
++                        : s->touch.res_x) & 0xff;
++    s->touch.reg[19] = ((s->touch.swapxy ? s->touch.res_y
++                         : s->touch.res_x) >> 8) & 0xff;
++    s->touch.reg[20] = (s->touch.swapxy ? s->touch.res_x
++                        : s->touch.res_y) & 0xff;
++    s->touch.reg[21] = ((s->touch.swapxy ? s->touch.res_x
++                         : s->touch.res_y) >> 8) & 0xff;
++    s->touch.reg[22] = 0x00;
++    s->touch.reg[23] = 0x00;
++    s->touch.reg[24] = 0x00;
++    s->touch.reg[25] = 0x00;
++    s->touch.reg[26] = 0xd7;
++    s->touch.reg[27] = 0x2e;
++    s->touch.reg[28] = 0x98;
++    s->touch.reg[29] = 0x54;
++    s->touch.reg[30] = 0x00;
++    s->selftest[0] = 0x03;
++    s->selftest[1] = 0x00;
++    s->selftest[2] = 0x80;
++    s->selftest[3] = 0x2f;
++    s->selftest[4] = 0x06;
++    s->selftest[5] = 0x18;
++    s->comms[0] = 0x00;
++    s->comms[1] = 0x00;
++
++}

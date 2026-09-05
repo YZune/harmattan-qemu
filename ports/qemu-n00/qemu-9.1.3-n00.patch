@@ -1,0 +1,1710 @@
+diff --git a/hw/arm/boot.c b/hw/arm/boot.c
+--- a/hw/arm/boot.c
++++ b/hw/arm/boot.c
+@@ -314,6 +314,11 @@
+         WRITE_WORD(p, 0x54410009);
+         p += cmdline_size * 4;
+     }
++    if (info->board_revision) {
++        WRITE_WORD(p, 3);
++        WRITE_WORD(p, 0x54410007); /* ATAG_REVISION */
++        WRITE_WORD(p, info->board_revision);
++    }
+     if (info->atag_board) {
+         /* ATAG_BOARD */
+         int atag_board_len;
+diff --git a/include/hw/arm/boot.h b/include/hw/arm/boot.h
+--- a/include/hw/arm/boot.h
++++ b/include/hw/arm/boot.h
+@@ -60,6 +60,7 @@
+     hwaddr smp_bootreg_addr;
+     hwaddr gic_cpu_if_addr;
+     int board_id;
++    uint32_t board_revision; /* Optional legacy ATAG_REVISION; zero omits it. */
+     /* ARM machines that support the ARM Security Extensions use this field to
+      * control whether Linux is booted as secure(true) or non-secure(false).
+      */
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -1,5 +1,6 @@
+ arm_ss = ss.source_set()
+ arm_ss.add(files('boot.c'))
++arm_ss.add(files('n00_port_spike.c', 'n00_sdrc_port.c', 'n00_mmc_port.c'))
+ arm_ss.add(when: 'CONFIG_ARM_VIRT', if_true: files('virt.c'))
+ arm_ss.add(when: 'CONFIG_ACPI', if_true: files('virt-acpi-build.c'))
+ arm_ss.add(when: 'CONFIG_DIGIC', if_true: files('digic_boards.c'))
+diff --git a/hw/sd/sd.c b/hw/sd/sd.c
+--- a/hw/sd/sd.c
++++ b/hw/sd/sd.c
+@@ -146,6 +146,7 @@
+     uint64_t boot_part_size;
+     BlockBackend *blk;
+     uint8_t boot_config;
++    bool dual_voltage;
+ 
+     const SDProto *proto;
+ 
+@@ -400,6 +401,9 @@
+ {
+     /* All voltages OK */
+     sd->ocr = R_OCR_VDD_VOLTAGE_WIN_HI_MASK;
++    if (sd_is_emmc(sd) && sd->dual_voltage) {
++        sd->ocr |= R_OCR_DUAL_VOLTAGE_CARD_MASK;
++    }
+ 
+     if (sd_is_spi(sd)) {
+         /*
+@@ -747,7 +751,12 @@
+ 
+ static void sd_response_r3_make(SDState *sd, uint8_t *response)
+ {
+-    stl_be_p(response, sd->ocr & ACMD41_R3_MASK);
++    uint32_t mask = ACMD41_R3_MASK;
++
++    if (sd_is_emmc(sd)) {
++        mask |= R_OCR_DUAL_VOLTAGE_CARD_MASK;
++    }
++    stl_be_p(response, sd->ocr & mask);
+ }
+ 
+ static void sd_response_r6_make(SDState *sd, uint8_t *response)
+@@ -2223,7 +2232,11 @@
+         req->cmd &= 0x3f;
+     }
+ 
+-    if (sd->state == sd_sleep_state && req->cmd) {
++    /* eMMC must still accept CMD5 while asleep, otherwise its AWAKE handler
++     * is unreachable and the next data request times out after runtime PM.
++     */
++    if (sd->state == sd_sleep_state && req->cmd &&
++        !(sd_is_emmc(sd) && req->cmd == 5)) {
+         qemu_log_mask(LOG_GUEST_ERROR, "SD: Card is sleeping\n");
+         rtype = sd_r0;
+         goto send_response;
+@@ -2810,6 +2823,7 @@
+ };
+ 
+ static Property emmc_properties[] = {
++    DEFINE_PROP_BOOL("dual-voltage", SDState, dual_voltage, false),
+     DEFINE_PROP_UINT64("boot-partition-size", SDState, boot_part_size, 0),
+     DEFINE_PROP_UINT8("boot-config", SDState, boot_config, 0x0),
+     DEFINE_PROP_END_OF_LIST()
+diff --git a/hw/dma/omap_dma.c b/hw/dma/omap_dma.c
+--- a/hw/dma/omap_dma.c
++++ b/hw/dma/omap_dma.c
+@@ -1683,12 +1683,22 @@
+     struct omap_dma_channel_s *ch = s->ch;
+     uint32_t bmp, bit;
+ 
+-    for (bmp = 0, bit = 1; bit; ch ++, bit <<= 1)
+-        if (ch->status) {
++    for (bmp = 0, bit = 1; bit; ch ++, bit <<= 1) {
++        uint32_t status = ch->status;
++
++        /* Nokia's OMAP3 DMA4 gates channel status through CICR.  In
++         * particular SYNC must not become an unsolicited completion IRQ.
++         * Preserve the existing OMAP1/2 behaviour for other machines.
++         */
++        if (s->mpu->mpu_model == omap3430) {
++            status &= ch->interrupts;
++        }
++        if (status) {
+             bmp |= bit;
+-            ch->cstatus |= ch->status;
++            ch->cstatus |= status;
+             ch->status = 0;
+         }
++    }
+     if ((s->irqstat[0] |= s->irqen[0] & bmp))
+         qemu_irq_raise(s->irq[0]);
+     if ((s->irqstat[1] |= s->irqen[1] & bmp))
+diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
+new file mode 100644
+--- /dev/null
++++ b/hw/arm/n00_port_spike.c
+@@ -0,0 +1,452 @@
++/*
++ * Nokia N9/N00 forward-port integration spike.
++ * CM/PRM register defaults and transitions derived from Nokia's OMAP3 model.
++ * Copyright (C) 2008 yajin <yajin@vm-kernel.org>
++ * Copyright (C) 2009-2010 Nokia Corporation
++ * SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only
++ *
++ * This is a direct-boot experiment, not a complete N00 hardware model.
++ */
++
++#include "qemu/osdep.h"
++#include "qapi/error.h"
++#include "exec/address-spaces.h"
++#include "hw/arm/boot.h"
++#include "hw/arm/omap.h"
++#include "hw/arm/soc_dma.h"
++#include "hw/boards.h"
++#include "hw/char/serial.h"
++#include "hw/qdev-properties.h"
++#include "hw/sd/sd.h"
++#include "hw/sysbus.h"
++#include "sysemu/blockdev.h"
++#include "sysemu/sysemu.h"
++#include "qemu/error-report.h"
++#include "qemu/units.h"
++#include "target/arm/cpu-qom.h"
++
++#define N00_SDRAM_BASE 0x80000000
++#define N00_SDRAM_SIZE (512 * MiB)
++#define N00_SRAM_BASE  0x40200000
++#define N00_SRAM_SIZE  0x00010000
++#define N00_INTC_BASE  0x48200000
++#define N00_UART3_BASE 0x49020000
++#define N00_UART3_IRQ  74
++#define N00_CM_BASE    0x48004000
++#define N00_PRM_BASE   0x48306000
++#define N00_USB_OTG_BASE 0x480ab000
++#define N00_MMC1_BASE   0x4809c000
++#define N00_MMC2_BASE   0x480b4000
++#define N00_MMC3_BASE   0x480ad000
++#define N00_PRCM_SIZE  0x00002000
++#define N00_RX71_MACHINE_ID 6666
++
++void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base);
++
++typedef struct N00RegisterBank {
++    MemoryRegion iomem;
++    uint32_t words[N00_PRCM_SIZE / sizeof(uint32_t)];
++    bool clock_manager;
++} N00RegisterBank;
++
++static void n00_cm_pll_status(N00RegisterBank *cm, unsigned control,
++                               unsigned mode_shift, unsigned select,
++                               unsigned mult_shift, unsigned status,
++                               unsigned bit, unsigned bypass_modes)
++{
++    unsigned mode = (cm->words[control >> 2] >> mode_shift) & 7;
++    unsigned mult = (cm->words[select >> 2] >> mult_shift) & 0x7ff;
++    uint32_t *word = &cm->words[status >> 2];
++
++    if ((bypass_modes & (1 << mode)) || (mode == 7 && mult < 2)) {
++        *word &= ~(1 << bit);
++    } else if (mode == 7) {
++        *word |= 1 << bit;
++    }
++}
++
++static void n00_cm_update(N00RegisterBank *cm)
++{
++    /* Nokia OMAP3 CM lock/bypass transitions, without rate propagation yet. */
++    n00_cm_pll_status(cm, 0x004, 0, 0x040, 8, 0x024, 0,
++                       (1 << 1) | (1 << 5));
++    n00_cm_pll_status(cm, 0x904, 0, 0x940, 8, 0x924, 0, 1 << 5);
++    n00_cm_pll_status(cm, 0xd00, 0, 0xd40, 16, 0xd20, 0,
++                       (1 << 5) | (1 << 6));
++    n00_cm_pll_status(cm, 0xd00, 16, 0xd44, 8, 0xd20, 1, 1 << 1);
++    n00_cm_pll_status(cm, 0xd04, 0, 0xd4c, 8, 0xd24, 0, 1 << 1);
++}
++
++static uint64_t n00_register_bank_read(void *opaque, hwaddr offset,
++                                       unsigned size)
++{
++    N00RegisterBank *bank = opaque;
++    uint32_t value = bank->words[offset >> 2];
++    unsigned shift = (offset & 3) * 8;
++    uint64_t mask = MAKE_64BIT_MASK(0, size * 8);
++
++    return (value >> shift) & mask;
++}
++
++static void n00_register_bank_write(void *opaque, hwaddr offset,
++                                    uint64_t value, unsigned size)
++{
++    N00RegisterBank *bank = opaque;
++    unsigned shift = (offset & 3) * 8;
++    uint32_t mask = MAKE_64BIT_MASK(shift, size * 8);
++    uint32_t *word = &bank->words[offset >> 2];
++
++    *word = (*word & ~mask) | ((value << shift) & mask);
++    if (bank->clock_manager) {
++        n00_cm_update(bank);
++    }
++}
++
++static const MemoryRegionOps n00_register_bank_ops = {
++    .read = n00_register_bank_read,
++    .write = n00_register_bank_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 1,
++    .valid.max_access_size = 4,
++};
++
++static void n00_register_bank_map(N00RegisterBank *bank, const char *name,
++                                  hwaddr base, uint64_t size)
++{
++    memory_region_init_io(&bank->iomem, NULL, &n00_register_bank_ops, bank,
++                          name, size);
++    memory_region_add_subregion_overlap(get_system_memory(), base,
++                                        &bank->iomem, 10);
++}
++
++static void n00_cm_reset(N00RegisterBank *cm)
++{
++#define CM_RESET(offset, value) cm->words[(offset) >> 2] = (value)
++    /*
++     * Register defaults come from Nokia's recovered OMAP3 CM model.  For
++     * module IDLEST registers use active values during this bootstrap.
++     * PLL lock/bypass status is updated dynamically on writes.
++     */
++    CM_RESET(0x0004, 0x00000011);
++    CM_RESET(0x0020, 0x00000000);
++    CM_RESET(0x0024, 0x00000000);
++    CM_RESET(0x0040, 0x00080000);
++    CM_RESET(0x0044, 0x00000001);
++    CM_RESET(0x0800, 0x00000010);
++    CM_RESET(0x0810, 0x00000001);
++    CM_RESET(0x0904, 0x00000015);
++    CM_RESET(0x0920, 0x00000000);
++    CM_RESET(0x0924, 0x00000000);
++    CM_RESET(0x0940, 0x00080000);
++    CM_RESET(0x0944, 0x00000001);
++    CM_RESET(0x0a10, 0x00000042);
++    CM_RESET(0x0a20, 0x00000000);
++    CM_RESET(0x0a28, 0x00000000);
++    CM_RESET(0x0a40, 0x00001105);
++    CM_RESET(0x0b20, 0x00000000);
++    CM_RESET(0x0c40, 0x00000012);
++    CM_RESET(0x0d00, 0x00110015);
++    CM_RESET(0x0d04, 0x00000011);
++    CM_RESET(0x0d20, 0x00003f3c);
++    CM_RESET(0x0d24, 0x0000000a);
++    CM_RESET(0x0d40, 0x08000040);
++    CM_RESET(0x0d44, 0x00000000);
++    CM_RESET(0x0d48, 0x00000001);
++    CM_RESET(0x0d50, 0x00000001);
++    CM_RESET(0x0d70, 0x00000003);
++    CM_RESET(0x0e40, 0x00001010);
++    CM_RESET(0x0f20, 0x00000000);
++    CM_RESET(0x0f40, 0x00000010);
++    CM_RESET(0x1140, 0x10100a50);
++    CM_RESET(0x1148, 0x00000002);
++    CM_RESET(0x1320, 0x00000000);
++    CM_RESET(0x1420, 0x00000000);
++#undef CM_RESET
++}
++
++static void n00_prm_domain_reset(N00RegisterBank *prm, hwaddr domain,
++                                 uint32_t rstctrl, uint32_t rstst,
++                                 uint32_t wken, uint32_t mpugrpsel,
++                                 uint32_t ivagrpsel, uint32_t wkdep,
++                                 uint32_t pwstctrl, uint32_t pwstst)
++{
++    prm->words[(domain + 0x50) >> 2] = rstctrl;
++    prm->words[(domain + 0x58) >> 2] = rstst;
++    prm->words[(domain + 0xa0) >> 2] = wken;
++    prm->words[(domain + 0xa4) >> 2] = mpugrpsel;
++    prm->words[(domain + 0xa8) >> 2] = ivagrpsel;
++    prm->words[(domain + 0xc8) >> 2] = wkdep;
++    prm->words[(domain + 0xe0) >> 2] = pwstctrl;
++    prm->words[(domain + 0xe4) >> 2] = pwstst;
++}
++
++static void n00_prm_reset(N00RegisterBank *prm)
++{
++    /* Reset values copied from Nokia's recovered OMAP3 PRM model. */
++    n00_prm_domain_reset(prm, 0x0000, 0x7, 0x1, 0, 0, 0, 0xb3,
++                         0x00ff0f07, 0x00000ff7);
++    n00_prm_domain_reset(prm, 0x0900, 0, 0x1, 0, 0, 0, 0xa5,
++                         0x00030107, 0x000000c7);
++    n00_prm_domain_reset(prm, 0x0a00, 0, 0x1, 0xc33ffe18, 0xc33ffe18,
++                         0xc33ffe18, 0, 0x000f0307, 0x000000f7);
++    n00_prm_domain_reset(prm, 0x0b00, 0, 0x1, 0, 0, 0, 0x16,
++                         0x00030107, 0x00000003);
++    n00_prm_domain_reset(prm, 0x0c00, 0, 0, 0x3cb, 0x3cb, 0, 0,
++                         0, 0x3);
++    n00_prm_domain_reset(prm, 0x0e00, 0, 0x1, 0x1, 0, 0, 0x16,
++                         0x00030107, 0x3);
++    n00_prm_domain_reset(prm, 0x0f00, 0, 0x1, 0, 0, 0, 0x16,
++                         0x00030107, 0x3);
++    n00_prm_domain_reset(prm, 0x1000, 0, 0x1, 0x3efff, 0x3efff, 0x3efff,
++                         0x17, 0x00030107, 0x7);
++    n00_prm_domain_reset(prm, 0x1100, 0, 0x1, 0, 0, 0, 0,
++                         0, 0x13);
++    n00_prm_domain_reset(prm, 0x1300, 0, 0x1, 0, 0, 0, 0x2,
++                         0x7, 0x3);
++    n00_prm_domain_reset(prm, 0x1400, 0, 0x1, 0x1, 0x1, 0x1, 0x17,
++                         0x00030107, 0x3);
++    prm->words[0x0804 >> 2] = 0x10;
++    prm->words[0x0814 >> 2] = 0x1;
++    prm->words[0x0af4 >> 2] = 0x4;
++    prm->words[0x0af8 >> 2] = 0x4;
++    prm->words[0x0d40 >> 2] = 0x3;
++    prm->words[0x0d70 >> 2] = 0x80;
++    prm->words[0x0de4 >> 2] = 0x3;
++    prm->words[0x0de8 >> 2] = 0x3;
++    prm->words[0x1238 >> 2] = 0x18;
++    prm->words[0x1254 >> 2] = 0x1006;
++    prm->words[0x1258 >> 2] = 0x1;
++    prm->words[0x1264 >> 2] = 0x50;
++    prm->words[0x1270 >> 2] = 0x43;
++    prm->words[0x129c >> 2] = 0xa;
++    prm->words[0x12c4 >> 2] = 0x1;
++    prm->words[0x12e4 >> 2] = 0x1;
++}
++
++static void n00_mmc2_init(DeviceState *intc, qemu_irq *drq)
++{
++    DeviceState *controller = qdev_new("n00-omap3-mmc");
++    DeviceState *card;
++    SysBusDevice *sbd;
++    DriveInfo *dinfo;
++    BlockBackend *blk;
++
++    sbd = SYS_BUS_DEVICE(controller);
++    sysbus_realize_and_unref(sbd, &error_fatal);
++    sysbus_mmio_map(sbd, 0, N00_MMC2_BASE);
++    sysbus_connect_irq(sbd, 0, qdev_get_gpio_in(intc, 86));
++    sysbus_connect_irq(sbd, 1, drq[47]); /* MMC2 TX */
++    sysbus_connect_irq(sbd, 2, drq[48]); /* MMC2 RX */
++
++    dinfo = drive_get(IF_SD, 0, 0);
++    blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
++    /* RX-71 MMC2 is the soldered, non-removable MMC/eMMC slot. */
++    card = qdev_new(TYPE_EMMC);
++    qdev_prop_set_bit(card, "dual-voltage", true);
++    qdev_prop_set_drive_err(card, "drive", blk, &error_fatal);
++    qdev_realize_and_unref(card, qdev_get_child_bus(controller, "sd-bus"),
++                           &error_fatal);
++}
++
++static const struct omap_l4_region_s n00_l4_regions[] = {
++    { .offset = 0x00318000, .size = 0x1000 },
++    { .offset = 0x00319000, .size = 0x1000 },
++    { .offset = 0x00320000, .size = 0x1000 },
++    { .offset = 0x00321000, .size = 0x1000 },
++    { .offset = 0x01020000, .size = 0x1000 },
++    { .offset = 0x01021000, .size = 0x1000 },
++    { .offset = 0x00098000, .size = 0x1000 },
++    { .offset = 0x00099000, .size = 0x1000 },
++    { .offset = 0x0009a000, .size = 0x1000 },
++    { .offset = 0x0009b000, .size = 0x1000 },
++    { .offset = 0x000b8000, .size = 0x1000 },
++    { .offset = 0x000b9000, .size = 0x1000 },
++    { .offset = 0x000ba000, .size = 0x1000 },
++    { .offset = 0x000bb000, .size = 0x1000 },
++};
++
++static const struct omap_l4_agent_info_s n00_l4_agents[] = {
++    { .ta = 0, .region = 0, .regions = 2, .ta_region = 1 },
++    { .ta = 1, .region = 2, .regions = 2, .ta_region = 1 },
++    { .ta = 2, .region = 4, .regions = 2, .ta_region = 1 },
++    { .ta = 3, .region = 6, .regions = 2, .ta_region = 1 },
++    { .ta = 4, .region = 8, .regions = 2, .ta_region = 1 },
++    { .ta = 5, .region = 10, .regions = 2, .ta_region = 1 },
++    { .ta = 6, .region = 12, .regions = 2, .ta_region = 1 },
++};
++
++static struct arm_boot_info n00_port_spike_binfo = {
++    .loader_start = N00_SDRAM_BASE,
++    .board_id = N00_RX71_MACHINE_ID,
++    /* RX-71 >= 0x2100 uses the board's fixed VEMMC regulator. */
++    .board_revision = 0x2100,
++};
++
++static int n00_dma_address_valid(struct omap_mpu_state_s *mpu,
++                                  hwaddr addr)
++{
++    return (addr >= N00_SDRAM_BASE && addr < N00_SDRAM_BASE + N00_SDRAM_SIZE)
++        || (addr >= N00_SRAM_BASE && addr < N00_SRAM_BASE + N00_SRAM_SIZE)
++        || (addr >= N00_MMC2_BASE && addr < N00_MMC2_BASE + 0x1000);
++}
++
++static void n00_port_spike_init(MachineState *machine)
++{
++    ARMCPU *cpu;
++    DeviceState *intc;
++    SysBusDevice *busdev;
++    MemoryRegion *sram;
++    N00RegisterBank *cm;
++    N00RegisterBank *prm;
++    N00RegisterBank *usb_otg;
++    N00RegisterBank *mmc[3];
++    struct omap_mpu_state_s *mpu;
++    struct omap_l4_s *l4;
++    omap_clk sys_clk;
++    omap_clk timer_clk;
++    qemu_irq spi_drq[8] = { 0 };
++    qemu_irq dma_irqs[4];
++    static int dummy_intc_clock;
++
++    if (!machine->kernel_filename) {
++        error_report("n00-port-spike requires -kernel for direct boot");
++        exit(EXIT_FAILURE);
++    }
++    if (machine->ram_size != N00_SDRAM_SIZE) {
++        error_report("n00-port-spike requires exactly 512 MiB RAM");
++        exit(EXIT_FAILURE);
++    }
++
++    cpu = ARM_CPU(cpu_create(machine->cpu_type));
++    memory_region_add_subregion(get_system_memory(), N00_SDRAM_BASE,
++                                machine->ram);
++    sram = g_new0(MemoryRegion, 1);
++    memory_region_init_ram(sram, NULL, "omap3.sram", N00_SRAM_SIZE,
++                           &error_fatal);
++    memory_region_add_subregion(get_system_memory(), N00_SRAM_BASE, sram);
++
++    cm = g_new0(N00RegisterBank, 1);
++    cm->clock_manager = true;
++    prm = g_new0(N00RegisterBank, 1);
++    usb_otg = g_new0(N00RegisterBank, 1);
++    for (int i = 0; i < ARRAY_SIZE(mmc); i++) {
++        mmc[i] = g_new0(N00RegisterBank, 1);
++        /* MMCHS_SYSSTATUS.RESETDONE, as in Nokia's OMAP3 MMC model. */
++        mmc[i]->words[0x14 >> 2] = 0x1;
++    }
++    n00_cm_reset(cm);
++    n00_prm_reset(prm);
++    /* OMAP3 MUSB wrapper reset values; the MUSB core is the next port step. */
++    usb_otg->words[0x400 >> 2] = 0x33;
++    usb_otg->words[0x408 >> 2] = 0x1;
++    usb_otg->words[0x40c >> 2] = 0x1;
++    usb_otg->words[0x414 >> 2] = 0x1;
++    n00_register_bank_map(cm, "omap3.cm-bootstrap", N00_CM_BASE,
++                          N00_PRCM_SIZE);
++    n00_register_bank_map(prm, "omap3.prm-bootstrap", N00_PRM_BASE,
++                          N00_PRCM_SIZE);
++    n00_register_bank_map(usb_otg, "omap3.usb-otg-bootstrap",
++                          N00_USB_OTG_BASE, 0x1000);
++    n00_register_bank_map(mmc[0], "omap3.mmc1-bootstrap",
++                          N00_MMC1_BASE, 0x1000);
++    n00_register_bank_map(mmc[2], "omap3.mmc3-bootstrap",
++                          N00_MMC3_BASE, 0x1000);
++    n00_sdrc_init(get_system_memory(), 0x6d000000);
++
++    /*
++     * OMAP3 uses the same three-bank INTC register layout retained by the
++     * modern OMAP2 model.  The clock pointers are only connection guards in
++     * QEMU 9.1; replace these placeholders when the OMAP3 clock tree lands.
++     */
++    intc = qdev_new("omap2-intc");
++    qdev_prop_set_uint8(intc, "revision", 0x21);
++    omap_intc_set_fclk(OMAP_INTC(intc), (omap_clk)&dummy_intc_clock);
++    omap_intc_set_iclk(OMAP_INTC(intc), (omap_clk)&dummy_intc_clock);
++    busdev = SYS_BUS_DEVICE(intc);
++    sysbus_realize_and_unref(busdev, &error_fatal);
++    sysbus_connect_irq(busdev, 0,
++                       qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_IRQ));
++    sysbus_connect_irq(busdev, 1,
++                       qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_FIQ));
++    sysbus_mmio_map(busdev, 0, N00_INTC_BASE);
++
++    /*
++     * Retain the modern OMAP GP and 32 kHz timer models.  QEMU 9.1 maps an
++     * OMAP3430 request onto its OMAP2430 clock catalogue; that is sufficient
++     * for this direct-boot milestone while the real OMAP3 CM/PRM is ported.
++     */
++    mpu = g_new0(struct omap_mpu_state_s, 1);
++    mpu->mpu_model = omap3430;
++    mpu->cpu = cpu;
++    omap_clk_init(mpu);
++    sys_clk = omap_findclk(mpu, "sys_clk");
++    timer_clk = omap_findclk(mpu, "wu_gpt1_clk");
++    omap_clk_onoff(sys_clk, 1);
++    omap_clk_onoff(timer_clk, 1);
++
++    for (int i = 0; i < 4; i++) {
++        dma_irqs[i] = qdev_get_gpio_in(intc, 12 + i);
++    }
++    omap_clk_onoff(omap_findclk(mpu, "sdma_fclk"), 1);
++    mpu->dma = omap_dma4_init(0x48056000, dma_irqs, get_system_memory(),
++                             mpu, 256, 32,
++                             omap_findclk(mpu, "sdma_iclk"),
++                             omap_findclk(mpu, "sdma_fclk"));
++    for (int i = 0; i < __omap_dma_port_last; i++) {
++        mpu->port[i].addr_valid = n00_dma_address_valid;
++    }
++    soc_dma_port_add_mem(mpu->dma, memory_region_get_ram_ptr(machine->ram),
++                         N00_SDRAM_BASE, N00_SDRAM_SIZE);
++    soc_dma_port_add_mem(mpu->dma, memory_region_get_ram_ptr(sram),
++                         N00_SRAM_BASE, N00_SRAM_SIZE);
++    n00_mmc2_init(intc, mpu->drq);
++
++    l4 = omap_l4_init(get_system_memory(), 0x48000000, 7);
++    omap_gp_timer_init(omap_l4ta_get(l4, n00_l4_regions,
++                                    n00_l4_agents, 0),
++                       qdev_get_gpio_in(intc, 37), timer_clk,
++                       omap_findclk(mpu, "wu_l4_iclk"));
++    omap_synctimer_init(omap_l4ta_get(l4, n00_l4_regions,
++                                     n00_l4_agents, 1),
++                        mpu, omap_findclk(mpu, "clk32-kHz"), NULL);
++
++    /* These retained OMAP models match the OMAP3 McSPI register layout. */
++    omap_mcspi_init(omap_l4ta_get(l4, n00_l4_regions, n00_l4_agents, 3),
++                    4, qdev_get_gpio_in(intc, 65), spi_drq, NULL, NULL);
++    omap_mcspi_init(omap_l4ta_get(l4, n00_l4_regions, n00_l4_agents, 4),
++                    2, qdev_get_gpio_in(intc, 66), spi_drq, NULL, NULL);
++    omap_mcspi_init(omap_l4ta_get(l4, n00_l4_regions, n00_l4_agents, 5),
++                    2, qdev_get_gpio_in(intc, 91), spi_drq, NULL, NULL);
++    omap_mcspi_init(omap_l4ta_get(l4, n00_l4_regions, n00_l4_agents, 6),
++                    1, qdev_get_gpio_in(intc, 48), spi_drq, NULL, NULL);
++
++    /* RX-71 exposes QEMU's first serial backend through OMAP UART3. */
++    omap2_uart_init(get_system_memory(),
++                    omap_l4ta_get(l4, n00_l4_regions, n00_l4_agents, 2),
++                    qdev_get_gpio_in(intc, N00_UART3_IRQ),
++                    omap_findclk(mpu, "uart3_fclk"),
++                    omap_findclk(mpu, "uart3_iclk"),
++                    NULL, NULL, "uart3", serial_hd(0));
++
++    n00_port_spike_binfo.ram_size = machine->ram_size;
++    arm_load_kernel(cpu, machine, &n00_port_spike_binfo);
++}
++
++static void n00_port_spike_machine_init(MachineClass *mc)
++{
++    static const char * const valid_cpu_types[] = {
++        ARM_CPU_TYPE_NAME("cortex-a8"),
++        NULL,
++    };
++
++    mc->desc = "Nokia N9/N00 forward-port integration spike";
++    mc->init = n00_port_spike_init;
++    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a8");
++    mc->valid_cpu_types = valid_cpu_types;
++    mc->default_ram_size = N00_SDRAM_SIZE;
++    mc->default_ram_id = "omap3.dram";
++    mc->max_cpus = 1;
++    mc->ignore_memory_transaction_failures = true;
++}
++
++DEFINE_MACHINE("n00-port-spike", n00_port_spike_machine_init)
+diff --git a/hw/arm/n00_sdrc_port.c b/hw/arm/n00_sdrc_port.c
+new file mode 100644
+--- /dev/null
++++ b/hw/arm/n00_sdrc_port.c
+@@ -0,0 +1,280 @@
++/*
++ * TI OMAP SDRAM controller emulation.
++ *
++ * Copyright (C) 2007-2008 Nokia Corporation
++ * Written by Andrzej Zaborowski <andrew@openedhand.com>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 or
++ * (at your option) any later version of the License.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++#include "qemu/osdep.h"
++#include "hw/arm/omap.h"
++
++/* Forward port of Nokia 0.13 SDRC state, kept separate from OMAP2. */
++void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base);
++
++/* SDRAM Controller Subsystem */
++struct n00_sdrc_s {
++    MemoryRegion iomem;
++    uint8_t config;
++    uint32_t cscfg;
++    uint32_t sharing;
++    uint32_t dlla_ctrl;
++    uint32_t power_reg;
++    struct {
++        uint32_t mcfg;
++        uint32_t mr;
++        uint32_t emr2;
++        uint32_t actim_ctrla;
++        uint32_t actim_ctrlb;
++        uint32_t rfr_ctrl;
++        uint32_t manual;
++    } cs[2];
++};
++
++static void n00_sdrc_reset(struct n00_sdrc_s *s)
++{
++    s->config    = 0x10;
++    s->cscfg     = 0x4;
++    s->sharing   = 0; // TODO: copy from system control module
++    s->dlla_ctrl = 0;
++    s->power_reg = 0x85;
++    s->cs[0].mcfg        = s->cs[1].mcfg        = 0; // TODO: copy from system control module!
++    s->cs[0].mr          = s->cs[1].mr          = 0x0024;
++    s->cs[0].emr2        = s->cs[1].emr2        = 0;
++    s->cs[0].actim_ctrla = s->cs[1].actim_ctrla = 0;
++    s->cs[0].actim_ctrlb = s->cs[1].actim_ctrlb = 0;
++    s->cs[0].rfr_ctrl    = s->cs[1].rfr_ctrl    = 0;
++    s->cs[0].manual      = s->cs[1].manual      = 0;
++}
++
++static uint64_t n00_sdrc_read(void *opaque, hwaddr addr, unsigned size)
++{
++    struct n00_sdrc_s *s = (struct n00_sdrc_s *) opaque;
++    int cs = 0;
++
++    switch (addr) {
++    case 0x00:  /* SDRC_REVISION */
++        return 0x20;
++
++    case 0x10:  /* SDRC_SYSCONFIG */
++        return s->config;
++
++    case 0x14:  /* SDRC_SYSSTATUS */
++        return 1; /* RESETDONE */
++
++    case 0x40:  /* SDRC_CS_CFG */
++        return s->cscfg;
++
++    case 0x44:  /* SDRC_SHARING */
++        return s->sharing;
++
++    case 0x48:  /* SDRC_ERR_ADDR */
++        return 0;
++
++    case 0x4c:  /* SDRC_ERR_TYPE */
++        return 0x8;
++
++    case 0x60:  /* SDRC_DLLA_SCTRL */
++        return s->dlla_ctrl;
++
++    case 0x64:  /* SDRC_DLLA_STATUS */
++        return ~(s->dlla_ctrl & 0x4);
++
++    case 0x68:  /* SDRC_DLLB_CTRL */
++    case 0x6c: /* SDRC_DLLB_STATUS */
++        return 0x00;
++
++    case 0x70:  /* SDRC_POWER */
++        return s->power_reg;
++
++    case 0xb0 ... 0xd8:
++        cs = 1;
++        addr -= 0x30;
++        /* fall through */
++    case 0x80 ... 0xa8:
++        switch (addr & 0x3f) {
++        case 0x00: /* SDRC_MCFG_x */
++            return s->cs[cs].mcfg;
++        case 0x04: /* SDRC_MR_x */
++            return s->cs[cs].mr;
++        case 0x08: /* SDRC_EMR1_x */
++            return 0x00;
++        case 0x0c: /* SDRC_EMR2_x */
++            return s->cs[cs].emr2;
++        case 0x10: /* SDRC_EMR3_x */
++            return 0x00;
++        case 0x14:
++            if (cs)
++                return s->cs[1].actim_ctrla; /* SDRC_ACTIM_CTRLA_1 */
++            return 0x00;                     /* SDRC_DCDL1_CTRL */
++        case 0x18:
++            if (cs)
++                return s->cs[1].actim_ctrlb; /* SDRC_ACTIM_CTRLB_1 */
++            return 0x00;                     /* SDRC_DCDL2_CTRL */
++        case 0x1c:
++            if (!cs)
++                return s->cs[0].actim_ctrla; /* SDRC_ACTIM_CTRLA_0 */
++            break;
++        case 0x20:
++            if (!cs)
++                return s->cs[0].actim_ctrlb; /* SDRC_ACTIM_CTRLB_0 */
++            break;
++        case 0x24: /* SDRC_RFR_CTRL_x */
++            return s->cs[cs].rfr_ctrl;
++        case 0x28: /* SDRC_MANUAL_x */
++            return s->cs[cs].manual;
++        default:
++            break;
++        }
++        addr += cs * 0x30; // restore address to get correct error messages
++        break;
++
++    default:
++        break;
++    }
++
++    OMAP_BAD_REG(addr);
++    return 0;
++}
++
++static void n00_sdrc_write(void *opaque, hwaddr addr,
++                            uint64_t value, unsigned size)
++{
++    struct n00_sdrc_s *s = (struct n00_sdrc_s *) opaque;
++    int cs = 0;
++
++    switch (addr) {
++    case 0x00:  /* SDRC_REVISION */
++    case 0x14:  /* SDRC_SYSSTATUS */
++    case 0x48:  /* SDRC_ERR_ADDR */
++    case 0x64:  /* SDRC_DLLA_STATUS */
++    case 0x6c:  /* SDRC_DLLB_STATUS */
++        OMAP_RO_REG(addr);
++        break;
++
++    case 0x10:  /* SDRC_SYSCONFIG */
++        /* ignore invalid idle mode settings */
++        /*if ((value >> 3) != 0x2)
++         fprintf(stderr, "%s: bad SDRAM idle mode %i for SDRC_SYSCONFIG (full value 0x%08x)\n",
++         __FUNCTION__, value >> 3, value);*/
++        if (value & 2)
++            n00_sdrc_reset(s);
++        s->config = value & 0x18;
++        break;
++
++    case 0x40:  /* SDRC_CS_CFG */
++        s->cscfg = value & 0x30f;
++        break;
++
++    case 0x44:  /* SDRC_SHARING */
++        if (!(s->sharing & 0x40000000)) /* LOCK */
++            s->sharing = value & 0x40007f00;
++        break;
++
++    case 0x4c:  /* SDRC_ERR_TYPE */
++        OMAP_BAD_REG(addr);
++        break;
++
++    case 0x60:  /* SDRC_DLLA_CTRL */
++        s->dlla_ctrl = value & 0xffff00fe;
++        break;
++
++    case 0x68:  /* SDRC_DLLB_CTRL */
++        /* silently ignore */
++        /*OMAP_BAD_REG(addr);*/
++        break;
++
++    case 0x70:  /* SDRC_POWER_REG */
++        s->power_reg = value & 0x04fffffd;
++        break;
++
++    case 0xb0 ... 0xd8:
++        cs = 1;
++        addr -= 0x30;
++        /* fall through */
++    case 0x80 ... 0xa8:
++        switch (addr & 0x3f) {
++        case 0x00: /* SDRC_MCFG_x */
++            if (!(s->cs[cs].mcfg & 0x40000000)) { /* LOCKSTATUS */
++                if (value & 0x00080000) /* ADDRMUXLEGACY */
++                    s->cs[cs].mcfg = value & 0x477bffdf;
++                else
++                    s->cs[cs].mcfg = value & 0x41fbffdf; // ????
++            }
++            break;
++        case 0x04: /* SDRC_MR_x */
++            s->cs[cs].mr = value & 0xfff;
++            break;
++        case 0x08: /* SDRC_EMR1_x */
++            break;
++        case 0x0c: /* SDRC_EMR2_x */
++            s->cs[cs].emr2 = value & 0xfff;
++            break;
++        case 0x10: /* SDRC_EMR3_x */
++            break;
++        case 0x14:
++            if (cs)
++                s->cs[1].actim_ctrla = value & 0xffffffdf; /* SDRC_ACTIM_CTRLA_1 */
++            break;                                         /* SDRC_DCDL1_CTRL */
++        case 0x18:
++            if (cs)
++                s->cs[1].actim_ctrlb = value & 0x000377ff; /* SDRC_ACTIM_CTRLB_1 */
++            break;                                         /* SDRC_DCDL2_CTRL */
++        case 0x1c:
++            if (!cs)
++                s->cs[0].actim_ctrla = value & 0xffffffdf; /* SDRC_ACTIM_CTRLA_0 */
++            else
++                OMAP_BAD_REG(addr + 0x30);
++            break;
++        case 0x20:
++            if (!cs)
++                s->cs[0].actim_ctrlb = value & 0x000377ff; /* SDRC_ACTIM_CTRLB_0 */
++            else
++                OMAP_BAD_REG(addr + 0x30);
++            break;
++        case 0x24: /* SDRC_RFR_CTRL_x */
++            s->cs[cs].rfr_ctrl = value & 0x00ffff03;
++            break;
++        case 0x28: /* SDRC_MANUAL_x */
++            s->cs[cs].manual = value & 0xffff000f;
++            break;
++        default:
++            OMAP_BAD_REG(addr + cs * 0x30);
++            break;
++        }
++        break;
++
++    default:
++        OMAP_BAD_REG(addr);
++        break;
++    }
++}
++
++static const MemoryRegionOps n00_sdrc_ops = {
++    .read = n00_sdrc_read,
++    .write = n00_sdrc_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base)
++{
++    struct n00_sdrc_s *s = g_new0(struct n00_sdrc_s, 1);
++
++    n00_sdrc_reset(s);
++    memory_region_init_io(&s->iomem, NULL, &n00_sdrc_ops, s,
++                          "n00.sdrc", 0x1000);
++    memory_region_add_subregion(sysmem, base, &s->iomem);
++}
+diff --git a/hw/arm/n00_mmc_port.c b/hw/arm/n00_mmc_port.c
+new file mode 100644
+--- /dev/null
++++ b/hw/arm/n00_mmc_port.c
+@@ -0,0 +1,842 @@
++/*
++ * OMAP3 MMC/SD/SDIO interface emulation
++ *
++ * Copyright (C) 2008 yajin  <yajin@vm-kernel.org>
++ * Copyright (C) 2009 Nokia Corporation
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 or
++ * (at your option) version 3 of the License.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++#include "qemu/osdep.h"
++#include "hw/arm/omap.h"
++#include "hw/sd/sd.h"
++#include "hw/sysbus.h"
++#include "hw/irq.h"
++#include "hw/qdev-properties.h"
++#include "qemu/module.h"
++#include "qemu/main-loop.h"
++
++/* Nokia OMAP3 MMCHS forward port; SD card protocol uses modern SDBus. */
++
++/* debug levels:
++   0 - no debug
++   1 - print non-fatal errors
++   2 - print out all commands in processing order
++   3 - dump all register accesses and buffer management */
++#define MMC_DEBUG_LEVEL 0
++
++#if MMC_DEBUG_LEVEL>0
++#define TRACE(fmt,...) fprintf(stderr, "%s: " fmt "\n", \
++                               __FUNCTION__, ##__VA_ARGS__)
++#else
++#define TRACE(...)
++#endif
++
++#if MMC_DEBUG_LEVEL>1
++#define TRACE1(...) TRACE(__VA_ARGS__)
++#else
++#define TRACE1(...)
++#endif
++
++#if MMC_DEBUG_LEVEL>2
++#define TRACE2(...) TRACE(__VA_ARGS__)
++#else
++#define TRACE2(...)
++#endif
++
++struct n00_mmc_s
++{
++    SysBusDevice busdev;
++    qemu_irq irq;
++    qemu_irq dma[2];
++    qemu_irq coverswitch;
++    omap_clk clk;
++    MemoryRegion iomem;
++    SDBus sdbus;
++    bool emmc;
++    QEMUBH *dma_bh;
++    unsigned pending_drq;
++
++    uint32_t sysconfig;
++    uint32_t sysstatus;
++    uint32_t csre;
++    uint32_t systest;
++    uint32_t con;
++    uint32_t pwcnt;
++    uint32_t blk;
++    uint32_t arg;
++    uint32_t cmd;
++    uint32_t rsp10;
++    uint32_t rsp32;
++    uint32_t rsp54;
++    uint32_t rsp76;
++    uint32_t data;
++    uint32_t pstate;
++    uint32_t hctl;
++    uint32_t sysctl;
++    uint32_t stat;
++    uint32_t ie;
++    uint32_t ise;
++    uint32_t ac12;
++    uint32_t capa;
++    uint32_t cur_capa;
++    uint32_t rev;
++
++    uint16_t blen_counter;
++    uint16_t nblk_counter;
++
++    uint32_t fifo[256];
++    int fifo_start;
++    int fifo_len;
++
++    int ddir;
++    int transfer;
++    int stop;
++};
++
++/* Bit names for STAT/IC/IE registers */
++#define STAT_CC (1 << 0)
++#define STAT_TC (1 << 1)
++#define STAT_BGE (1 << 2)
++#define STAT_BWR (1 << 4)
++#define STAT_BRR (1 << 5)
++#define STAT_CIRQ (1 << 8)
++#define STAT_OBI (1 << 9)
++#define STAT_ERRI (1 << 15)
++#define STAT_CTO (1 << 16)
++#define STAT_CCRC (1 << 17)
++#define STAT_CEB (1 << 18)
++#define STAT_CIE (1 << 19)
++#define STAT_DTO (1 << 20)
++#define STAT_DCRC (1 << 21)
++#define STAT_DEB (1 << 22)
++#define STAT_ACE (1 << 24)
++#define STAT_CERR (1 << 28)
++#define STAT_BADA (1 << 29)
++
++#define STAT_MASK \
++    (STAT_CC|STAT_TC|STAT_BGE| \
++    STAT_BWR|STAT_BRR| \
++    STAT_CIRQ|STAT_OBI| \
++    STAT_ERRI| \
++    STAT_CTO|STAT_CCRC|STAT_CEB|STAT_CIE| \
++    STAT_DTO|STAT_DCRC|STAT_DEB| \
++    STAT_ACE|STAT_CERR|STAT_BADA)
++
++static void n00_mmc_deliver_drq(void *opaque)
++{
++    struct n00_mmc_s *s = opaque;
++    unsigned pending = s->pending_drq;
++
++    s->pending_drq = 0;
++    for (int i = 0; i < 2; i++) {
++        if (pending & (1 << i)) {
++            qemu_irq_raise(s->dma[i]);
++        }
++    }
++}
++
++static void n00_mmc_set_drq(struct n00_mmc_s *s, int index, bool level)
++{
++    /*
++     * Legacy soc_dma can copy a packet synchronously from an IRQ callback.
++     * Defer rising DRQ edges until MMCHS register dispatch has returned, so
++     * DMA reads do not re-enter the same protected MemoryRegion.
++     * Deassert immediately to stop a packet from overrunning the FIFO.
++     */
++    if (level) {
++        s->pending_drq |= 1 << index;
++        qemu_bh_schedule(s->dma_bh);
++    } else {
++        s->pending_drq &= ~(1 << index);
++        qemu_irq_lower(s->dma[index]);
++    }
++}
++
++static void n00_mmc_reset(DeviceState *dev)
++{
++    struct n00_mmc_s *s = (struct n00_mmc_s *)dev;
++    qemu_bh_cancel(s->dma_bh);
++    s->pending_drq = 0;
++    qemu_irq_lower(s->dma[0]);
++    qemu_irq_lower(s->dma[1]);
++    s->sysconfig = 0x00000015;
++    s->sysstatus = 0;
++    s->csre      = 0;
++    s->systest   = 0;
++    s->con       = 0x00000500;
++    s->pwcnt     = 0;
++    s->blk       = 0;
++    s->arg       = 0;
++    s->cmd       = 0;
++    s->rsp10     = 0;
++    s->rsp32     = 0;
++    s->rsp54     = 0;
++    s->rsp76     = 0;
++    s->data      = 0;
++    s->pstate    = 0x00040000;
++    s->hctl      = 0;
++    s->sysctl    = 0;
++    s->stat      = 0;
++    s->ie        = 0;
++    s->ise       = 0;
++    s->ac12      = 0;
++    s->capa      = 0x00e10080;
++    s->cur_capa  = 0;
++    s->rev       = 0x26000000;
++
++    s->blen_counter = 0;
++    s->nblk_counter = 0;
++
++    memset(s->fifo, 0, sizeof(s->fifo));
++    s->fifo_start = 0;
++    s->fifo_len   = 0;
++
++    s->ddir       = 0;
++    s->transfer   = 0;
++    s->stop       = 0;
++
++    /* Reset the host, not the soldered card; CMD0 resets the card protocol. */
++}
++
++typedef enum
++{
++    sd_nore = 0,     /* no response */
++    sd_136_bits = 1, /* response length 136 bits */
++    sd_48_bits = 2,  /* response length 48 bits */
++    sd_48b_bits = 3, /* response length 48 bits with busy after response */
++} omap3_sd_rsp_type_t;
++
++static void n00_mmc_command(struct n00_mmc_s *host);
++
++static void n00_mmc_interrupts_update(struct n00_mmc_s *s)
++{
++    qemu_set_irq(s->irq, !!(s->stat & s->ie & s->ise));
++}
++
++static void n00_mmc_fifolevel_update(struct n00_mmc_s *host)
++{
++    enum { ongoing, ready, aborted } state = ongoing;
++
++    if ((host->cmd & (1 << 21))) { /* DP */
++        if (host->ddir) {
++            TRACE2("receive, dma=%d, fifo_len=%d bytes",
++                   host->cmd & 1, host->fifo_len * 4);
++
++            /* n00_mmc_transfer ensures we always have data in FIFO
++               during receive as long as all data has not been transferred -
++               NOTE that the actual transfer may be finished already (i.e.
++               host->transfer is cleared) but not all data has been read out
++               from FIFO yet */
++            if (host->fifo_len) {
++                if (host->cmd & 1) { /* DE */
++                    if (host->fifo_len * 4 == (host->blk & 0x7ff)) { /* BLEN */
++                        if (host->stop)
++                            state = aborted;
++                        else
++                            n00_mmc_set_drq(host, 1, true);
++                    } else
++                        n00_mmc_set_drq(host, 1, false);
++                } else {
++                    if (host->stop
++                        && host->fifo_len * 4 == (host->blk & 0x7ff))
++                        state = aborted;
++                    else {
++                        host->pstate |= 0x0800; /* BRE */
++                        host->stat   |= STAT_BRR;
++                    }
++                }
++            }
++            else
++                state = host->stop ? aborted : ready;
++        } else {
++            /* n00_mmc_transfer keeps FIFO empty during transmit so
++               we just check all blocks have been transferred or not */
++            if (host->transfer) {
++                if (host->cmd & 1) { /* DE */
++                    if (host->blen_counter == (host->blk & 0x7ff)) { /* BLEN */
++                        if (host->stop)
++                            state = aborted;
++                        else
++                            n00_mmc_set_drq(host, 0, true);
++                    } else
++                        n00_mmc_set_drq(host, 0, false);
++                } else {
++                    if (host->stop
++                        && host->blen_counter == (host->blk & 0x7ff))
++                        state = aborted;
++                    else {
++                        host->pstate |= 0x0400; /* BWE */
++                        host->stat   |= STAT_BWR;
++                    }
++                }
++            } else
++                state = host->stop ? aborted : ready;
++        }
++
++        if ((host->cmd & 1) || state != ongoing) { /* DE */
++            host->pstate &= ~0x0c00;               /* BRE | BWE */
++            host->stat &= ~(STAT_BRR | STAT_BWR);
++            if (state != ongoing) {
++                /* Cancel queued DRQ before the next request can reuse DMA. */
++                n00_mmc_set_drq(host, 0, false);
++                n00_mmc_set_drq(host, 1, false);
++                TRACE2("transfer %s",
++                       state == ready
++                       ? "complete"
++                       : "aborted --> complete");
++                host->stat |= STAT_TC;
++                if (host->cmd & 0x04) {            /* ACEN */
++                    host->stop = 0x0cc30000;
++                    state = aborted;
++                }
++                if (state == aborted) {
++                    host->cmd = host->stop;
++                    host->stop = 0;
++                    n00_mmc_command(host);
++                }
++            }
++        }
++    }
++}
++
++static void n00_mmc_transfer(struct n00_mmc_s *host)
++{
++    int i;
++    uint32_t x;
++#if MMC_DEBUG_LEVEL>1
++    int j;
++    uint8_t c, sym[17];
++#endif
++
++    /* IF data transfer is inactive
++       OR block count enabled with zero block count
++       OR in receive mode and we have unread data in FIFO
++       OR in transmit mode and we have no data in FIFO,
++       THEN don't do anything */
++    if (!host->transfer
++        || ((host->cmd & 2) && !host->nblk_counter)
++        || (host->ddir && host->fifo_len)
++        || (!host->ddir && !host->fifo_len))
++        return;
++
++    if (host->ddir) {
++        TRACE2("begin, %d blocks (%d bytes/block) left to receive, %d bytes in FIFO",
++               (host->cmd & 2) ? host->nblk_counter : 1,
++               host->blk & 0x7ff,
++               host->fifo_len * 4);
++        while (host->blen_counter && host->fifo_len < 255) {
++            for (i = 0, x = 0; i < 32 && host->blen_counter; i += 8, host->blen_counter--)
++                x |= sdbus_read_byte(&host->sdbus) << i;
++            host->fifo[(host->fifo_start + host->fifo_len) & 0xff] = x;
++            host->fifo_len++;
++        }
++        TRACE2("end, %d bytes in FIFO:", host->fifo_len * 4);
++#if MMC_DEBUG_LEVEL>1
++        for (i = 0; i < host->fifo_len; ) {
++            fprintf(stderr, "%s: [0x%03x] ", __FUNCTION__, i * 4);
++            do {
++                x = host->fifo[(host->fifo_start + i) & 0xff];
++                for (j = 0; j < 4; j++) {
++                    c = (x >> (j * 8)) & 0xff;
++                    fprintf(stderr, "%02x ", c);
++                    sym[(i & 3) * 4 + j] = (c < 32 || c > 126) ? '.' : c;
++                }
++            } while (((++i) & 3));
++            sym[16] = 0;
++            fprintf(stderr, "%s\n", sym);
++        }
++#endif
++    } else {
++        TRACE2("%d bytes left to transmit in current block", host->blen_counter);
++        while (host->blen_counter && host->fifo_len) {
++            for (i = 0; i < 32 && host->blen_counter; i += 8, host->blen_counter--)
++                sdbus_write_byte(&host->sdbus, (host->fifo[host->fifo_start] >> i) & 0xff);
++            host->fifo_start++;
++            host->fifo_len--;
++            host->fifo_start &= 0xff;
++        }
++    }
++
++    if (!host->blen_counter) {
++        if (host->cmd & 2) /* BCE */
++            host->nblk_counter--;
++        TRACE2("block done, %d blocks left",
++               (host->cmd & (1 << 5)) ? host->nblk_counter : 0);
++        host->blen_counter = host->blk & 0x7ff;
++        if (!(host->cmd & (1 << 5)) /* MSBS */
++            || !host->nblk_counter) {
++            host->nblk_counter = (host->blk >> 16) & 0xffff;
++            host->transfer = 0;
++            host->pstate &= ~0x0306; /* RTA | WTA | DLA | DATI */
++        }
++    }
++}
++
++static void n00_mmc_command(struct n00_mmc_s *s)
++{
++    uint32_t rspstatus, mask;
++    int rsplen, timeout;
++    SDRequest request;
++    uint8_t response[16];
++    int cmd = (s->cmd >> 24) & 0x3f; /* INDX */
++    int rsptype = (s->cmd >> 16) & 3;
++    int dp = s->cmd & (1 << 21);
++
++    n00_mmc_set_drq(s, 0, false);
++    n00_mmc_set_drq(s, 1, false);
++    TRACE1("%d type=%d rsp=%d arg=0x%08x blk=0x%08x, fifo=%d/%d",
++           cmd, (s->cmd >> 22) & 3, (s->cmd >> 16) & 3, s->arg,
++           s->blk, s->fifo_start, s->fifo_len);
++
++    if ((s->con & 2) && !cmd) { /* INIT and CMD0 */
++        s->stat   |= STAT_CC;
++        s->pstate &= 0xfffffffe;
++        return;
++    }
++
++    if (dp) {
++        s->fifo_start = 0;
++        s->fifo_len = 0;
++        s->transfer = 1;
++        s->ddir = (s->cmd >> 4) & 1;
++        /* DLA | DATI | (RTA/WTA) */
++        s->pstate |= 0x6 | (s->ddir ? 0x200 : 0x100);
++    } else {
++        s->transfer = 0;
++        s->pstate &= ~0x306; /* RTA | WTA | DLA | DATI */
++    }
++
++    timeout = 0;
++    mask = 0;
++    rspstatus = 0;
++
++    request.cmd = cmd;
++    request.arg = s->arg;
++    request.crc = 0; /* FIXME */
++
++    rsplen = sdbus_do_command(&s->sdbus, &request, response);
++
++    switch (rsptype) {
++        case sd_nore:
++            rsplen = 0;
++            break;
++        case sd_136_bits:
++            if (rsplen < 16) {
++                timeout = 1;
++                break;
++            }
++            rsplen = 16;
++            s->rsp76 = (response[0] << 24) | (response[1] << 16) |
++                       (response[2] << 8) | (response[3] << 0);
++            s->rsp54 = (response[4] << 24) | (response[5] << 16) |
++                       (response[6] << 8) | (response[7] << 0);
++            s->rsp32 = (response[8] << 24) | (response[9] << 16) |
++                       (response[10] << 8) | (response[11] << 0);
++            s->rsp10 = (response[12] << 24) | (response[13] << 16) |
++                       (response[14] << 8) | (response[15] << 0);
++            break;
++        case sd_48_bits:
++        case sd_48b_bits:
++            if (rsplen < 4) {
++                timeout = 1;
++                break;
++            }
++            rsplen = 4;
++            s->rsp10 = (response[0] << 24) | (response[1] << 16) |
++                       (response[2] << 8) | (response[3] << 0);
++            switch (cmd) {
++                case 41: /* r3 */
++                    break;
++                case 3:  /* r6 */
++                    mask = 0xe00;
++                    rspstatus = (response[2] << 8) | response[3];
++                    break;
++                default:
++                    if (cmd == 8 && !s->emmc) {
++                        /* r7 */
++                        break;
++                    }
++                    mask = OUT_OF_RANGE | ADDRESS_ERROR | BLOCK_LEN_ERROR |
++                        ERASE_SEQ_ERROR | ERASE_PARAM | WP_VIOLATION |
++                        LOCK_UNLOCK_FAILED | COM_CRC_ERROR | ILLEGAL_COMMAND |
++                        CARD_ECC_FAILED | CC_ERROR | SD_ERROR |
++                        CID_CSD_OVERWRITE | WP_ERASE_SKIP;
++                    rspstatus = (response[0] << 24) | (response[1] << 16) |
++                                (response[2] << 8) | (response[3] << 0);
++                    break;
++            }
++        default:
++            break;
++    }
++
++    if (cmd == 12 || cmd == 52) { /* stop transfer commands */
++        /*s->fifo_start = 0;*/
++        /*s->fifo_len = 0;*/
++        s->transfer = 0;
++        s->pstate &= ~0x0f06;     /* BRE | BWE | RTA | WTA | DLA | DATI */
++        s->stat &= ~(STAT_BRR | STAT_BWR);
++        s->stat |= STAT_TC;
++        n00_mmc_set_drq(s, 0, false);
++        n00_mmc_set_drq(s, 1, false);
++    }
++
++    if (rspstatus & mask & s->csre) {
++        s->stat |= STAT_CERR;
++        s->pstate &= ~0x306; /* RTA | WTA | DLA | DATI */
++        s->transfer = 0;
++    } else {
++        s->stat &= ~STAT_CERR;
++        /* If this is an R1b command with no data transfer and
++         * there wasn't an error, then we have effectively
++         * emulated the command as having a zero length "busy"
++         * response. Set TC to tell the driver the "busy" period
++         * is over.
++         */
++        if (!timeout && !dp && rsptype == sd_48b_bits) {
++            s->stat |= STAT_TC;
++        }
++    }
++    s->stat |= timeout ? STAT_CTO : STAT_CC;
++}
++
++static uint64_t n00_mmc_read(void *opaque, hwaddr addr, unsigned size)
++{
++    struct n00_mmc_s *s = (struct n00_mmc_s *) opaque;
++    uint32_t i ;
++
++    switch (addr) {
++        case 0x10:
++            TRACE2("SYSCONFIG = %08x", s->sysconfig);
++            return s->sysconfig;
++        case 0x14:
++            TRACE2("SYSSTATUS = %08x", s->sysstatus | 0x1);
++            return s->sysstatus | 0x1; /*reset completed */
++        case 0x24:
++            TRACE2("CSRE = %08x", s->csre);
++            return s->csre;
++        case 0x28:
++            TRACE2("SYSTEST = %08x", s->systest);
++            return s->systest;
++        case 0x2c: /* MMCHS_CON */
++            TRACE2("CON = %08x", s->con);
++            return s->con;
++        case 0x30:
++            TRACE2("PWCNT = %08x", s->pwcnt);
++            return s->pwcnt;
++        case 0x104: /* MMCHS_BLK */
++            TRACE2("BLK = %08x", s->blk);
++            return s->blk;
++        case 0x108: /* MMCHS_ARG */
++            TRACE2("ARG = %08x", s->arg);
++            return s->arg;
++        case 0x10c:
++            TRACE2("CMD = %08x", s->cmd);
++            return s->cmd;
++        case 0x110:
++            TRACE2("RSP10 = %08x", s->rsp10);
++            return s->rsp10;
++        case 0x114:
++            TRACE2("RSP32 = %08x", s->rsp32);
++            return s->rsp32;
++        case 0x118:
++            TRACE2("RSP54 = %08x", s->rsp54);
++            return s->rsp54;
++        case 0x11c:
++            TRACE2("RSP76 = %08x", s->rsp76);
++            return s->rsp76;
++        case 0x120:
++            /* in PIO mode, access allowed only when BRE is set */
++            if (!(s->cmd & 1) && !(s->pstate & 0x0800)) {
++                s->stat |= STAT_BADA;
++                i = 0;
++            } else {
++                i = s->fifo[s->fifo_start];
++                s->fifo[s->fifo_start] = 0;
++                if (s->fifo_len == 0) {
++                    TRACE("FIFO underrun");
++                    return i;
++                }
++                s->fifo_start++;
++                s->fifo_len--;
++                s->fifo_start &= 255;
++                n00_mmc_transfer(s);
++                n00_mmc_fifolevel_update(s);
++            }
++            n00_mmc_interrupts_update(s);
++            return i;
++        case 0x124: /* MMCHS_PSTATE */
++            TRACE2("PSTATE = %08x", s->pstate);
++            return s->pstate;
++        case 0x128:
++            TRACE2("HCTL = %08x", s->hctl);
++            return s->hctl;
++        case 0x12c: /* MMCHS_SYSCTL */
++            TRACE2("SYSCTL = %08x", s->sysctl);
++            return s->sysctl;
++        case 0x130: /* MMCHS_STAT */
++            if (s->stat & 0xffff0000)
++                s->stat |= STAT_ERRI;
++            else
++                s->stat &= ~STAT_ERRI;
++            TRACE2("STAT = %08x", s->stat);
++            return s->stat;
++        case 0x134:
++            TRACE2("IE = %08x", s->ie);
++            return s->ie;
++        case 0x138:
++            TRACE2("ISE = %08x", s->ise);
++            return s->ise;
++        case 0x13c:
++            TRACE2("AC12 = %08x", s->ac12);
++            return s->ac12;
++        case 0x140: /* MMCHS_CAPA */
++            TRACE2("CAPA = %08x", s->capa);
++            return s->capa;
++        case 0x148:
++            TRACE2("CUR_CAPA = %08x", s->cur_capa);
++            return s->cur_capa;
++        case 0x1fc:
++            TRACE2("REV = %08x", s->rev);
++            return s->rev;
++        default:
++            OMAP_BAD_REG(addr);
++            return 0;
++    }
++}
++
++static void n00_mmc_write(void *opaque, hwaddr addr,
++                            uint64_t value, unsigned size)
++{
++    struct n00_mmc_s *s = (struct n00_mmc_s *) opaque;
++
++    switch (addr) {
++        case 0x014:
++        case 0x110:
++        case 0x114:
++        case 0x118:
++        case 0x11c:
++        case 0x124:
++        case 0x13c:
++        case 0x1fc:
++            OMAP_RO_REG(addr);
++            break;
++        case 0x010:
++            TRACE2("SYSCONFIG = %08x", value);
++            if (value & 2)
++                n00_mmc_reset(DEVICE(s));
++            s->sysconfig = value & 0x31d;
++            break;
++        case 0x024:
++            TRACE2("CSRE = %08x", value);
++            s->csre = value;
++            break;
++        case 0x028:
++            TRACE2("SYSTEST = %08x", value);
++            s->systest = value;
++            break;
++        case 0x02c: /* MMCHS_CON */
++            TRACE2("CON = %08x", value);
++            if (value & 0x10) {   /* MODE */
++                TRACE("SYSTEST mode is not supported");
++            }
++            if ((value & 0x20) && !s->emmc) { /* DW8 */
++                TRACE("8-bit data width is not supported for SD cards");
++            }
++            if (value & 0x1000) { /* CEATA */
++                TRACE("CE-ATA control mode not supported");
++            }
++            s->con = value & 0x1ffff;
++            break;
++        case 0x030:
++            TRACE2("PWCNT = %08x", value);
++            s->pwcnt = value;
++            break;
++        case 0x104: /* MMCHS_BLK */
++            TRACE2("BLK = %08x", value);
++            s->blk = value & 0xffff07ff;
++            s->blen_counter = value & 0x7ff;
++            s->nblk_counter = (value >> 16) & 0xffff;
++            break;
++        case 0x108: /* MMCHS_ARG */
++            TRACE2("ARG = %08x", value);
++            s->arg = value;
++            break;
++        case 0x10c: /* MMCHS_CMD */
++            TRACE2("CMD = %08x", value);
++            if (!sdbus_get_inserted(&s->sdbus)) {
++                s->stat |= STAT_CTO;
++            } else {
++                /* TODO: writing to bits 0-15 should have no effect during
++                   an active data transfer */
++                if (s->transfer && !s->stop
++                    && (((value >> 24) & 0x3f) == 12
++                        || ((value >> 24) & 0x3f) == 52)) {
++                    s->stop = value & 0x3ffb0037;
++                } else {
++                    s->cmd = value & 0x3ffb0037;
++                    n00_mmc_command(s);
++                }
++                n00_mmc_transfer(s);
++                n00_mmc_fifolevel_update(s);
++            }
++            n00_mmc_interrupts_update(s);
++            break;
++        case 0x120:
++            /* in PIO mode, access allowed only when BWE is set */
++            if (!(s->cmd & 1) && !(s->pstate & 0x0400)) {
++                s->stat |= STAT_BADA;
++            } else {
++                if (s->fifo_len == 256) {
++                    TRACE("FIFO overrun");
++                    break;
++                }
++                s->fifo[(s->fifo_start + s->fifo_len) & 255] = value;
++                s->fifo_len++;
++                n00_mmc_transfer(s);
++                n00_mmc_fifolevel_update(s);
++            }
++            n00_mmc_interrupts_update(s);
++            break;
++        case 0x128: /* MMCHS_HCTL */
++            TRACE2("HCTL = %08x", value);
++            s->hctl = value & 0xf0f0f02;
++            if (s->hctl & (1 << 16)) { /* SBGR */
++                TRACE("Stop at block gap feature not implemented!");
++            }
++            break;
++        case 0x12c: /* MMCHS_SYSCTL */
++            TRACE2("SYSCTL = %08x", value);
++            if (value & 0x04000000) { /* SRD */
++                s->data    = 0;
++                s->pstate &= ~0x00000f06; /* BRE, BWE, RTA, WTA, DLA, DATI */
++                s->hctl   &= ~0x00030000; /* SGBR, CR */
++                s->stat   &= ~(STAT_BRR|STAT_BWR|STAT_BGE);
++                s->fifo_start = 0;
++                s->fifo_len = 0;
++            }
++            if (value & 0x02000000) { /* SRC */
++                s->pstate &= ~0x00000001; /* CMDI */
++            }
++            if (value & 0x01000000) { /* SRA */
++                uint32_t capa = s->capa;
++                uint32_t cur_capa = s->cur_capa;
++                n00_mmc_reset(DEVICE(s));
++                s->capa = capa;
++                s->cur_capa = cur_capa;
++            }
++            value = (value & ~2) | ((value & 1) << 1); /* copy ICE directly to ICS */
++            s->sysctl = value & 0x000fffc7;
++            break;
++        case 0x130:
++            TRACE2("STAT = %08x", value);
++            /* STAT_CIRQ and STAT_ERRI are write-ignored */
++            value = value & (STAT_MASK & ~(STAT_CIRQ|STAT_ERRI));
++            s->stat &= ~value;
++            n00_mmc_interrupts_update(s);
++            if (s->pending_drq) {
++                qemu_bh_schedule(s->dma_bh);
++            }
++            break;
++        case 0x134: /* MMCHS_IE */
++            TRACE2("IE = %08x", value);
++            if (!(s->con & 0x4000)) {
++                /* if CON:OBIE is clear, ignore write to OBI_ENABLE */
++                value = (value & ~STAT_OBI) | (s->ie & STAT_OBI);
++            }
++            s->ie = value & (STAT_MASK & ~STAT_ERRI);
++            if (!(s->ie & STAT_CIRQ)) {
++                s->stat &= ~STAT_CIRQ;
++            }
++            n00_mmc_interrupts_update(s);
++            break;
++        case 0x138:
++            TRACE2("ISE = %08x", value);
++            s->ise = value & (STAT_MASK & ~STAT_ERRI);
++            n00_mmc_interrupts_update(s);
++            break;
++        case 0x140: /* MMCHS_CAPA */
++            TRACE2("CAPA = %08x", value);
++            s->capa &= ~0x07000000;
++            s->capa |= value & 0x07000000;
++            break;
++        case 0x148:
++            TRACE2("CUR_CAPA = %08x", value);
++            s->cur_capa = value & 0xffffff;
++            break;
++        default:
++            OMAP_BAD_REG(addr);
++    }
++}
++
++static const MemoryRegionOps n00_mmc_ops = {
++    .read = n00_mmc_read,
++    .write = n00_mmc_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static void n00_mmc_instance_init(Object *obj)
++{
++    struct n00_mmc_s *s = (struct n00_mmc_s *)obj;
++    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
++
++    s->dma_bh = qemu_bh_new(n00_mmc_deliver_drq, s);
++    sysbus_init_irq(dev, &s->irq);
++    sysbus_init_irq(dev, &s->dma[0]);
++    sysbus_init_irq(dev, &s->dma[1]);
++    memory_region_init_io(&s->iomem, obj, &n00_mmc_ops, s,
++                          "n00.mmchs", 0x1000);
++    sysbus_init_mmio(dev, &s->iomem);
++    qbus_init(&s->sdbus, sizeof(s->sdbus), TYPE_SD_BUS, DEVICE(obj), "sd-bus");
++}
++
++static Property n00_mmc_properties[] = {
++    DEFINE_PROP_BOOL("emmc-slot", struct n00_mmc_s, emmc, true),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
++static void n00_mmc_instance_finalize(Object *obj)
++{
++    struct n00_mmc_s *s = (struct n00_mmc_s *)obj;
++
++    qemu_bh_delete(s->dma_bh);
++}
++
++static void n00_mmc_class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->reset = n00_mmc_reset;
++    dc->desc = "Nokia OMAP3 MMCHS integration port";
++    device_class_set_props(dc, n00_mmc_properties);
++}
++
++static const TypeInfo n00_mmc_type_info = {
++    .name = "n00-omap3-mmc",
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(struct n00_mmc_s),
++    .instance_init = n00_mmc_instance_init,
++    .instance_finalize = n00_mmc_instance_finalize,
++    .class_init = n00_mmc_class_init,
++};
++
++static void n00_mmc_register_types(void)
++{
++    type_register_static(&n00_mmc_type_info);
++}
++
++type_init(n00_mmc_register_types)

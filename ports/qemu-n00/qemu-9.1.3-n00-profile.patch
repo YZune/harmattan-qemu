@@ -1,0 +1,207 @@
+diff --git a/hw/arm/n00_gles_port.c b/hw/arm/n00_gles_port.c
+index 4e7c393..3122a19 100644
+--- a/hw/arm/n00_gles_port.c
++++ b/hw/arm/n00_gles_port.c
+@@ -9,6 +9,8 @@
+ #include "qemu/error-report.h"
+ #include "qemu/notify.h"
+ #include "qemu/rcu.h"
++#include "qemu/timer.h"
++#include "trace.h"
+ #include "exec/address-spaces.h"
+ #include "sysemu/sysemu.h"
+ #include "target/arm/cpu.h"
+@@ -71,6 +73,8 @@ struct N00Client {
+     EGLint egl_error;
+     GLenum gl_error;
+     N00Handle *current;
++    bool profile;
++    int64_t worker_ns;
+ };
+ 
+ struct N00GLES {
+@@ -639,6 +643,7 @@ static void *worker(void *opaque)
+             break;
+         }
+         c->returned = c->bad_memory = false;
++        int64_t started = c->profile ? get_clock() : 0;
+         if (c->api == 0) {
+             call_egl(c);
+         } else {
+@@ -656,6 +661,7 @@ static void *worker(void *opaque)
+             error_report("N00_GLES rejected guest memory client=%u api=%u call=%u",
+                          c->nr, c->api, c->call);
+         }
++        c->worker_ns = c->profile ? get_clock() - started : 0;
+         c->pending = false;
+         pthread_cond_signal(&c->done);
+     }
+@@ -758,7 +764,10 @@ static void n00_gles_write(void *opaque, hwaddr addr, uint64_t value, unsigned s
+                                 : N00_es20_count)) {
+         goto invalid;
+     }
++    bool profile = trace_event_get_state_backends(TRACE_N00_PROFILE_GLES);
++    int64_t started = profile ? get_clock() : 0;
+     pthread_mutex_lock(&c->mutex);
++    c->profile = profile;
+     memcpy(c->regs, env->regs, sizeof(c->regs));
+     for (unsigned i = 0; i < 16; i++) {
+         c->fp[i] = *aa32_vfp_dreg(env, i / 2) >> ((i & 1) * 32);
+@@ -774,6 +783,10 @@ static void n00_gles_write(void *opaque, hwaddr addr, uint64_t value, unsigned s
+         env->regs[0] = c->result;
+     }
+     s->calls++;
++    if (profile) {
++        trace_n00_profile_gles(c->nr, api, nr, started,
++                               get_clock() - started, c->worker_ns);
++    }
+     if (s->trace) {
+         fprintf(stderr, "N00_GLES call client=%u api=%u nr=%u r0=%08x -> %08x\n", c->nr,
+                 api, nr, c->regs[0], env->regs[0]);
+diff --git a/hw/arm/n00_dss_port.c b/hw/arm/n00_dss_port.c
+index bc67207..e0cc0a5 100644
+--- a/hw/arm/n00_dss_port.c
++++ b/hw/arm/n00_dss_port.c
+@@ -22,6 +22,7 @@
+ #include "qemu/module.h"
+ #include "qemu/timer.h"
+ #include "qemu/log.h"
++#include "trace.h"
+ #include "qapi/error.h"
+ #include "hw/irq.h"
+ #include "hw/hw.h"
+@@ -461,6 +462,9 @@ static void n00_dss_panel_update_display(struct n00_dss_panel_s *s, int lcd)
+     int row_pitch, col_pitch;
+     int first = 0, last = 0;
+     bool remap;
++    bool profile = trace_event_get_state_backends(TRACE_N00_PROFILE_DSS);
++    int64_t started = profile ? get_clock() : 0;
++    int64_t copy_start, copy_ns;
+ 
+     if (!width || !height || width > 2048 || height > 2048) {
+         return;
+@@ -537,10 +541,12 @@ static void n00_dss_panel_update_display(struct n00_dss_panel_s *s, int lcd)
+             g_assert_not_reached();
+         }
+     }
++    copy_start = profile ? get_clock() : 0;
+     framebuffer_update_display(surface, &s->section, cols, rows, stride,
+                                 row_pitch, col_pitch,
+                                 s->invalidate, line_fn, line_opaque,
+                                 &first, &last);
++    copy_ns = profile ? get_clock() - copy_start : 0;
+     s->invalidate = 0;
+     if (first >= 0) {
+         switch (graphic_rotate) {
+@@ -557,6 +563,10 @@ static void n00_dss_panel_update_display(struct n00_dss_panel_s *s, int lcd)
+             dpy_gfx_update(s->ds, 0, first, cols, last - first + 1);
+         }
+     }
++    if (profile) {
++        trace_n00_profile_dss(started, get_clock() - started, copy_ns,
++                              first, last, cols, rows);
++    }
+ }
+ 
+ static void n00_lcd_panel_update_display(void *opaque)
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index be6c8f7..c6848a5 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -1,5 +1,9 @@
+ # See docs/devel/tracing.rst for syntax documentation.
+ 
++# Optional N00 profiling build; CLOCK_MONOTONIC wall durations, not GPU time.
++n00_profile_gles(unsigned client, unsigned api, unsigned call, int64_t start_ns, int64_t dispatch_ns, int64_t worker_ns) "client=%u api=%u call=%u start_ns=%"PRId64" dispatch_ns=%"PRId64" worker_ns=%"PRId64
++n00_profile_dss(int64_t start_ns, int64_t total_ns, int64_t copy_ns, int first, int last, unsigned cols, unsigned rows) "start_ns=%"PRId64" total_ns=%"PRId64" copy_ns=%"PRId64" first=%d last=%d cols=%u rows=%u"
++
+ # virt-acpi-build.c
+ virt_acpi_setup(void) "No fw cfg or ACPI disabled. Bailing out."
+ 
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+index 4c2dd33..d8ac476 100644
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -47,6 +47,8 @@
+ #include "qemu/cutils.h"
+ #include "qemu/main-loop.h"
+ #include "qemu/module.h"
++#include "qemu/timer.h"
++#include "trace.h"
+ #include "qemu/error-report.h"
+ #include <Carbon/Carbon.h>
+ #include "hw/core/cpu.h"
+@@ -512,6 +514,8 @@ - (void)setCursor:(QEMUCursor *)given_cursor
+ 
+ - (void) drawRect:(NSRect) rect
+ {
++    bool profile = trace_event_get_state_backends(TRACE_N00_PROFILE_COCOA_DRAW);
++    int64_t started = profile ? get_clock() : 0;
+     COCOA_DEBUG("QemuCocoaView: drawRect\n");
+ 
+     // get CoreGraphic context
+@@ -571,6 +575,9 @@ - (void) drawRect:(NSRect) rect
+         CGImageRelease (imageRef);
+         CGDataProviderRelease(dataProviderRef);
+     }
++    if (profile) {
++        trace_n00_profile_cocoa_draw(started, get_clock() - started);
++    }
+ }
+ 
+ - (NSSize)fixAspectRatio:(NSSize)max
+@@ -2052,9 +2059,14 @@ static int cocoa_main(void)
+ static void cocoa_update(DisplayChangeListener *dcl,
+                          int x, int y, int w, int h)
+ {
++    bool profile = trace_event_get_state_backends(TRACE_N00_PROFILE_COCOA_QUEUE);
++    int64_t started = profile ? get_clock() : 0;
+     COCOA_DEBUG("qemu_cocoa: cocoa_update\n");
+ 
+     dispatch_async(dispatch_get_main_queue(), ^{
++        if (profile) {
++            trace_n00_profile_cocoa_queue(started, get_clock() - started, w, h);
++        }
+         NSRect rect = NSMakeRect(x, [cocoaView gscreen].height - y - h, w, h);
+         [cocoaView setNeedsDisplayInRect:rect];
+     });
+@@ -2080,10 +2092,14 @@ static void cocoa_switch(DisplayChangeListener *dcl,
+ 
+ static void cocoa_refresh(DisplayChangeListener *dcl)
+ {
++    bool profile = trace_event_get_state_backends(TRACE_N00_PROFILE_COCOA_REFRESH);
++    int64_t started = profile ? get_clock() : 0;
++    int64_t gfx_ns;
+     NSAutoreleasePool * pool = [[NSAutoreleasePool alloc] init];
+ 
+     COCOA_DEBUG("qemu_cocoa: cocoa_refresh\n");
+     graphic_hw_update(dcl->con);
++    gfx_ns = profile ? get_clock() - started : 0;
+ 
+     if (cbchangecount != [[NSPasteboard generalPasteboard] changeCount]) {
+         qemu_clipboard_info_unref(cbinfo);
+@@ -2097,6 +2113,9 @@ static void cocoa_refresh(DisplayChangeListener *dcl)
+     }
+ 
+     [pool release];
++    if (profile) {
++        trace_n00_profile_cocoa_refresh(started, get_clock() - started, gfx_ns);
++    }
+ }
+ 
+ static void cocoa_mouse_set(DisplayChangeListener *dcl, int x, int y, bool on)
+diff --git a/ui/trace-events b/ui/trace-events
+index fb253c1..522bcbf 100644
+--- a/ui/trace-events
++++ b/ui/trace-events
+@@ -1,5 +1,10 @@
+ # See docs/devel/tracing.rst for syntax documentation.
+ 
++# Optional N00 profiling build; callback/queue times are not presentation FPS.
++n00_profile_cocoa_refresh(int64_t start_ns, int64_t total_ns, int64_t gfx_ns) "start_ns=%"PRId64" total_ns=%"PRId64" gfx_ns=%"PRId64
++n00_profile_cocoa_queue(int64_t start_ns, int64_t wait_ns, int w, int h) "start_ns=%"PRId64" wait_ns=%"PRId64" w=%d h=%d"
++n00_profile_cocoa_draw(int64_t start_ns, int64_t total_ns) "start_ns=%"PRId64" total_ns=%"PRId64
++
+ # console.c
+ console_gfx_new(void) ""
+ console_gfx_reuse(int index) "%d"

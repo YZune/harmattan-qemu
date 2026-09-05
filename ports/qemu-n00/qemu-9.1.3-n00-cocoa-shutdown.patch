@@ -1,0 +1,114 @@
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -109,6 +109,8 @@
+ static NSTextField *pauseLabel;
+ 
+ static bool allow_events;
++/* Cocoa main-thread state: AppKit must keep pumping until QEMU has stopped. */
++static bool n00_cocoa_termination_pending;
+ 
+ /* Only the independent diagnostic build uses this opt-in activity assertion.
+  * It neither prevents display/system idle sleep nor changes saved defaults. */
+@@ -1451,33 +1453,31 @@
+     allow_events = true;
+ }
+ 
+-- (void)applicationWillTerminate:(NSNotification *)aNotification
+-{
+-    COCOA_DEBUG("QemuCocoaAppController: applicationWillTerminate\n");
+-
++- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)theApplication
++{
++    return YES;
++}
++
++- (NSApplicationTerminateReply)applicationShouldTerminate:
++                                                         (NSApplication *)sender
++{
++    COCOA_DEBUG("QemuCocoaAppController: applicationShouldTerminate\n");
++    if (n00_cocoa_termination_pending) {
++        return NSTerminateLater;
++    }
++    if (![self verifyQuit]) {
++        return NSTerminateCancel;
++    }
++    n00_cocoa_termination_pending = true;
++    [cocoaView ungrabMouse];
++    [cocoaView raiseAllKeys];
+     with_bql(^{
+         shutdown_action = SHUTDOWN_ACTION_POWEROFF;
+         qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
+     });
+-
+-    /*
+-     * Sleep here, because returning will cause OSX to kill us
+-     * immediately; the QEMU main loop will handle the shutdown
+-     * request and terminate the process.
+-     */
+-    [NSThread sleepForTimeInterval:INFINITY];
+-}
+-
+-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)theApplication
+-{
+-    return YES;
+-}
+-
+-- (NSApplicationTerminateReply)applicationShouldTerminate:
+-                                                         (NSApplication *)sender
+-{
+-    COCOA_DEBUG("QemuCocoaAppController: applicationShouldTerminate\n");
+-    return [self verifyQuit];
++    /* The QEMU thread still needs this queue for Foundation cleanup.
++     * Acknowledge termination only after that work has finished. */
++    return NSTerminateLater;
+ }
+ 
+ - (void)windowDidChangeScreen:(NSNotification *)notification
+@@ -1508,11 +1508,8 @@
+ {
+     COCOA_DEBUG("QemuCocoaAppController: windowShouldClose\n");
+     [NSApp terminate: sender];
+-    /* If the user allows the application to quit then the call to
+-     * NSApp terminate will never return. If we get here then the user
+-     * cancelled the quit, so we should return NO to not permit the
+-     * closing of this window.
+-     */
++    /* Keep the window until deferred termination completes, or leave it
++     * open if the user cancelled. Both paths are owned by NSApplication. */
+     return NO;
+ }
+ 
+@@ -1819,6 +1816,9 @@
+ - (void)sendEvent:(NSEvent *)event
+ {
+     COCOA_DEBUG("QemuApplication: sendEvent\n");
++    if (n00_cocoa_termination_pending) {
++        return; /* no new guest input while its devices are shutting down */
++    }
+     if (![cocoaView handleEvent:event]) {
+         [super sendEvent: event];
+     }
+@@ -2290,12 +2290,18 @@
+     qemu_input_remove_event_notifier(&n00_interaction_notifier);
+     bql_unlock();
+     COCOA_DEBUG("Second thread: qemu_default_main() returned, exiting\n");
+-    dispatch_sync(dispatch_get_main_queue(), ^{
++    dispatch_async(dispatch_get_main_queue(), ^{
+         n00_interaction_shutdown();
++        n00_activity_end();
++        [cbowner release];
++        if (n00_cocoa_termination_pending) {
++            [NSApp replyToApplicationShouldTerminate:status == EXIT_SUCCESS];
++        }
++        /* QMP/guest shutdown has no pending AppKit reply. Also preserve a
++         * nonzero QEMU status instead of letting AppKit convert it to zero. */
++        exit(status);
+     });
+-    n00_activity_end();
+-    [cbowner release];
+-    exit(status);
++    return NULL;
+ }
+ 
+ static int cocoa_main(void)

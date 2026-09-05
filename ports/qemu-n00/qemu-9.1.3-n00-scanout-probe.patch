@@ -1,0 +1,117 @@
+diff --git a/hw/arm/n00_dss_port.c b/hw/arm/n00_dss_port.c
+--- a/hw/arm/n00_dss_port.c
++++ b/hw/arm/n00_dss_port.c
+@@ -22,6 +22,7 @@
+ #include "qemu/module.h"
+ #include "qemu/timer.h"
+ #include "qemu/log.h"
++#include "qemu/error-report.h"
+ #include "trace.h"
+ #include "qapi/error.h"
+ #include "hw/irq.h"
+@@ -148,6 +149,8 @@
+ 
+ struct n00_dss_s {
+     SysBusDevice busdev;
++    /* Diagnostic only: decouple host scanout from the existing 10 Hz timer. */
++    bool scanout_timer_only;
+     MemoryRegion iomem[5];
+     int32_t mpu_model;
+     qemu_irq irq;
+@@ -336,6 +339,10 @@
+         }
+         s->dispc.irqst |= 1 | 2;    /* FRAMEDONE | VSYNC */
+         n00_dss_interrupt_update(s);
++        if (trace_event_get_state_backends(TRACE_N00_SCANOUT_FRAME)) {
++            trace_n00_scanout_frame(get_clock(), s->dispc.irqen,
++                                    s->dispc.irqst & s->dispc.irqen);
++        }
+     }
+ }
+ 
+@@ -578,7 +585,9 @@
+         return;
+     }
+     n00_dss_panel_update_display(&s->lcd, 1);
+-    n00_dss_framedone(s);
++    if (!s->scanout_timer_only) {
++        n00_dss_framedone(s);
++    }
+ }
+ 
+ static void n00_lcd_panel_invalidate_display(void *opaque)
+@@ -2425,6 +2434,13 @@
+ {
+     struct n00_dss_s *s = (struct n00_dss_s *)obj;
+     SysBusDevice *dev = SYS_BUS_DEVICE(obj);
++    const char *timer_only = getenv("N00_SCANOUT_TIMER_ONLY");
++    if (timer_only && strcmp(timer_only, "0") && strcmp(timer_only, "1")) {
++        error_report("N00_SCANOUT_TIMER_ONLY must be 0 or 1");
++        exit(1);
++    }
++    s->scanout_timer_only = timer_only && !strcmp(timer_only, "1");
++    trace_n00_scanout_dss_config(s->scanout_timer_only);
+     static const MemoryRegionOps * const ops[] = {
+         &omap_diss_ops, &omap_disc_ops, &omap_rfbi_ops,
+         &omap_venc_ops, &omap_dsi_ops
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -1,4 +1,8 @@
+ # See docs/devel/tracing.rst for syntax documentation.
++
++# Separate opt-in scanout experiment. A request is not a delivered guest IRQ.
++n00_scanout_dss_config(bool timer_only) "timer_only=%d"
++n00_scanout_frame(int64_t start_ns, uint32_t enabled, uint32_t pending) "start_ns=%"PRId64" enabled=%u pending=%u"
+ 
+ # Optional N00 profiling build; CLOCK_MONOTONIC wall durations, not GPU time.
+ n00_profile_gles(unsigned client, unsigned api, unsigned call, int64_t start_ns, int64_t dispatch_ns, int64_t worker_ns) "client=%u api=%u call=%u start_ns=%"PRId64" dispatch_ns=%"PRId64" worker_ns=%"PRId64
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -49,6 +49,9 @@
+ #include "qemu/module.h"
+ #include "qemu/timer.h"
+ #include "trace.h"
++
++/* Isolated experiment; zero retains QEMU's host-derived refresh interval. */
++static unsigned n00_scanout_refresh_ms;
+ #include "qemu/error-report.h"
+ #include <Carbon/Carbon.h>
+ #include "hw/core/cpu.h"
+@@ -689,6 +692,9 @@
+     info.width = frameSize.width;
+     info.height = frameSize.height;
+ 
++    if (n00_scanout_refresh_ms) {
++        update_displaychangelistener(&dcl, n00_scanout_refresh_ms);
++    }
+     dpy_set_ui_info(dcl.con, &info, TRUE);
+ }
+ 
+@@ -2135,6 +2141,15 @@
+ 
+ static void cocoa_display_init(DisplayState *ds, DisplayOptions *opts)
+ {
++    const char *interval = getenv("N00_SCANOUT_REFRESH_MS");
++    if (interval && (qemu_strtoui(interval, NULL, 10, &n00_scanout_refresh_ms) ||
++                     (n00_scanout_refresh_ms != 0 && n00_scanout_refresh_ms != 8 &&
++                      n00_scanout_refresh_ms != 16 && n00_scanout_refresh_ms != 33 &&
++                      n00_scanout_refresh_ms != 100))) {
++        error_report("N00_SCANOUT_REFRESH_MS must be 0, 8, 16, 33 or 100");
++        exit(1);
++    }
++    trace_n00_scanout_cocoa_config(n00_scanout_refresh_ms);
+     NSAutoreleasePool * pool = [[NSAutoreleasePool alloc] init];
+ 
+     COCOA_DEBUG("qemu_cocoa: cocoa_display_init\n");
+diff --git a/ui/trace-events b/ui/trace-events
+--- a/ui/trace-events
++++ b/ui/trace-events
+@@ -1,4 +1,6 @@
+ # See docs/devel/tracing.rst for syntax documentation.
++
++n00_scanout_cocoa_config(unsigned interval_ms) "interval_ms=%u"
+ 
+ # Optional N00 profiling build; callback/queue times are not presentation FPS.
+ n00_profile_cocoa_refresh(int64_t start_ns, int64_t total_ns, int64_t gfx_ns) "start_ns=%"PRId64" total_ns=%"PRId64" gfx_ns=%"PRId64

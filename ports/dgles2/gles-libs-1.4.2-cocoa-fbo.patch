@@ -1,0 +1,538 @@
+diff --git a/dgles2/src/Makefile b/dgles2/src/Makefile
+index fce89e2..77cfca3 100644
+--- a/dgles2/src/Makefile
++++ b/dgles2/src/Makefile
+@@ -9,6 +9,8 @@ P_T := $(call pathify,$(T))
+ P_I := $(call pathify,$(I))
+ 
+ all:	$(addsuffix -all, $(SUBDIRS))
++# Both client libraries link EGL; do not race the first shared-library build.
++GLES-all GLES2-all: EGL-all
+ clean:	$(addsuffix -clean, $(SUBDIRS))
+ distclean:	$(addsuffix -distclean, $(SUBDIRS))
+ depend:	$(addsuffix -depend, $(SUBDIRS))
+diff --git a/dgles2/src/EGL/Makefile b/dgles2/src/EGL/Makefile
+index 0f726eb..95358b2 100644
+--- a/dgles2/src/EGL/Makefile
++++ b/dgles2/src/EGL/Makefile
+@@ -21,6 +21,7 @@ include $(T)/common.mak
+ 
+ CFLAGS += -Wall -Wextra -std=c99 -I../../include -I../include -Wno-unused -Wno-return-type
+ CFLAGS += -DBUILD_EGL
++CFLAGS += -DGL_TEXTURE_RECTANGLE_EXT=0x84F5
+ 
+ ifneq ($(strip $(CONFIG_STATIC)),1)
+ ifneq ($(strip $(OS)),MINGW32)
+@@ -56,7 +57,7 @@ ifeq ($(strip $(CONFIG_WGL)),1)
+ 	LDFLAGS += -lgdi32
+ endif
+ ifeq ($(strip $(CONFIG_COCOA)),1)
+-	libEGL_so_SRC += hcocoa.m
++	libEGL_so_SRC += hcocoa.m cocoa_fbo.c
+ 	LDFLAGS += -framework OpenGL -framework AppKit -lobjc
+ endif
+ 
+diff --git a/dgles2/src/EGL/degl.h b/dgles2/src/EGL/degl.h
+index fbd972a..56a057d 100644
+--- a/dgles2/src/EGL/degl.h
++++ b/dgles2/src/EGL/degl.h
+@@ -60,6 +60,11 @@ typedef enum DEGLFrontend
+ extern DEGLBackend degl_backend;
+ extern DEGLFrontend degl_frontend;
+ extern int degl_no_alpha;
++#if(CONFIG_COCOA == 1)
++/* Opt-in replacement for PBuffers unavailable on the tested Apple Silicon. */
++extern int degl_cocoa_fbo;
++extern GLuint deglCocoaDefaultFBO(void);
++#endif
+ #if(CONFIG_GLX == 1)
+ extern int degl_glx_direct;
+ #endif
+diff --git a/dgles2/src/EGL/degl.c b/dgles2/src/EGL/degl.c
+index 66decd3..72f08ba 100644
+--- a/dgles2/src/EGL/degl.c
++++ b/dgles2/src/EGL/degl.c
+@@ -58,6 +58,9 @@ static pthread_once_t degl_tls_init_control = PTHREAD_ONCE_INIT;
+ DGLES2_EXPORT DEGLBackend degl_backend = DEGLBackend_invalid;
+ DGLES2_EXPORT DEGLFrontend degl_frontend = DEGLFrontend_invalid;
+ DGLES2_EXPORT int degl_no_alpha;
++#if(CONFIG_COCOA == 1)
++DGLES2_EXPORT int degl_cocoa_fbo;
++#endif
+ #if(CONFIG_GLX == 1)
+ DGLES2_EXPORT int degl_glx_direct;
+ #endif
+@@ -453,6 +456,10 @@ void deglInit(void)
+ 	char* hostlib = mystrdup(getenv("DGLES2_LIB"));
+ 	char *env_value = getenv("DGLES2_NO_ALPHA");
+ 	if(env_value) degl_no_alpha = atoi(env_value);
++#if(CONFIG_COCOA == 1)
++	env_value = getenv("DGLES2_COCOA_FBO");
++	degl_cocoa_fbo = env_value && !strcmp(env_value, "1");
++#endif
+ #	if(CONFIG_GLX == 1)
+ 	if((env_value = getenv("DGLES2_GLX_DIRECT"))) degl_glx_direct = atoi(env_value);
+ #	endif
+diff --git a/dgles2/src/EGL/surface.h b/dgles2/src/EGL/surface.h
+index cd9cf6b..4f125f6 100644
+--- a/dgles2/src/EGL/surface.h
++++ b/dgles2/src/EGL/surface.h
+@@ -78,6 +78,10 @@ typedef struct DEGLSurface
+ 	{
+ 		CGLPBufferObj pbuffer;
+ 		void *nsview; // NSView*
++		/* Only used with the opt-in offscreen FBO frontend. */
++		CGLContextObj fbo_owner;
++		GLuint fbo, color_buffer, depth_stencil_buffer;
++		unsigned fbo_width, fbo_height;
+ 	} cocoa;
+ #	endif // (CONFIG_COCOA == 1)
+ 
+@@ -93,5 +97,10 @@ typedef struct DEGLSurface
+ 
+ void deglRefSurface(DEGLSurface* surface);
+ void deglUnrefSurface(EGLDisplay dpy, DEGLSurface** surface);
++#if(CONFIG_COCOA == 1)
++EGLBoolean deglCocoaBindFBO(DEGLSurface *surface, GLuint previous_default);
++EGLBoolean deglCocoaReadFBO(DEGLSurface *surface);
++void deglCocoaDestroyFBO(DEGLSurface *surface);
++#endif
+ 
+ #endif // SURFACE_H_
+diff --git a/dgles2/src/EGL/context.c b/dgles2/src/EGL/context.c
+index 031a87e..5dcdcfb 100644
+--- a/dgles2/src/EGL/context.c
++++ b/dgles2/src/EGL/context.c
+@@ -69,6 +69,7 @@ EGLAPI_BUILD EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy,
+ 	}
+ 
+ 	DEGLContext* context = malloc(sizeof(*context));
++	memset(context, 0, sizeof(*context));
+ 	context->display    = dpy;
+ 	context->config     = config;
+ 	context->version    = 1;
+@@ -284,6 +285,32 @@ EGLAPI_BUILD EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy,
+ 		}
+ 
+ #		if(CONFIG_OFFSCREEN == 1)
++		if(degl_frontend == DEGLFrontend_offscreen && degl_cocoa_fbo)
++		{
++			/* A drawable-less compatibility context can render to an FBO. */
++			const CGLPixelFormatAttribute attributes[] = {
++				kCGLPFAAccelerated, kCGLPFANoRecovery,
++				kCGLPFAColorSize, 24, kCGLPFAAlphaSize, 8, 0
++			};
++			CGLPixelFormatObj format = NULL;
++			GLint count = 0;
++			CGLError error = CGLChoosePixelFormat(attributes, &format, &count);
++			if(error == kCGLNoError && format && count)
++				error = CGLCreateContext(format,
++					share_context ? share_context->cocoa.ctx : NULL,
++					&context->cocoa.ctx);
++			if(format) CGLReleasePixelFormat(format);
++			if(error != kCGLNoError || !context->cocoa.ctx)
++			{
++				fprintf(stderr, "DGLES2 CGL FBO context: %s\n", CGLErrorString(error));
++				free(context->glesfuncs);
++				free(context);
++				deglSetError(EGL_BAD_ALLOC);
++				return EGL_NO_CONTEXT;
++			}
++			context->cocoa.pbuffer_mode = 0;
++			return context;
++		}
+ 		if(degl_frontend == DEGLFrontend_offscreen)
+ 		{
+ 			const CGLPixelFormatAttribute attribs1[] =
+@@ -309,7 +336,7 @@ EGLAPI_BUILD EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy,
+ 				0
+ 			};
+ 
+-			CGLPixelFormatObj cpf;
++			CGLPixelFormatObj cpf = NULL;
+ 			GLint npix = 0;
+ 			if(CGLChoosePixelFormat(attribs1, &cpf, &npix) != kCGLNoError || npix < 1)
+ 			{
+@@ -572,6 +599,11 @@ EGLAPI_BUILD EGLBoolean EGLAPIENTRY eglMakeCurrent(EGLDisplay dpy, EGLSurface dr
+ 	{
+ 		if(draw_surface != read_surface)
+ 		{
++			if(degl_cocoa_fbo)
++			{
++				deglSetError(EGL_BAD_MATCH);
++				return EGL_FALSE;
++			}
+ 			Dprintf("WARNING: Draw and read surfaces are different!\n");
+ 		}
+ 		CGLError err = CGLSetCurrentContext(context ? context->cocoa.ctx : NULL);
+@@ -616,7 +648,16 @@ EGLAPI_BUILD EGLBoolean EGLAPIENTRY eglMakeCurrent(EGLDisplay dpy, EGLSurface dr
+ 				Dprintf("cocoa context %p, surface %d x %d x %d, pixels at %p\n",
+ 					context->cocoa.ctx, draw_surface->width, draw_surface->height,
+ 					draw_surface->bpp, draw_surface->ddraw->pixels);
+-				if(context->cocoa.pbuffer_mode)
++				if(degl_cocoa_fbo)
++				{
++					if(!deglCocoaBindFBO(draw_surface,
++						context->draw ? context->draw->cocoa.fbo : 0))
++					{
++						CGLSetCurrentContext(old_context ? old_context->cocoa.ctx : NULL);
++						return EGL_FALSE;
++					}
++				}
++				else if(context->cocoa.pbuffer_mode)
+ 				{
+ 					GLint screen = 0;
+ 					err = CGLGetVirtualScreen(context->cocoa.ctx, &screen);
+diff --git a/dgles2/src/EGL/surface.c b/dgles2/src/EGL/surface.c
+index e83628c..be5e00c 100644
+--- a/dgles2/src/EGL/surface.c
++++ b/dgles2/src/EGL/surface.c
+@@ -208,6 +208,7 @@ EGLAPI_BUILD EGLSurface EGLAPIENTRY eglCreateOffscreenSurfaceDGLES(EGLDisplay dp
+ 	}
+ 
+ 	DEGLSurface *surface = malloc(sizeof(*surface));
++	memset(surface, 0, sizeof(*surface));
+ 	surface->bound   = 0;
+ 	surface->destroy = 0;
+ 	surface->width   = ddraw->width;
+@@ -244,6 +245,11 @@ EGLAPI_BUILD EGLSurface EGLAPIENTRY eglCreateOffscreenSurfaceDGLES(EGLDisplay dp
+ #	if(CONFIG_COCOA == 1)
+ 	if(degl_backend == DEGLBackend_cocoa)
+ 	{
++		if(degl_cocoa_fbo)
++		{
++			/* Allocate lazily, once eglMakeCurrent supplies a CGL context. */
++			return surface;
++		}
+ 		surface->cocoa.pbuffer = NULL;
+ 		CGLError err = CGLCreatePBuffer(surface->width, surface->height,
+ 			GL_TEXTURE_RECTANGLE_EXT, config->alpha_bits ? GL_RGBA : GL_RGB, 0,
+@@ -251,6 +257,7 @@ EGLAPI_BUILD EGLSurface EGLAPIENTRY eglCreateOffscreenSurfaceDGLES(EGLDisplay dp
+ 		if (err != kCGLNoError)
+ 		{
+ 			Dprintf("CGLCreatePBuffer failed: %s\n", CGLErrorString(err));
++			fprintf(stderr, "DGLES2 CGLCreatePBuffer: %d %s\n", err, CGLErrorString(err));
+ 			free(surface);
+ 			deglSetError(EGL_BAD_ALLOC);
+ 			return EGL_NO_SURFACE;
+@@ -782,6 +789,8 @@ EGLAPI_BUILD EGLBoolean EGLAPIENTRY eglDestroySurface(EGLDisplay dpy,
+ #	if(CONFIG_COCOA == 1)
+ 	if(degl_backend == DEGLBackend_cocoa)
+ 	{
++		if(degl_cocoa_fbo && surface->type == DEGLSurface_offscreen)
++			deglCocoaDestroyFBO(surface);
+ 		switch(surface->type)
+ 		{
+ 			case DEGLSurface_window:
+@@ -1049,6 +1058,8 @@ static EGLBoolean deglResizeOffscreenSurface(DEGLDisplay *display, DEGLContext *
+ #	if(CONFIG_COCOA == 1)
+ 	if(degl_backend == DEGLBackend_cocoa)
+ 	{
++		if(degl_cocoa_fbo)
++			return deglCocoaBindFBO(surface, surface->cocoa.fbo);
+ 		if(surface->cocoa.pbuffer != NULL)
+ 		{
+ 			CGLReleasePBuffer(surface->cocoa.pbuffer);
+@@ -1145,6 +1156,15 @@ EGLAPI_BUILD EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface su
+ 			flags |= 2;
+ 		}
+ #		if(CONFIG_COCOA == 1)
++		if(degl_backend == DEGLBackend_cocoa && degl_cocoa_fbo)
++		{
++			if(surface != context->draw)
++			{
++				deglSetError(EGL_BAD_SURFACE);
++				return EGL_FALSE;
++			}
++			return deglCocoaReadFBO(surface);
++		}
+ 		if(degl_backend == DEGLBackend_cocoa && !context->cocoa.pbuffer_mode)
+ 		{
+ 			CGLError err = CGLFlushDrawable(context->cocoa.ctx);
+diff --git a/dgles2/src/GLES2/common.c b/dgles2/src/GLES2/common.c
+index 1661c93..337dca3 100644
+--- a/dgles2/src/GLES2/common.c
++++ b/dgles2/src/GLES2/common.c
+@@ -245,8 +245,25 @@ GL_APICALL_BUILD void GL_APIENTRY glValidateProgram (GLuint program)
+ 
+ //fbo functions
+ 
++static int deglDefaultFramebufferBound(void)
++{
++#if(CONFIG_COCOA == 1)
++	GLuint internal = deglCocoaDefaultFBO();
++	GLint binding = 0;
++	if(internal)
++	{
++		HGL_TLS.GetIntegerv(GL_FRAMEBUFFER_BINDING, &binding);
++		return binding == (GLint)internal;
++	}
++#endif
++	return 0;
++}
++
+ GL_APICALL_BUILD void GL_APIENTRY glBindFramebuffer(GLenum target, GLuint framebuffer)
+ {
++#if(CONFIG_COCOA == 1)
++	if(!framebuffer) framebuffer = deglCocoaDefaultFBO();
++#endif
+ 	HGL_TLS.BindFramebufferEXT(target, framebuffer);
+ }
+ 
+@@ -263,6 +280,11 @@ GL_APICALL_BUILD GLenum GL_APIENTRY glCheckFramebufferStatus(GLenum target)
+ GL_APICALL_BUILD void GL_APIENTRY glDeleteFramebuffers(GLsizei n, const GLuint* framebuffers)
+ {
+ 	HGL_TLS.DeleteFramebuffersEXT(n, framebuffers);
++#if(CONFIG_COCOA == 1)
++	GLint bound = 0;
++	HGL_TLS.GetIntegerv(GL_FRAMEBUFFER_BINDING, &bound);
++	if(!bound) HGL_TLS.BindFramebufferEXT(GL_FRAMEBUFFER, deglCocoaDefaultFBO());
++#endif
+ }
+ 
+ GL_APICALL_BUILD void GL_APIENTRY glDeleteRenderbuffers(GLsizei n, const GLuint* renderbuffers)
+@@ -272,11 +294,21 @@ GL_APICALL_BUILD void GL_APIENTRY glDeleteRenderbuffers(GLsizei n, const GLuint*
+ 
+ GL_APICALL_BUILD void GL_APIENTRY glFramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)
+ {
++	if(deglDefaultFramebufferBound())
++	{
++		deglGetTLS()->glError = GL_INVALID_OPERATION;
++		return;
++	}
+ 	HGL_TLS.FramebufferRenderbufferEXT(target, attachment, renderbuffertarget, renderbuffer);
+ }
+ 
+ GL_APICALL_BUILD void GL_APIENTRY glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
+ {
++	if(deglDefaultFramebufferBound())
++	{
++		deglGetTLS()->glError = GL_INVALID_OPERATION;
++		return;
++	}
+ 	HGL_TLS.FramebufferTexture2DEXT(target, attachment, textarget, texture, level);
+ }
+ 
+diff --git a/dgles2/src/include/common-gles.h b/dgles2/src/include/common-gles.h
+index 87d66a2..7f35259 100644
+--- a/dgles2/src/include/common-gles.h
++++ b/dgles2/src/include/common-gles.h
+@@ -555,6 +555,15 @@ static GLenum glGet_pname_translate(GLenum pname)
+ 
+ GL_APICALL_BUILD void GL_APIENTRY glGetBooleanv(GLenum pname, GLboolean* params)
+ {
++#if(CONFIG_COCOA == 1)
++	if(pname == 0x8CA6 && deglCocoaDefaultFBO())
++	{
++		GLint binding = 0;
++		HGL_TLS.GetIntegerv(pname, &binding);
++		*params = binding != 0 && binding != (GLint)deglCocoaDefaultFBO();
++		return;
++	}
++#endif
+ 	if(pname == GL_SHADER_COMPILER)
+ 	{
+ 		*params = GL_TRUE;
+@@ -586,11 +595,28 @@ GL_APICALL_BUILD GLenum GL_APIENTRY glGetError(void)
+ 
+ GL_APICALL_BUILD void GL_APIENTRY glGetFloatv(GLenum pname, GLfloat* params)
+ {
++#if(CONFIG_COCOA == 1)
++	if(pname == 0x8CA6 && deglCocoaDefaultFBO())
++	{
++		GLint binding = 0;
++		HGL_TLS.GetIntegerv(pname, &binding);
++		*params = binding == (GLint)deglCocoaDefaultFBO() ? 0.f : (GLfloat)binding;
++		return;
++	}
++#endif
+ 	HGL_TLS.GetFloatv(glGet_pname_translate(pname), params);
+ }
+ 
+ GL_APICALL_BUILD void GL_APIENTRY glGetIntegerv(GLenum pname, GLint* params)
+ {
++#if(CONFIG_COCOA == 1)
++	if(pname == 0x8CA6 && deglCocoaDefaultFBO())
++	{
++		HGL_TLS.GetIntegerv(pname, params);
++		if(*params == (GLint)deglCocoaDefaultFBO()) *params = 0;
++		return;
++	}
++#endif
+ 	switch(pname)
+ 	{
+ 		case GL_IMPLEMENTATION_COLOR_READ_TYPE:
+diff --git a/dgles2/src/EGL/cocoa_fbo.c b/dgles2/src/EGL/cocoa_fbo.c
+new file mode 100644
+index 0000000..95390d5
+--- /dev/null
++++ b/dgles2/src/EGL/cocoa_fbo.c
+@@ -0,0 +1,168 @@
++/* SPDX-License-Identifier: MIT
++ * Experimental Apple Silicon offscreen backend for Nokia DGLES2.
++ * No window, PBuffer, software renderer, or guest ABI changes are involved.
++ */
++#include <OpenGL/gl.h>
++#include <OpenGL/glext.h>
++#include "context.h"
++#include "degl.h"
++
++static void preserve_gl_error(void)
++{
++    /* EGL's internal rendering must not swallow a client's pending GL error. */
++    GLenum error = glGetError();
++    if(error != GL_NO_ERROR && deglGetTLS()->glError == GL_NO_ERROR)
++        deglGetTLS()->glError = error;
++}
++
++static void delete_objects(DEGLSurface *s)
++{
++    if(s->cocoa.fbo) glDeleteFramebuffersEXT(1, &s->cocoa.fbo);
++    if(s->cocoa.color_buffer)
++        glDeleteRenderbuffersEXT(1, &s->cocoa.color_buffer);
++    if(s->cocoa.depth_stencil_buffer)
++        glDeleteRenderbuffersEXT(1, &s->cocoa.depth_stencil_buffer);
++    s->cocoa.fbo = s->cocoa.color_buffer = s->cocoa.depth_stencil_buffer = 0;
++}
++
++EGLBoolean deglCocoaBindFBO(DEGLSurface *s, GLuint previous_default)
++{
++    CGLContextObj owner = CGLGetCurrentContext();
++    if(!owner || s->type != DEGLSurface_offscreen || !s->ddraw ||
++       s->ddraw->width < 1 || s->ddraw->width > 4096 ||
++       s->ddraw->height < 1 || s->ddraw->height > 4096 || s->ddraw->bpp != 4)
++    {
++        deglSetError(EGL_BAD_MATCH);
++        return EGL_FALSE;
++    }
++    /* FBO names are context-local. Cross-context surface reuse needs its own
++     * container/attachment ownership design; reject it, never show stale data. */
++    if(s->cocoa.fbo_owner && s->cocoa.fbo_owner != owner)
++    {
++        deglSetError(EGL_BAD_ACCESS);
++        return EGL_FALSE;
++    }
++    s->width = s->ddraw->width;
++    s->height = s->ddraw->height;
++    s->depth = s->ddraw->depth;
++    s->bpp = s->ddraw->bpp;
++    GLint previous_fbo = 0;
++    glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &previous_fbo);
++    int default_bound = !previous_fbo || previous_fbo == (GLint)previous_default;
++    if(s->cocoa.fbo && s->cocoa.fbo_width == s->width &&
++       s->cocoa.fbo_height == s->height)
++    {
++        if(default_bound) glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, s->cocoa.fbo);
++        return EGL_TRUE;
++    }
++    GLint previous_rb = 0;
++    preserve_gl_error();
++    glGetIntegerv(GL_RENDERBUFFER_BINDING_EXT, &previous_rb);
++    delete_objects(s);
++    if(!s->cocoa.fbo_owner) s->cocoa.fbo_owner = CGLRetainContext(owner);
++    glGenFramebuffersEXT(1, &s->cocoa.fbo);
++    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, s->cocoa.fbo);
++    glGenRenderbuffersEXT(1, &s->cocoa.color_buffer);
++    glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, s->cocoa.color_buffer);
++    glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_RGBA8, s->width, s->height);
++    glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT,
++                                GL_RENDERBUFFER_EXT, s->cocoa.color_buffer);
++    if(s->config->depth_bits || s->config->stencil_bits)
++    {
++        glGenRenderbuffersEXT(1, &s->cocoa.depth_stencil_buffer);
++        glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, s->cocoa.depth_stencil_buffer);
++        glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_DEPTH24_STENCIL8_EXT,
++                                 s->width, s->height);
++        if(s->config->depth_bits)
++            glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT,
++                GL_RENDERBUFFER_EXT, s->cocoa.depth_stencil_buffer);
++        if(s->config->stencil_bits)
++            glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_STENCIL_ATTACHMENT_EXT,
++                GL_RENDERBUFFER_EXT, s->cocoa.depth_stencil_buffer);
++    }
++    GLenum status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
++    glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, previous_rb);
++    if(status != GL_FRAMEBUFFER_COMPLETE_EXT || glGetError() != GL_NO_ERROR)
++    {
++        fprintf(stderr, "DGLES2 offscreen FBO incomplete: 0x%x\n", status);
++        delete_objects(s);
++        deglSetError(EGL_BAD_ALLOC);
++        return EGL_FALSE;
++    }
++    s->cocoa.fbo_width = s->width;
++    s->cocoa.fbo_height = s->height;
++    if(!default_bound) glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, previous_fbo);
++    return EGL_TRUE;
++}
++
++GLuint deglCocoaDefaultFBO(void)
++{
++    DEGLContext *context = deglGetTLS()->current_context;
++    if(!degl_cocoa_fbo || degl_backend != DEGLBackend_cocoa ||
++       degl_frontend != DEGLFrontend_offscreen || !context || !context->draw)
++        return 0;
++    return context->draw->cocoa.fbo;
++}
++
++EGLBoolean deglCocoaReadFBO(DEGLSurface *s)
++{
++    if(!s->cocoa.fbo || s->cocoa.fbo_owner != CGLGetCurrentContext() ||
++       !s->ddraw->pixels)
++    {
++        deglSetError(EGL_BAD_SURFACE);
++        return EGL_FALSE;
++    }
++    size_t row_size = (size_t)s->width * 4;
++    unsigned char *buffer = malloc(row_size * s->height);
++    if(!buffer)
++    {
++        deglSetError(EGL_BAD_ALLOC);
++        return EGL_FALSE;
++    }
++    GLint saved_fbo = 0, saved_pbo = 0, saved_read = 0;
++    preserve_gl_error();
++    glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &saved_fbo);
++    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &saved_pbo);
++    glGetIntegerv(GL_READ_BUFFER, &saved_read);
++    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, s->cocoa.fbo);
++    glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
++    glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
++    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
++    glPixelStorei(GL_PACK_ALIGNMENT, 1);
++    glPixelStorei(GL_PACK_ROW_LENGTH, 0);
++    glPixelStorei(GL_PACK_SKIP_ROWS, 0);
++    glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
++    glPixelStorei(GL_PACK_SWAP_BYTES, GL_FALSE);
++    glReadPixels(0, 0, s->width, s->height, GL_BGRA, GL_UNSIGNED_BYTE, buffer);
++    GLenum error = glGetError();
++    glPopClientAttrib();
++    glBindBuffer(GL_PIXEL_PACK_BUFFER, saved_pbo);
++    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, saved_fbo);
++    glReadBuffer(saved_read);
++    if(error == GL_NO_ERROR)
++    {
++        for(unsigned y = 0; y < s->height; ++y)
++            memcpy((unsigned char *)s->ddraw->pixels + y * row_size,
++                   buffer + (s->height - 1 - y) * row_size, row_size);
++    }
++    free(buffer);
++    if(error != GL_NO_ERROR)
++    {
++        fprintf(stderr, "DGLES2 offscreen FBO readback: 0x%x\n", error);
++        deglSetError(EGL_BAD_ACCESS);
++        return EGL_FALSE;
++    }
++    if(s->ddraw->swap) s->ddraw->swap(s->ddraw->userdata);
++    return EGL_TRUE;
++}
++
++void deglCocoaDestroyFBO(DEGLSurface *s)
++{
++    CGLContextObj owner = s->cocoa.fbo_owner;
++    if(!owner) return;
++    CGLContextObj saved = CGLGetCurrentContext();
++    if(CGLSetCurrentContext(owner) == kCGLNoError) delete_objects(s);
++    CGLSetCurrentContext(saved);
++    CGLReleaseContext(owner);
++    s->cocoa.fbo_owner = NULL;
++}

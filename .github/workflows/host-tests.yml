@@ -1,0 +1,28 @@
+name: Host tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check published files and documentation links
+        run: python3 scripts/check-public-tree.py
+      - name: Shell syntax
+        run: |
+          git ls-files '*.sh' | while IFS= read -r script; do
+            sh -n "$script" || exit 1
+          done
+      - name: Host regression suite
+        run: python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v

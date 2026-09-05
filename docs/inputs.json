@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "inputs": [
+    {
+      "id": "qemu-source",
+      "path": "downloads/tools/qemu-9.1.3.tar.xz",
+      "group": "source",
+      "environment": "HARMATTAN_QEMU_TARBALL",
+      "sha256": "480a77a0ed13a9b39415f639aa020b4eb0d7cc5a52569510dfd830b3af1bac89"
+    },
+    {
+      "id": "dgles-source",
+      "path": "downloads/tools/gles-libs_1.4.2-3+0m6.tar.gz",
+      "group": "source",
+      "environment": "HARMATTAN_GLES_TARBALL",
+      "sha256": "2a611910254d877b76d4da26bbf679b9341a63f9eb2453790daf10928a188711"
+    },
+    {
+      "id": "guest-kernel",
+      "path": "extracted/pr1.0-qemu-adaptation/zImage-2.6.32.26-qemu",
+      "group": "guest",
+      "environment": "HARMATTAN_KERNEL",
+      "sha256": "4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e"
+    },
+    {
+      "id": "egl",
+      "path": "extracted/pr1.0-qemu-adaptation/usr/lib/libEGL.so.1.3.0",
+      "group": "guest",
+      "optional": false,
+      "sha256": "105dd15bca74b8d0cf348d4505bd2a05cc4711d444387bd8fc454738c6310b58"
+    },
+    {
+      "id": "gles1",
+      "path": "extracted/pr1.0-qemu-adaptation/usr/lib/libGLES_CM.so.1.4.5",
+      "group": "guest",
+      "optional": false,
+      "sha256": "fda3ffb1ed4badf7d4cc5f9a56f48a9df340069320e5d75dc42e047e675c2586"
+    },
+    {
+      "id": "gles2",
+      "path": "extracted/pr1.0-qemu-adaptation/usr/lib/libGLESv2.so.1.4.9",
+      "group": "guest",
+      "optional": false,
+      "sha256": "f8d9e4931b395581259766876532c311d2d6d518edc0b48ba2d93744a7fd887e"
+    },
+    {
+      "id": "xorg-driver",
+      "path": "extracted/pr1.0-qemu-adaptation/usr/lib/xorg/modules/drivers/omapfb_drv.so",
+      "group": "guest",
+      "optional": true,
+      "sha256": "16184d7f40fb5e1f917aa7190e40425e59ad19e1fd6a863376a071d4f967ee12"
+    },
+    {
+      "id": "adaptation-archive",
+      "path": "extracted/pr1.0-qemu-adaptation/qemu-adaptation.tar.gz",
+      "group": "guest",
+      "optional": true,
+      "sha256": "c385c9cddb8d15e40c7ae4051e635ecef3def14b41971bc3e375327000a0545a"
+    },
+    {
+      "id": "prepared-guest-disk",
+      "path": "extracted/hybrid-pr1.3-qemu/arm-qemu-rm680-image-pr1.3-ui.raw",
+      "group": "guest",
+      "apfs_clone": true,
+      "max_bytes": 34359738368,
+      "environment": "HARMATTAN_GUEST_IMAGE",
+      "note": "Prepared local state; no universal checksum. Contents are not validated by the importer."
+    },
+    {
+      "id": "guest-link-filesystem",
+      "path": "extracted/hybrid-pr1.3-qemu/pr1.3-rootfs-qemu-rescue.ext4",
+      "group": "guest",
+      "apfs_clone": true,
+      "max_bytes": 8589934592,
+      "environment": "HARMATTAN_PUBLIC_ROOTFS",
+      "note": "Link inputs extracted from this image are individually hash-checked by guest build scripts."
+    }
+  ]
+}

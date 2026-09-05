@@ -1,0 +1,237 @@
+diff --git a/include/ui/input.h b/include/ui/input.h
+--- a/include/ui/input.h
++++ b/include/ui/input.h
+@@ -41,6 +41,11 @@
+ void qemu_input_event_send_impl(QemuConsole *src, InputEvent *evt);
+ void qemu_input_event_sync(void);
+ void qemu_input_event_sync_impl(void);
++
++/* Observers run under the BQL, immediately before delivery to a handler.
++ * The borrowed InputEvent must not be retained or changed by observers. */
++void qemu_input_add_event_notifier(Notifier *notify);
++void qemu_input_remove_event_notifier(Notifier *notify);
+ 
+ void qemu_input_event_send_key(QemuConsole *src, KeyValue *key, bool down);
+ void qemu_input_event_send_key_number(QemuConsole *src, int num, bool down);
+diff --git a/ui/input.c b/ui/input.c
+--- a/ui/input.c
++++ b/ui/input.c
+@@ -38,6 +38,18 @@
+     QTAILQ_HEAD_INITIALIZER(handlers);
+ static NotifierList mouse_mode_notifiers =
+     NOTIFIER_LIST_INITIALIZER(mouse_mode_notifiers);
++static NotifierList input_event_notifiers =
++    NOTIFIER_LIST_INITIALIZER(input_event_notifiers);
++
++void qemu_input_add_event_notifier(Notifier *notify)
++{
++    notifier_list_add(&input_event_notifiers, notify);
++}
++
++void qemu_input_remove_event_notifier(Notifier *notify)
++{
++    notifier_remove(notify);
++}
+ 
+ static QemuInputEventQueueHead kbd_queue = QTAILQ_HEAD_INITIALIZER(kbd_queue);
+ static QEMUTimer *kbd_timer;
+@@ -350,6 +362,7 @@
+     if (!s) {
+         return;
+     }
++    notifier_list_notify(&input_event_notifiers, evt);
+     s->handler->event(s->dev, src, evt);
+     s->events++;
+ }
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -1946,6 +1946,151 @@
+     qapi_free_BlockInfoList(pointerToFree);
+ }
+ 
++/* Independent diagnostic: renew a short activity only for delivered input.
++ * All Foundation objects and lease state belong to the Cocoa main queue. */
++static bool n00_interaction_enabled;
++static bool n00_interaction_closed;
++static id<NSObject> n00_interaction_token;
++static id n00_interaction_observers[3];
++static dispatch_source_t n00_interaction_timer;
++static uint64_t n00_interaction_generation;
++static int64_t n00_interaction_deadline;
++#define N00_INTERACTION_NS (8LL * NANOSECONDS_PER_SECOND)
++
++static void n00_interaction_release(unsigned reason)
++{
++    assert([NSThread isMainThread]);
++    if (!n00_interaction_token) {
++        return;
++    }
++    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
++    [[NSProcessInfo processInfo] endActivity:n00_interaction_token];
++    [n00_interaction_token release];
++    n00_interaction_token = nil;
++    [pool release];
++    trace_n00_lease_transition(get_clock(), 1, reason,
++        n00_interaction_generation, n00_interaction_deadline,
++        NSActivityUserInitiatedAllowingIdleSystemSleep);
++    n00_interaction_deadline = 0;
++    dispatch_source_set_timer(n00_interaction_timer, DISPATCH_TIME_FOREVER,
++                              DISPATCH_TIME_FOREVER, 0);
++}
++
++static void n00_interaction_arm(void)
++{
++    int64_t remaining = MAX(1, n00_interaction_deadline - get_clock());
++    dispatch_source_set_timer(n00_interaction_timer,
++        dispatch_time(DISPATCH_TIME_NOW, remaining), DISPATCH_TIME_FOREVER,
++        10 * SCALE_MS);
++}
++
++static void n00_interaction_input(unsigned kind)
++{
++    assert([NSThread isMainThread]);
++    if (n00_interaction_closed) {
++        return;
++    }
++    NSWindow *window = [cocoaView window];
++    bool accepted = n00_interaction_enabled && ![NSApp isHidden] &&
++                    [window isVisible] && ![window isMiniaturized];
++    int64_t now = get_clock();
++    trace_n00_lease_input(now, kind, accepted, n00_interaction_token != nil);
++    if (!accepted) {
++        return;
++    }
++    n00_interaction_deadline = now + N00_INTERACTION_NS;
++    if (!n00_interaction_token) {
++        NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
++        n00_interaction_token = [[[NSProcessInfo processInfo]
++            beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep
++            reason:@"Harmattan QEMU input response (8 second idle timeout)"] retain];
++        [pool release];
++        if (!n00_interaction_token) {
++            error_report("N00 input activity request returned no token");
++            exit(1);
++        }
++        n00_interaction_generation++;
++        trace_n00_lease_transition(get_clock(), 0, 0,
++            n00_interaction_generation, n00_interaction_deadline,
++            NSActivityUserInitiatedAllowingIdleSystemSleep);
++    } else {
++        trace_n00_lease_renew(now, n00_interaction_generation,
++                             n00_interaction_deadline);
++    }
++    n00_interaction_arm();
++}
++
++static void n00_interaction_notify(Notifier *notifier, void *data)
++{
++    const InputEvent *event = data;
++    unsigned kind = event->type;
++    /* Never block the BQL on the Cocoa queue, or retain the borrowed event. */
++    dispatch_async(dispatch_get_main_queue(), ^{
++        n00_interaction_input(kind);
++    });
++}
++
++static Notifier n00_interaction_notifier = {
++    .notify = n00_interaction_notify,
++};
++
++static void n00_interaction_init(void)
++{
++    const char *value = getenv("N00_COCOA_INTERACTION");
++    assert([NSThread isMainThread]);
++    if (value && strcmp(value, "0") && strcmp(value, "1")) {
++        error_report("N00_COCOA_INTERACTION must be 0 or 1");
++        exit(1);
++    }
++    n00_interaction_enabled = value && !strcmp(value, "1");
++    if (n00_interaction_enabled && n00_activity_enabled) {
++        error_report("Whole-run and input-scoped activities are mutually exclusive");
++        exit(1);
++    }
++    trace_n00_lease_config(n00_interaction_enabled, 8000);
++    n00_interaction_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,
++        0, 0, dispatch_get_main_queue());
++    dispatch_source_set_timer(n00_interaction_timer, DISPATCH_TIME_FOREVER,
++                              DISPATCH_TIME_FOREVER, 0);
++    dispatch_source_set_event_handler(n00_interaction_timer, ^{
++        if (!n00_interaction_closed && n00_interaction_token) {
++            if (get_clock() < n00_interaction_deadline) {
++                n00_interaction_arm();
++            } else {
++                n00_interaction_release(1);
++            }
++        }
++    });
++    dispatch_resume(n00_interaction_timer);
++    NSNotificationName names[] = {NSApplicationDidHideNotification,
++        NSWindowDidMiniaturizeNotification, NSWindowWillCloseNotification};
++    for (unsigned i = 0; i < G_N_ELEMENTS(names); i++) {
++        id object = i ? (id)[cocoaView window] : (id)NSApp;
++        n00_interaction_observers[i] = [[[NSNotificationCenter defaultCenter]
++            addObserverForName:names[i] object:object queue:nil
++            usingBlock:^(NSNotification *note) {
++                n00_interaction_release(2);
++            }] retain];
++    }
++    qemu_input_add_event_notifier(&n00_interaction_notifier);
++}
++
++static void n00_interaction_shutdown(void)
++{
++    assert([NSThread isMainThread]);
++    n00_interaction_closed = true;
++    n00_interaction_release(3);
++    for (unsigned i = 0; i < G_N_ELEMENTS(n00_interaction_observers); i++) {
++        [[NSNotificationCenter defaultCenter]
++            removeObserver:n00_interaction_observers[i]];
++        [n00_interaction_observers[i] release];
++        n00_interaction_observers[i] = nil;
++    }
++    dispatch_source_cancel(n00_interaction_timer);
++    dispatch_release(n00_interaction_timer);
++    n00_interaction_timer = NULL;
++}
++
+ static void cocoa_mouse_mode_change_notify(Notifier *notifier, void *data)
+ {
+     dispatch_async(dispatch_get_main_queue(), ^{
+@@ -2078,8 +2223,12 @@
+     COCOA_DEBUG("Second thread: calling qemu_default_main()\n");
+     bql_lock();
+     status = qemu_default_main();
++    qemu_input_remove_event_notifier(&n00_interaction_notifier);
+     bql_unlock();
+     COCOA_DEBUG("Second thread: qemu_default_main() returned, exiting\n");
++    dispatch_sync(dispatch_get_main_queue(), ^{
++        n00_interaction_shutdown();
++    });
+     n00_activity_end();
+     [cbowner release];
+     exit(status);
+@@ -2092,6 +2241,7 @@
+     COCOA_DEBUG("Entered %s()\n", __func__);
+ 
+     n00_activity_begin();
++    n00_interaction_init();
+     bql_unlock();
+     qemu_thread_create(&thread, "qemu_main", call_qemu_main,
+                        NULL, QEMU_THREAD_DETACHED);
+diff --git a/ui/trace-events b/ui/trace-events
+--- a/ui/trace-events
++++ b/ui/trace-events
+@@ -10,6 +10,12 @@
+ # Opt-in Cocoa activity assertion; state observations are not presentation FPS.
+ n00_activity_lifecycle(int64_t start_ns, unsigned phase, bool enabled, uint64_t options) "start_ns=%"PRId64" phase=%u enabled=%d options=%"PRIu64
+ n00_activity_observe(int64_t start_ns, bool active, bool window_visible, uint64_t occlusion) "start_ns=%"PRId64" active=%d window_visible=%d occlusion=%"PRIu64
++
++# Input-scoped activity: phase 0=begin, 1=end; reason 0=input, 1=idle, 2=hide, 3=exit.
++n00_lease_config(bool enabled, unsigned timeout_ms) "enabled=%d timeout_ms=%u"
++n00_lease_input(int64_t start_ns, unsigned kind, bool accepted, bool held) "start_ns=%"PRId64" kind=%u accepted=%d held=%d"
++n00_lease_transition(int64_t start_ns, unsigned phase, unsigned reason, uint64_t generation, int64_t deadline_ns, uint64_t options) "start_ns=%"PRId64" phase=%u reason=%u generation=%"PRIu64" deadline_ns=%"PRId64" options=%"PRIu64
++n00_lease_renew(int64_t start_ns, uint64_t generation, int64_t deadline_ns) "start_ns=%"PRId64" generation=%"PRIu64" deadline_ns=%"PRId64
+ 
+ # console.c
+ console_gfx_new(void) ""

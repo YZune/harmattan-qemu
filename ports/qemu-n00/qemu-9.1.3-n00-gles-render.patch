@@ -1,0 +1,880 @@
+diff --git a/hw/arm/n00_gles_port.c b/hw/arm/n00_gles_port.c
+index 220f35e..5693801 100644
+--- a/hw/arm/n00_gles_port.c
++++ b/hw/arm/n00_gles_port.c
+@@ -24,6 +24,8 @@ enum { MAX_HANDLES = 1024, MAX_TRANSFER = 64 * 1024 * 1024 };
+ enum HandleKind { H_FREE, H_DISPLAY, H_CONFIG, H_CONTEXT, H_SURFACE };
+ typedef struct N00GLES N00GLES;
+ typedef struct N00Client N00Client;
++typedef struct N00RenderState N00RenderState;
++static void render_free(N00RenderState *r);
+ 
+ typedef struct N00GL {
+     void *library;
+@@ -37,6 +39,10 @@ typedef struct N00GL {
+     typeof(&glGetError) GetError;
+     typeof(&glGetString) GetString;
+     typeof(&glReadPixels) ReadPixels;
++    typeof(&glGetIntegerv) GetIntegerv;
++#define N00_GL(name) typeof(&gl##name) name;
++#include "n00_gles_render_api.def"
++#undef N00_GL
+ } N00GL;
+ 
+ typedef struct N00Surface {
+@@ -51,6 +57,7 @@ typedef struct N00Handle {
+     enum HandleKind kind;
+     N00Client *owner;
+     unsigned version;
++    N00RenderState *render;
+ } N00Handle;
+ 
+ struct N00Client {
+@@ -76,6 +83,7 @@ struct N00GLES {
+     N00GL gl[2];
+     bool trace;
+     uint64_t calls, faults, swaps;
++    uint64_t shader_compiles, program_links, texture_uploads, draws, render_rejects;
+ };
+ 
+ void n00_gles_init(ARMCPU *cpu);
+@@ -173,7 +181,8 @@ static uint32_t make_handle(N00GLES *s, void *object, enum HandleKind kind,
+     }
+     for (unsigned i = 0; i < MAX_HANDLES; i++) {
+         if (s->handles[i].kind == H_FREE) {
+-            s->handles[i] = (N00Handle){object, kind, owner, version};
++            s->handles[i] = (N00Handle){
++                .object = object, .kind = kind, .owner = owner, .version = version};
+             return 0xcafe0000u | i;
+         }
+     }
+@@ -328,6 +337,11 @@ static void call_egl(N00Client *c)
+         if (arg(c, 2) && !(share = handle(c, arg(c, 2), H_CONTEXT))) {
+             break;
+         }
++        /* CPU buffer shadows are context-local in this bounded prototype. */
++        if (share) {
++            c->egl_error = EGL_BAD_MATCH;
++            break;
++        }
+         for (unsigned i = 0; list[i] != EGL_NONE; i += 2) {
+             if (list[i] == EGL_CONTEXT_CLIENT_VERSION) {
+                 version = list[i + 1];
+@@ -457,6 +471,7 @@ static void call_egl(N00Client *c)
+         if (h && c->current != h) {
+             c->result = eglDestroyContext(display, h->object);
+             if (c->result) {
++                render_free(h->render);
+                 memset(h, 0, sizeof(*h));
+             }
+         } else {
+@@ -469,6 +484,8 @@ static void call_egl(N00Client *c)
+     }
+ }
+ 
++#include "n00_gles_render.inc"
++
+ static void call_gl(N00Client *c)
+ {
+     if (!c->current || c->current->version != c->api) {
+@@ -476,6 +493,9 @@ static void call_gl(N00Client *c)
+         return;
+     }
+     N00GL *gl = &c->s->gl[c->api - 1];
++    if (c->api == 2 && call_render(c)) {
++        return;
++    }
+     unsigned nr = c->call;
+     uint32_t a[7];
+     /* The common subset has different call numbers in the two ABIs. */
+@@ -513,8 +533,21 @@ static void call_gl(N00Client *c)
+             c->gl_error = GL_INVALID_VALUE;
+             return;
+         }
+-        size_t bytes = (size_t)a[2] * a[3] * 4;
+-        void *pixels = g_malloc0(MAX(bytes, 1));
++        GLint alignment = 4;
++        gl->GetIntegerv(GL_PACK_ALIGNMENT, &alignment);
++        if (alignment != 1 && alignment != 2 && alignment != 4 && alignment != 8) {
++            c->gl_error = GL_INVALID_OPERATION;
++            return;
++        }
++        size_t row = (size_t)a[2] * 4;
++        size_t stride = (row + alignment - 1) & ~(size_t)(alignment - 1);
++        size_t bytes = a[3] ? (a[3] - 1) * stride + row : 0;
++        void *pixels = g_malloc0(MAX(stride * a[3], 1));
++        /* Preserve guest row padding and reject an invalid destination first. */
++        if (!guest_copy(c, a[6], pixels, bytes, false)) {
++            g_free(pixels);
++            return;
++        }
+         gl->ReadPixels(a[0], a[1], a[2], a[3], a[4], a[5], pixels);
+         guest_copy(c, a[6], pixels, bytes, true);
+         g_free(pixels);
+@@ -544,6 +577,7 @@ static void cleanup_client(N00Client *c)
+                 g_free(surf);
+             } else {
+                 eglDestroyContext(display, h->object);
++                render_free(h->render);
+             }
+             memset(h, 0, sizeof(*h));
+         }
+@@ -570,11 +604,12 @@ static void *worker(void *opaque)
+         }
+         if (c->bad_memory) {
+             c->s->faults++;
+-            c->egl_error = EGL_BAD_PARAMETER;
+-            c->gl_error = GL_INVALID_OPERATION;
+             if (c->api == 0) {
++                c->egl_error = EGL_BAD_PARAMETER;
+                 c->returned = true;
+                 c->result = 0;
++            } else {
++                c->gl_error = GL_INVALID_OPERATION;
+             }
+             error_report("N00_GLES rejected guest memory client=%u api=%u call=%u",
+                          c->nr, c->api, c->call);
+@@ -727,6 +762,13 @@ static void n00_gles_exit(Notifier *notify, void *data)
+     if (s->display) {
+         eglTerminate(s->display);
+     }
++    if (s->shader_compiles || s->draws || s->render_rejects) {
++        fprintf(stderr,
++                "N00_GLES render compiles=%" PRIu64 " links=%" PRIu64
++                " uploads=%" PRIu64 " draws=%" PRIu64 " rejects=%" PRIu64 "\n",
++                s->shader_compiles, s->program_links, s->texture_uploads, s->draws,
++                s->render_rejects);
++    }
+     fprintf(stderr,
+             "N00_GLES summary calls=%" PRIu64 " swaps=%" PRIu64 " faults=%" PRIu64
+             " workers=joined\n",
+@@ -768,6 +810,12 @@ void n00_gles_init(ARMCPU *cpu)
+         LOAD(GetError);
+         LOAD(GetString);
+         LOAD(ReadPixels);
++        LOAD(GetIntegerv);
++        if (i == 1) {
++#define N00_GL(name) LOAD(name);
++#include "n00_gles_render_api.def"
++#undef N00_GL
++        }
+ #undef LOAD
+     }
+     memory_region_init_io(&s->mmio, NULL, &n00_gles_ops, s, "n00-gles", 0x100000);
+diff --git a/hw/arm/n00_gles_render.inc b/hw/arm/n00_gles_render.inc
+new file mode 100644
+index 0000000..7ba98b5
+--- /dev/null
++++ b/hw/arm/n00_gles_render.inc
+@@ -0,0 +1,667 @@
++/* Bounded GLES2 marshalling for the N00 porting experiment.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ * Included by n00_gles_port.c. Guest addresses are always copied; only
++ * validated offsets into host GL buffer objects may reach GL as pointers.
++ */
++enum {
++    R_ATTRS = 16,
++    R_BUFFERS = 128,
++    R_VERTICES = 1024 * 1024,
++    R_STRINGS = 64,
++    R_SHADER_BYTES = 1024 * 1024
++};
++typedef struct N00Buffer {
++    GLuint name;
++    size_t size;
++    uint8_t *data;
++} N00Buffer;
++typedef struct N00Attrib {
++    bool defined, enabled;
++    GLint size;
++    GLenum type;
++    GLboolean normalized;
++    GLsizei stride;
++    uint32_t pointer;
++    GLuint buffer;
++    void *copy;
++} N00Attrib;
++struct N00RenderState {
++    GLuint array, element;
++    N00Buffer buffers[R_BUFFERS];
++    N00Attrib attrs[R_ATTRS];
++    size_t buffer_bytes;
++};
++
++static void render_free(N00RenderState *r)
++{
++    if (!r) {
++        return;
++    }
++    for (unsigned i = 0; i < R_BUFFERS; i++) {
++        g_free(r->buffers[i].data);
++    }
++    for (unsigned i = 0; i < R_ATTRS; i++) {
++        g_free(r->attrs[i].copy);
++    }
++    g_free(r);
++}
++
++static bool render_error(N00Client *c, GLenum error)
++{
++    if (!c->gl_error) {
++        c->gl_error = error;
++    }
++    c->s->render_rejects++;
++    return false;
++}
++
++static N00Buffer *render_buffer(N00RenderState *r, GLuint name, bool create)
++{
++    if (!name) {
++        return NULL;
++    }
++    N00Buffer *empty = NULL;
++    for (unsigned i = 0; i < R_BUFFERS; i++) {
++        if (r->buffers[i].name == name) {
++            return &r->buffers[i];
++        }
++        if (!r->buffers[i].name && !empty) {
++            empty = &r->buffers[i];
++        }
++    }
++    if (create && empty) {
++        empty->name = name;
++        return empty;
++    }
++    return NULL;
++}
++
++static char *render_string(N00Client *c, uint32_t va, size_t limit)
++{
++    char *out = g_malloc(limit + 1);
++    /* Read only through the NUL, including when it ends a mapped page. */
++    for (size_t i = 0; i < limit; i++) {
++        if (i > UINT32_MAX - va || !guest_copy(c, va + i, out + i, 1, false)) {
++            g_free(out);
++            return NULL;
++        }
++        if (!out[i]) {
++            return out;
++        }
++    }
++    g_free(out);
++    render_error(c, GL_INVALID_VALUE);
++    return NULL;
++}
++
++static void render_shader_source(N00Client *c, N00GL *gl, uint32_t *a)
++{
++    if (a[1] > R_STRINGS) {
++        render_error(c, GL_INVALID_VALUE);
++        return;
++    }
++    uint32_t pointers[R_STRINGS] = {0};
++    GLint lengths[R_STRINGS] = {0};
++    char *strings[R_STRINGS] = {0};
++    size_t total = 0;
++    if (!guest_copy(c, a[2], pointers, a[1] * 4, false) ||
++        (a[3] && !guest_copy(c, a[3], lengths, a[1] * 4, false))) {
++        return;
++    }
++    for (unsigned i = 0; i < a[1]; i++) {
++        pointers[i] = le32_to_cpu(pointers[i]);
++        lengths[i] = (GLint)le32_to_cpu(lengths[i]);
++        if (!a[3] || lengths[i] < 0) {
++            strings[i] = render_string(c, pointers[i], R_SHADER_BYTES - total);
++            if (!strings[i]) {
++                goto out;
++            }
++            lengths[i] = strlen(strings[i]);
++        } else {
++            if ((unsigned)lengths[i] > R_SHADER_BYTES - total) {
++                render_error(c, GL_INVALID_VALUE);
++                goto out;
++            }
++            strings[i] = g_malloc0((size_t)lengths[i] + 1);
++            if (!guest_copy(c, pointers[i], strings[i], lengths[i], false)) {
++                goto out;
++            }
++        }
++        total += lengths[i];
++    }
++    gl->ShaderSource(a[0], a[1], (const GLchar **)strings, lengths);
++out:
++    for (unsigned i = 0; i < a[1]; i++) {
++        g_free(strings[i]);
++    }
++}
++
++static bool render_vertices(N00Client *c, N00GL *gl, N00RenderState *r,
++                            unsigned max_index)
++{
++    void *copies[R_ATTRS] = {0};
++    size_t total = 0;
++    if (max_index >= R_VERTICES) {
++        return render_error(c, GL_INVALID_VALUE);
++    }
++    /* Preflight/copy every enabled attribute before replacing any host pointer. */
++    for (unsigned i = 0; i < R_ATTRS; i++) {
++        N00Attrib *v = &r->attrs[i];
++        if (!v->enabled) {
++            continue;
++        }
++        if (!v->defined) {
++            render_error(c, GL_INVALID_OPERATION);
++            goto fail;
++        }
++        unsigned element = v->size * (v->type == GL_FLOAT ? 4 : 1);
++        unsigned stride = v->stride ? v->stride : element;
++        uint64_t span = (uint64_t)max_index * stride + element;
++        if (span > MAX_TRANSFER) {
++            render_error(c, GL_INVALID_VALUE);
++            goto fail;
++        }
++        if (v->buffer) {
++            N00Buffer *b = render_buffer(r, v->buffer, false);
++            if (!b || (uint64_t)v->pointer + span > b->size) {
++                render_error(c, GL_INVALID_OPERATION);
++                goto fail;
++            }
++        } else {
++            if (span > MAX_TRANSFER - total) {
++                render_error(c, GL_OUT_OF_MEMORY);
++                goto fail;
++            }
++            total += span;
++            copies[i] = g_malloc(span);
++            if (!guest_copy(c, v->pointer, copies[i], span, false)) {
++                goto fail;
++            }
++        }
++    }
++    for (unsigned i = 0; i < R_ATTRS; i++) {
++        N00Attrib *v = &r->attrs[i];
++        if (!v->enabled) {
++            continue;
++        }
++        gl->BindBuffer(GL_ARRAY_BUFFER, v->buffer);
++        gl->VertexAttribPointer(i, v->size, v->type, v->normalized, v->stride,
++                                v->buffer ? (void *)(uintptr_t)v->pointer : copies[i]);
++        g_free(v->copy);
++        v->copy = copies[i];
++    }
++    gl->BindBuffer(GL_ARRAY_BUFFER, r->array);
++    return true;
++fail:
++    for (unsigned i = 0; i < R_ATTRS; i++) {
++        g_free(copies[i]);
++    }
++    return false;
++}
++
++static void render_draw(N00Client *c, N00GL *gl, N00RenderState *r, uint32_t *a,
++                        bool indexed)
++{
++    unsigned count = a[indexed ? 1 : 2];
++    if (a[0] > GL_TRIANGLE_FAN || count > R_VERTICES ||
++        (!indexed && a[1] >= R_VERTICES)) {
++        render_error(c, GL_INVALID_VALUE);
++        return;
++    }
++    if (!count) {
++        return;
++    }
++    unsigned max_index = indexed ? 0 : a[1] + count - 1;
++    void *owned = NULL;
++    const uint8_t *indices = NULL;
++    if (indexed) {
++        if (a[2] != GL_UNSIGNED_BYTE && a[2] != GL_UNSIGNED_SHORT) {
++            render_error(c, GL_INVALID_ENUM);
++            return;
++        }
++        unsigned step = a[2] == GL_UNSIGNED_BYTE ? 1 : 2;
++        size_t bytes = (size_t)count * step;
++        if (r->element) {
++            N00Buffer *b = render_buffer(r, r->element, false);
++            if (!b || a[3] % step || (uint64_t)a[3] + bytes > b->size) {
++                render_error(c, GL_INVALID_OPERATION);
++                return;
++            }
++            indices = b->data + a[3];
++        } else {
++            owned = g_malloc(bytes);
++            indices = owned;
++            if (!guest_copy(c, a[3], owned, bytes, false)) {
++                goto out;
++            }
++        }
++        for (unsigned i = 0; i < count; i++) {
++            unsigned index = step == 1 ? indices[i] : lduw_le_p(indices + i * 2);
++            max_index = MAX(max_index, index);
++        }
++    }
++    if (!render_vertices(c, gl, r, max_index)) {
++        goto out;
++    }
++    if (indexed) {
++        gl->DrawElements(a[0], count, a[2],
++                         r->element ? (void *)(uintptr_t)a[3] : indices);
++    } else {
++        gl->DrawArrays(a[0], a[1], count);
++    }
++    c->s->draws++;
++out:
++    g_free(owned);
++}
++
++static void render_texture(N00Client *c, N00GL *gl, uint32_t *a, bool sub)
++{
++    unsigned width = a[sub ? 4 : 3], height = a[sub ? 5 : 4];
++    unsigned components;
++    switch (a[6]) {
++    case GL_RGBA:
++        components = 4;
++        break;
++    case GL_RGB:
++        components = 3;
++        break;
++    case GL_LUMINANCE_ALPHA:
++        components = 2;
++        break;
++    case GL_ALPHA:
++    case GL_LUMINANCE:
++        components = 1;
++        break;
++    default:
++        render_error(c, GL_INVALID_ENUM);
++        return;
++    }
++    if (a[0] != GL_TEXTURE_2D || a[1] > 12 || width > 4096 || height > 4096 ||
++        a[7] != GL_UNSIGNED_BYTE || (!sub && (a[2] != a[6] || a[5])) ||
++        (sub && ((int32_t)a[2] < 0 || (int32_t)a[3] < 0))) {
++        render_error(c, GL_INVALID_VALUE);
++        return;
++    }
++    GLint alignment = 4;
++    gl->GetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
++    if (alignment != 1 && alignment != 2 && alignment != 4 && alignment != 8) {
++        render_error(c, GL_INVALID_OPERATION);
++        return;
++    }
++    size_t row = (size_t)width * components;
++    size_t stride = (row + alignment - 1) & ~(size_t)(alignment - 1);
++    size_t span = height ? (height - 1) * stride + row : 0;
++    void *pixels = NULL;
++    if (a[8] || sub) {
++        pixels = g_malloc0(MAX(stride * height, 1));
++        if (!guest_copy(c, a[8], pixels, span, false)) {
++            g_free(pixels);
++            return;
++        }
++    }
++    if (sub) {
++        gl->TexSubImage2D(a[0], a[1], a[2], a[3], width, height, a[6], a[7], pixels);
++    } else {
++        gl->TexImage2D(a[0], a[1], a[2], width, height, a[5], a[6], a[7], pixels);
++    }
++    c->s->texture_uploads++;
++    g_free(pixels);
++}
++
++static bool call_render(N00Client *c)
++{
++    N00GL *gl = &c->s->gl[1];
++    N00RenderState *r = c->current->render;
++    if (!r) {
++        r = c->current->render = g_new0(N00RenderState, 1);
++    }
++    uint32_t a[9] = {0};
++    /* Decode only the words used by this call, not arbitrary guest stack. */
++#define ARGS(n)                                                                        \
++    do {                                                                               \
++        for (unsigned i = 0; i < (n); i++) {                                           \
++            a[i] = arg(c, i);                                                          \
++        }                                                                              \
++        if (c->bad_memory) {                                                           \
++            return true;                                                               \
++        }                                                                              \
++    } while (0)
++#define CASE(name) case N00_es20_gl##name
++    switch (c->call) {
++        CASE(CreateShader) : c->returned = true;
++        c->result = gl->CreateShader(arg(c, 0));
++        break;
++        CASE(CreateProgram) : c->returned = true;
++        c->result = gl->CreateProgram();
++        break;
++        CASE(ShaderSource) : ARGS(4);
++        render_shader_source(c, gl, a);
++        break;
++        CASE(CompileShader) : gl->CompileShader(arg(c, 0));
++        c->s->shader_compiles++;
++        break;
++        CASE(LinkProgram) : gl->LinkProgram(arg(c, 0));
++        c->s->program_links++;
++        break;
++        CASE(AttachShader) : gl->AttachShader(arg(c, 0), arg(c, 1));
++        break;
++        CASE(UseProgram) : gl->UseProgram(arg(c, 0));
++        break;
++        CASE(DeleteShader) : gl->DeleteShader(arg(c, 0));
++        break;
++        CASE(DeleteProgram) : gl->DeleteProgram(arg(c, 0));
++        break;
++        CASE(GetShaderiv) : CASE(GetProgramiv) :
++        {
++            ARGS(3);
++            GLint value = 0;
++            if (c->call == N00_es20_glGetShaderiv) {
++                gl->GetShaderiv(a[0], a[1], &value);
++            } else {
++                gl->GetProgramiv(a[0], a[1], &value);
++            }
++            put_word(c, a[2], value);
++            break;
++        }
++        CASE(GetShaderInfoLog) : CASE(GetProgramInfoLog) :
++        {
++            ARGS(4);
++            if (a[1] > 65536) {
++                render_error(c, GL_INVALID_VALUE);
++                break;
++            }
++            GLsizei length = 0;
++            char *log = g_malloc0(MAX(a[1], 1));
++            if (c->call == N00_es20_glGetShaderInfoLog) {
++                gl->GetShaderInfoLog(a[0], a[1], &length, log);
++            } else {
++                gl->GetProgramInfoLog(a[0], a[1], &length, log);
++            }
++            if (a[1]) {
++                length = CLAMP(length, 0, (int)a[1] - 1);
++                log[length] = 0;
++                guest_copy(c, a[3], log, length + 1, true);
++            }
++            if (a[2]) {
++                put_word(c, a[2], length);
++            }
++            g_free(log);
++            break;
++        }
++        CASE(BindAttribLocation) : CASE(GetAttribLocation) : CASE(GetUniformLocation) :
++        {
++            bool bind = c->call == N00_es20_glBindAttribLocation;
++            ARGS(bind ? 3 : 2);
++            if (!bind) {
++                c->returned = true;
++                c->result = UINT32_MAX;
++            }
++            if (bind && a[1] >= R_ATTRS) {
++                render_error(c, GL_INVALID_VALUE);
++                break;
++            }
++            char *name = render_string(c, a[bind ? 2 : 1], 1024);
++            if (!name) {
++                break;
++            }
++            if (bind) {
++                gl->BindAttribLocation(a[0], a[1], name);
++            } else if (c->call == N00_es20_glGetAttribLocation) {
++                c->result = gl->GetAttribLocation(a[0], name);
++            } else {
++                c->result = gl->GetUniformLocation(a[0], name);
++            }
++            g_free(name);
++            break;
++        }
++        CASE(Uniform1i) : gl->Uniform1i(arg(c, 0), arg(c, 1));
++        break;
++        CASE(Uniform4fv) : CASE(UniformMatrix4fv) :
++        {
++            bool matrix = c->call == N00_es20_glUniformMatrix4fv;
++            ARGS(matrix ? 4 : 3);
++            if (a[1] > 4096 || (matrix && a[2])) {
++                render_error(c, GL_INVALID_VALUE);
++                break;
++            }
++            size_t bytes = (size_t)a[1] * (matrix ? 16 : 4) * sizeof(GLfloat);
++            GLfloat *values = g_malloc(MAX(bytes, 1));
++            if (guest_copy(c, a[matrix ? 3 : 2], values, bytes, false)) {
++                if (matrix) {
++                    gl->UniformMatrix4fv(a[0], a[1], GL_FALSE, values);
++                } else {
++                    gl->Uniform4fv(a[0], a[1], values);
++                }
++            }
++            g_free(values);
++            break;
++        }
++        CASE(GenBuffers)
++            : CASE(GenTextures) : CASE(DeleteBuffers) : CASE(DeleteTextures) :
++        {
++            ARGS(2);
++            if (a[0] > R_BUFFERS) {
++                render_error(c, GL_INVALID_VALUE);
++                break;
++            }
++            GLuint names[R_BUFFERS] = {0};
++            bool gen =
++                c->call == N00_es20_glGenBuffers || c->call == N00_es20_glGenTextures;
++            if (gen) {
++                if (c->call == N00_es20_glGenBuffers) {
++                    gl->GenBuffers(a[0], names);
++                } else {
++                    gl->GenTextures(a[0], names);
++                }
++                for (unsigned i = 0; i < a[0]; i++) {
++                    names[i] = cpu_to_le32(names[i]);
++                }
++                guest_copy(c, a[1], names, a[0] * 4, true);
++            } else if (guest_copy(c, a[1], names, a[0] * 4, false)) {
++                for (unsigned i = 0; i < a[0]; i++) {
++                    names[i] = le32_to_cpu(names[i]);
++                }
++                if (c->call == N00_es20_glDeleteTextures) {
++                    gl->DeleteTextures(a[0], names);
++                    break;
++                }
++                gl->DeleteBuffers(a[0], names);
++                for (unsigned i = 0; i < a[0]; i++) {
++                    N00Buffer *b = render_buffer(r, names[i], false);
++                    if (!b) {
++                        continue;
++                    }
++                    r->buffer_bytes -= b->size;
++                    g_free(b->data);
++                    memset(b, 0, sizeof(*b));
++                    if (r->array == names[i]) {
++                        r->array = 0;
++                    }
++                    if (r->element == names[i]) {
++                        r->element = 0;
++                    }
++                    for (unsigned j = 0; j < R_ATTRS; j++) {
++                        if (r->attrs[j].buffer == names[i]) {
++                            /* Require a new pointer before drawing a deleted VBO. */
++                            r->attrs[j].defined = false;
++                        }
++                    }
++                }
++            }
++            break;
++        }
++        CASE(BindBuffer) :
++        {
++            ARGS(2);
++            if (a[0] != GL_ARRAY_BUFFER && a[0] != GL_ELEMENT_ARRAY_BUFFER) {
++                render_error(c, GL_INVALID_ENUM);
++                break;
++            }
++            if (a[1] && !render_buffer(r, a[1], true)) {
++                render_error(c, GL_OUT_OF_MEMORY);
++                break;
++            }
++            gl->BindBuffer(a[0], a[1]);
++            if (a[0] == GL_ARRAY_BUFFER) {
++                r->array = a[1];
++            } else {
++                r->element = a[1];
++            }
++            break;
++        }
++        CASE(BufferData) : CASE(BufferSubData) :
++        {
++            ARGS(4);
++            bool sub = c->call == N00_es20_glBufferSubData;
++            if (a[0] != GL_ARRAY_BUFFER && a[0] != GL_ELEMENT_ARRAY_BUFFER) {
++                render_error(c, GL_INVALID_ENUM);
++                break;
++            }
++            N00Buffer *b = render_buffer(
++                r, a[0] == GL_ARRAY_BUFFER ? r->array : r->element, false);
++            if (!b) {
++                render_error(c, GL_INVALID_OPERATION);
++                break;
++            }
++            size_t size = a[sub ? 2 : 1];
++            uint32_t pointer = a[sub ? 3 : 2];
++            if (size > MAX_TRANSFER || (sub && (uint64_t)a[1] + size > b->size) ||
++                (!sub && size > MAX_TRANSFER - (r->buffer_bytes - b->size))) {
++                render_error(c, GL_INVALID_VALUE);
++                break;
++            }
++            if (!sub && a[3] != GL_STATIC_DRAW && a[3] != GL_DYNAMIC_DRAW &&
++                a[3] != GL_STREAM_DRAW) {
++                render_error(c, GL_INVALID_ENUM);
++                break;
++            }
++            uint8_t *data = g_malloc0(MAX(size, 1));
++            if ((pointer || sub) && !guest_copy(c, pointer, data, size, false)) {
++                g_free(data);
++                break;
++            }
++            if (sub) {
++                gl->BufferSubData(a[0], a[1], size, data);
++                if (size) {
++                    memcpy(b->data + a[1], data, size);
++                }
++                g_free(data);
++            } else {
++                /* NULL initial contents are unspecified; zero them for safe index
++                 * scans. */
++                gl->BufferData(a[0], size, data, a[3]);
++                r->buffer_bytes = r->buffer_bytes - b->size + size;
++                g_free(b->data);
++                b->data = data;
++                b->size = size;
++            }
++            break;
++        }
++        CASE(VertexAttribPointer) :
++        {
++            ARGS(6);
++            if (a[0] >= R_ATTRS || a[1] < 1 || a[1] > 4 || a[4] > 2048) {
++                render_error(c, GL_INVALID_VALUE);
++                break;
++            }
++            if (a[2] != GL_FLOAT && a[2] != GL_UNSIGNED_BYTE) {
++                render_error(c, GL_INVALID_ENUM);
++                break;
++            }
++            N00Attrib *v = &r->attrs[a[0]];
++            v->defined = true;
++            v->size = a[1];
++            v->type = a[2];
++            v->normalized = !!a[3];
++            v->stride = a[4];
++            v->pointer = a[5];
++            v->buffer = r->array;
++            /* Do not pass guest pointers to the host until draw-time copying. */
++            break;
++        }
++        CASE(EnableVertexAttribArray) : CASE(DisableVertexAttribArray) :
++        {
++            ARGS(1);
++            if (a[0] >= R_ATTRS) {
++                render_error(c, GL_INVALID_VALUE);
++                break;
++            }
++            bool enabled = c->call == N00_es20_glEnableVertexAttribArray;
++            r->attrs[a[0]].enabled = enabled;
++            if (enabled) {
++                gl->EnableVertexAttribArray(a[0]);
++            } else {
++                gl->DisableVertexAttribArray(a[0]);
++            }
++            break;
++        }
++        CASE(DrawArrays) : ARGS(3);
++        render_draw(c, gl, r, a, false);
++        break;
++        CASE(DrawElements) : ARGS(4);
++        render_draw(c, gl, r, a, true);
++        break;
++        CASE(ActiveTexture) : gl->ActiveTexture(arg(c, 0));
++        break;
++        CASE(BindTexture) : gl->BindTexture(arg(c, 0), arg(c, 1));
++        break;
++        CASE(TexParameteri) : gl->TexParameteri(arg(c, 0), arg(c, 1), arg(c, 2));
++        break;
++        CASE(TexImage2D) : ARGS(9);
++        render_texture(c, gl, a, false);
++        break;
++        CASE(TexSubImage2D) : ARGS(9);
++        render_texture(c, gl, a, true);
++        break;
++        CASE(PixelStorei) : ARGS(2);
++        if (a[0] != GL_PACK_ALIGNMENT && a[0] != GL_UNPACK_ALIGNMENT) {
++            render_error(c, GL_INVALID_ENUM);
++            break;
++        }
++        if (a[1] != 1 && a[1] != 2 && a[1] != 4 && a[1] != 8) {
++            render_error(c, GL_INVALID_VALUE);
++            break;
++        }
++        gl->PixelStorei(a[0], a[1]);
++        break;
++        CASE(GetIntegerv) :
++        {
++            ARGS(2);
++            GLint values[4] = {0};
++            unsigned n = 1;
++            switch (a[0]) {
++            case GL_VIEWPORT:
++            case GL_SCISSOR_BOX:
++                n = 4;
++                break;
++            case GL_PACK_ALIGNMENT:
++            case GL_UNPACK_ALIGNMENT:
++            case GL_ARRAY_BUFFER_BINDING:
++            case GL_ELEMENT_ARRAY_BUFFER_BINDING:
++            case GL_CURRENT_PROGRAM:
++            case GL_TEXTURE_BINDING_2D:
++            case GL_ACTIVE_TEXTURE:
++            case GL_MAX_TEXTURE_SIZE:
++            case GL_MAX_VERTEX_ATTRIBS:
++                break;
++            default:
++                render_error(c, GL_INVALID_ENUM);
++                return true;
++            }
++            gl->GetIntegerv(a[0], values);
++            if (a[0] == GL_MAX_VERTEX_ATTRIBS) {
++                values[0] = MIN(values[0], R_ATTRS);
++            }
++            for (unsigned i = 0; i < n; i++) {
++                values[i] = cpu_to_le32(values[i]);
++            }
++            guest_copy(c, a[1], values, n * 4, true);
++            break;
++        }
++    default:
++        return false;
++    }
++#undef CASE
++#undef ARGS
++    return true;
++}
+diff --git a/hw/arm/n00_gles_render_api.def b/hw/arm/n00_gles_render_api.def
+new file mode 100644
+index 0000000..bbcf046
+--- /dev/null
++++ b/hw/arm/n00_gles_render_api.def
+@@ -0,0 +1,38 @@
++/* GLES2-only host symbols; included with N00_GL defined by the caller. */
++N00_GL(ActiveTexture)
++N00_GL(GenTextures)
++N00_GL(BindTexture)
++N00_GL(TexImage2D)
++N00_GL(TexSubImage2D)
++N00_GL(TexParameteri)
++N00_GL(DeleteTextures)
++N00_GL(PixelStorei)
++N00_GL(GenBuffers)
++N00_GL(BindBuffer)
++N00_GL(BufferData)
++N00_GL(BufferSubData)
++N00_GL(DeleteBuffers)
++N00_GL(CreateShader)
++N00_GL(ShaderSource)
++N00_GL(CompileShader)
++N00_GL(GetShaderiv)
++N00_GL(GetShaderInfoLog)
++N00_GL(DeleteShader)
++N00_GL(CreateProgram)
++N00_GL(AttachShader)
++N00_GL(BindAttribLocation)
++N00_GL(LinkProgram)
++N00_GL(GetProgramiv)
++N00_GL(GetProgramInfoLog)
++N00_GL(UseProgram)
++N00_GL(GetAttribLocation)
++N00_GL(GetUniformLocation)
++N00_GL(Uniform1i)
++N00_GL(Uniform4fv)
++N00_GL(UniformMatrix4fv)
++N00_GL(DeleteProgram)
++N00_GL(EnableVertexAttribArray)
++N00_GL(DisableVertexAttribArray)
++N00_GL(VertexAttribPointer)
++N00_GL(DrawArrays)
++N00_GL(DrawElements)
