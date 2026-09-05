@@ -37,6 +37,8 @@ APP='./Harmattan QEMU.app/Contents/MacOS/harmattan'
 
 `import --replace` creates a new profile while retaining the previous one. `--configure` opens the file selection UI again. `run --no-frame` uses the plain framebuffer window. `HARMATTAN_DATA_HOME` selects a separate state directory for testing. The combined `run --diagnostic` is a bounded headless guest regression, not a mouse or visible-window test. Errors in helper hashes, kernel identity or guest component validators stop the run; there is no compile fallback.
 
+Apps rebuilt from the source with [boot presentation](boot-animation.md) show the original movie from the imported disk during startup checks. `run --no-boot-animation` exposes those startup frames for diagnosis. This source change does not update an already downloaded preview application.
+
 ## Preserved sources and rebuilding
 
 Each binary release must be accompanied by its corresponding source kit and license notices, not just a link to an upstream download. The kit contains this project's source/patches/scripts, pinned upstream QEMU and DGLES archives, the previously network-fetched DTC source, Python source, bundled library sources, installed Homebrew recipes and their GLib patch, and the patched QEMU/DGLES source trees. Source checksums are recorded in `docs/inputs.json` and `docs/release-sources.json`.

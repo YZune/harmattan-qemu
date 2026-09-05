@@ -133,13 +133,18 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 
 The launcher builds helper binaries as needed, creates a private APFS clone plus a qcow2 layer, and uses `-snapshot`. Guest writes are discarded at exit. Each run's files remain in a uniquely named ignored directory for inspection; they are not evidence of persistent Notes storage across launches. Close the source disk's writer before cloning it.
 
-Normal interaction enables WFI, input-driven activity, the original keyboard and animations, and display handoff. Splash stays disabled. Useful overrides:
+Normal interaction enables WFI, input-driven activity, the original keyboard and animations, and display handoff. Splash stays disabled.
+
+Fresh Cocoa interaction builds show the [original boot movie](boot-animation.md) over the startup checks by default. The prepared disk supplies the movie; the source and app contain no boot artwork. Diagnostics keep the real framebuffer visible. This presentation does not shorten the existing guest waits.
+
+Useful overrides:
 
 | Variable | Values / use |
 | --- | --- |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`; activity releases after 8 seconds without input |
 | `HARMATTAN_UI_SKIN` | `off` (source default) / `frame` (code-drawn, release default) / `black` (requires separately obtained artwork and rebuild) |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
+| `HARMATTAN_UI_BOOT_ANIMATION` | `on` (interactive default) / `off` (show startup directly); requires a fresh Cocoa interaction build |
 | `HARMATTAN_UI_HANDOFF` | `on` / `off` |
 | `HARMATTAN_UI_RUNTIME` | `responsive` (default) / `legacy` (diagnostic comparison) |
 

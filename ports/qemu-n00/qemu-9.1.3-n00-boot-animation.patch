@@ -1,0 +1,31 @@
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -55,6 +55,7 @@
+ #include "qemu/error-report.h"
+ #include <Carbon/Carbon.h>
+ #include "n00-n9-skin.h"
++#include "n00-boot-animation.h"
+ #include "hw/core/cpu.h"
+ 
+ #ifndef MAC_OS_VERSION_14_0
+@@ -1418,6 +1419,7 @@
+         } else {
+             [window setContentView:cocoaView];
+         }
++        n00_boot_animation_attach(cocoaView);
+         [window makeFirstResponder:cocoaView];
+         [window makeKeyAndOrderFront:self];
+         [window center];
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -1094,7 +1094,7 @@
+ endif
+ 
+ cocoa = dependency('appleframeworks',
+-                   modules: ['Cocoa', 'CoreVideo', 'QuartzCore'],
++                   modules: ['Cocoa', 'CoreVideo', 'QuartzCore', 'AVFoundation', 'CoreMedia'],
+                    required: get_option('cocoa'))
+ 
+ vmnet = dependency('appleframeworks', modules: 'vmnet', required: get_option('vmnet'))

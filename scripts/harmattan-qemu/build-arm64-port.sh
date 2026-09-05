@@ -82,6 +82,11 @@ fi
     skin_patch="$port_root/qemu-9.1.3-n00-n9-skin.patch"
     shutdown_patch="$port_root/qemu-9.1.3-n00-cocoa-shutdown.patch"
     frame_patch="$port_root/qemu-9.1.3-n00-n9-frame.patch"
+    boot_patch="$port_root/qemu-9.1.3-n00-boot-animation.patch"
+
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$boot_patch" >/dev/null 2>&1; then
+        git apply --reverse "$boot_patch"
+    fi
     # Unwind the newest recognized increment before checking earlier ones.
     if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$frame_patch" >/dev/null 2>&1; then
         git apply --reverse "$frame_patch"
@@ -251,6 +256,9 @@ fi
         git apply "$shutdown_patch"
         git apply --check "$frame_patch"
         git apply "$frame_patch"
+        git apply --check "$boot_patch"
+        git apply "$boot_patch"
+        cp "$port_root/n00-boot-animation.h" ui/n00-boot-animation.h
     fi
 )
 

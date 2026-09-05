@@ -29,6 +29,8 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 从两份固定 SDK/固件原始输入完整重建的结果见[客体准备验证记录](guest-preparation-validation.json)：原始文件摘要保持不变，只读文件系统检查通过，246 项宿主测试及已发布应用的 Home、Notes、键盘、计算器和切换动画联合无窗口回归通过。支持的准备路径见[资源获取与准备指南](guest-inputs.zh-CN.md)。
 
+源码现已支持以[原版开机画面](boot-animation.zh-CN.md)覆盖原有启动检查。[验证记录](boot-animation-validation.json)覆盖干净原生构建、257 项宿主测试及可见 Cocoa 启动、输入和退出。已经下载的预览应用需要重新构建才能包含此改动。
+
 ## 尚未完成
 
 - Linux/Windows 运行时移植、另一台 Mac 独立验证，以及 Developer ID 签名和公证。打包运行时及仍需提供的客体输入见[预编译预览版](releases.zh-CN.md)。

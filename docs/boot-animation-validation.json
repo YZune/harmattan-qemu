@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "fe00688",
+  "scope": "Local source change, clean native build and Cocoa startup; not a packaged release or startup speed benchmark.",
+  "host": {
+    "os": "macOS 26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "source_sha256": {
+    "ports/qemu-n00/n00-boot-animation.h": "b20a344c8c944fe29c0e757da1aaa71507803234fa40390e8ae4a8f0804a19d0",
+    "ports/qemu-n00/qemu-9.1.3-n00-boot-animation.patch": "7eee5ad6243aa8c5420776bb4bf3fe7df27a3ccb6b45169fc786c5e4a3ab47c2",
+    "scripts/harmattan-qemu/arm64-boot-animation.py": "a6338a45b27e1f4f8352b0963ef15555cd33c2dfb4eaffb753936487378fbd19",
+    "scripts/harmattan-qemu/build-arm64-port.sh": "96696a3cef0fea631a51b5957eae12ddd04f52a9af7cc289f9ae8c3aa8aaecdf",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "c8b83ae1082fa05926296b49b899ec650c308998e3f584a877f17cff44e0c6fa",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "2aee1cb195654de163fa1b17986f2d284df04686b589423dfbf9851a86b78c91",
+    "scripts/release/runtime.py": "cce32a2d2e32f77931f835247b23600bfd67369fd5fead64a119f5ed96e7645e"
+  },
+  "qemu_sha256": "26e931205a2a23fa0d73dae5eb4ce0707e429a278e12c9d22678554678c2ab9a",
+  "movie": {
+    "enabled": true,
+    "guest_resource": "/usr/share/MProgressIndicator/themes/opengl/MainAnimation_LowNoise.mp4",
+    "sha256": "19e311e44e102c84d75fe921f6af3af212173a86cbb549714ee1118b8d4ea40a",
+    "playback_sha256": "c2f025d9378f8bd7b3cccfe517fb0bad49d0faf235ed83779bd4693ce76d3c22",
+    "scope": "original MPEG-4 packets remuxed from AVI to silent MP4; guest framebuffer and startup checks unchanged",
+    "desktop_revealed": true
+  },
+  "checks": {
+    "fresh_pinned_qemu_build": "build-arm64-port.sh --cocoa-interaction",
+    "fresh_pinned_dgles_build": "build-dgles2-host.sh",
+    "native_dgles_smoke": "GLES1 and GLES2 passed twice each",
+    "host_suite": "257 tests passed",
+    "original_video_packets_identical": 100,
+    "decoded_frame_hashes_identical": 100,
+    "native_original_movie_playback": "passed after container-only conversion; no FFmpeg runtime dependency",
+    "native_synthetic_movie": "all four rotations, bounds change, hold at end and explicit reveal passed",
+    "interactive_source_launcher": "All six phases and reveal passed before the bounds-layout correction; the final build was then validated through the same controller using its app executable.",
+    "final_cocoa_application": "centered portrait movie and original Home visually checked",
+    "early_pointer_click": "one native click during boot did not open an application; Home startup checks passed",
+    "pointer_after_ready": "opened original Calculator and entered 2+3=5 with native mouse clicks",
+    "window_close": "confirmed native Quit; controller and QEMU exited 0",
+    "guest_graphics_exit": {
+      "faults": 0,
+      "rejects": 0,
+      "workers": "joined"
+    },
+    "startup_wall_seconds": 72.297
+  },
+  "not_tested": [
+    "new prebuilt release packaging/relocation",
+    "another Mac or macOS version",
+    "full guest service boot or guest audio",
+    "a new combined headless guest regression for this change",
+    "physical N9 hardware",
+    "held key/button races, all app flows, long-running sessions"
+  ],
+  "commands": [
+    "python3 scripts/check-environment.py --guest",
+    "sh scripts/harmattan-qemu/build-dgles2-host.sh",
+    "python3 -B scripts/harmattan-qemu/smoke-dgles-host.py --workspace <fresh-dgles-workspace>",
+    "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction",
+    "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'",
+    "sh scripts/harmattan-qemu/run-arm64-ui.sh",
+    "python3 -B scripts/harmattan-qemu/diagnose-arm64-shell.py --interactive --rotation 270 --clock host --input-method on --compositor-animations on --splash off --display-handoff on --boot-animation <private-raw-clone> --output <new-run> -- <same-build-app-qemu> <snapshot-arguments>",
+    "python3 scripts/check-public-tree.py",
+    "git diff --check"
+  ]
+}
