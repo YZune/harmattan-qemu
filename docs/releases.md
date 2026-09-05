@@ -10,7 +10,7 @@ Download application and corresponding source assets from [GitHub Releases](http
 - A **prepared PR1.3 raw disk**, with the Linux/ext root filesystem on partition 2, at most 32 GiB. This is the disk used by the existing native launcher.
 - `zImage-2.6.32.26-qemu`, SHA-256 `4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e`.
 
-The app does **not** convert retail firmware, a source DVD, a rootfs-only file or QCOW2 into that prepared disk. It does not include firmware, guest kernels, fonts, guest linking libraries, SDK installers or Livven artwork. The remaining original-media preparation gap is a priority for contributors. See the [input inventory](https://github.com/YZune/harmattan-qemu/blob/main/docs/inputs.json).
+The app does **not** itself convert retail firmware, a source DVD, a rootfs-only file or QCOW2 into that prepared disk. To obtain the two required files, follow [Get guest inputs](https://github.com/YZune/harmattan-qemu/blob/main/docs/guest-inputs.md): exact download links, checksums and a separate local preparation script for the supported original media. The app does not include firmware, guest kernels, fonts, guest linking libraries, SDK installers or Livven artwork. See the [input inventory](https://github.com/YZune/harmattan-qemu/blob/main/docs/inputs.json).
 
 ## Use the application
 

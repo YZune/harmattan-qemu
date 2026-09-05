@@ -1,0 +1,72 @@
+{
+  "date": "2026-09-05",
+  "host": {
+    "os": "macOS 26.6.2",
+    "architecture": "arm64",
+    "filesystem": "APFS"
+  },
+  "tools": {
+    "python": "3.12.2",
+    "sevenzip": "26.02",
+    "e2fsprogs": "1.47.4",
+    "lzo": "2.10",
+    "application_release": "v0.1.0-preview.1"
+  },
+  "preparation": {
+    "schema_version": 1,
+    "media": {
+      "sdk": "ce16cbd7c99e607f51789d857fe8573852a999053a79af1fa20d645457044e30",
+      "firmware": "9614f29594f77f50dbd34d0f921c69a4e3511fc1373dfb7467d1b0e073ea3d51"
+    },
+    "script_sha256": "5d1018bd1e235436d215cd135de94802eb4851911bd5503c73df7c07ee2a4027",
+    "recipe_files": {
+      "docs/guest-media.json": "40299508981aca315a9d9d3629a7d0e68a49d72b50a15df9d03d2aa2be5e7fe1",
+      "docs/inputs.json": "29a45e0622ed2906aaead4a55b0fb9c3b576df77d408684fd6289be6aea52c8b",
+      "scripts/harmattan-qemu/preinit-rescue.sh": "d0fff6bf865e5204e8b139b5dcb9519d87bb231bbd54ea89350f114e4b38ff68",
+      "scripts/harmattan-qemu/xorg-pr13-qemu.conf": "59faf00bfecb2d9d43d891bbb9f1c3c56dfc17223bd6ee9244806d1b9efdf4f0",
+      "scripts/harmattan-qemu/start-pr13-qemu-ui.sh": "e5182671e12719d459f25de5fa0643593be5aa08242eee8acc65aaa6e046b62f",
+      "scripts/harmattan-qemu/invoker-direct-qemu.sh": "d6be2be7f40d7870266bd0e35328fc6c8eb2a270488d9f3e160526d3fd6cc4c3",
+      "scripts/harmattan-qemu/apply-pr13-ui-overlay.sh": "3a729aa4ba1f97856330e09fe800d2cc5b3af4b1ae974cddccf3e5cd28b718bb"
+    },
+    "qemu_sha256": "b97560e8fa5b8baca81ec6eb82d0218313812d283c62bfd00772dcfdcada262d",
+    "outputs": {
+      "harmattan-pr1.3.raw": {
+        "bytes": 34359738368,
+        "sha256": "0a43e1a069a479b3c46fd10cf34b929cb3151d8f559ffdc8dc6ef1bcb10be505"
+      },
+      "zImage-2.6.32.26-qemu": {
+        "bytes": 2730104,
+        "sha256": "4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e"
+      },
+      "pr1.3-rootfs-qemu-rescue.ext4": {
+        "bytes": 4294967296,
+        "sha256": "21d3589618ab7c6e5745bd10715d1020586d3bc62bc1e20e64225287b8357a2a"
+      }
+    },
+    "scope": "Exact media extraction and in-guest adaptation complete; run the app diagnostic separately."
+  },
+  "checks": {
+    "exact_download_endpoints_http_200": true,
+    "full_original_media_hashes_unchanged_after_preparation": true,
+    "end_to_end_without_research_disk_or_manual_intervention": true,
+    "guest_sync_and_read_only_remount": true,
+    "read_only_e2fsck_all_five_passes": true,
+    "host_tests_passed": 246,
+    "isolated_app_import": true,
+    "app_diagnostic_qemu_exit": 0,
+    "app_diagnostic_wall_seconds": 192.207,
+    "original_home_phases_passed": true,
+    "notes_keyboard_passed": true,
+    "calculator_and_transitions_passed": true,
+    "graphics_clean": true,
+    "black_free_in_recorded_samples": true
+  },
+  "not_tested": [
+    "another Mac or a fresh Homebrew installation",
+    "GUI first-run picker or native mouse input on this newly prepared disk",
+    "other SDK/firmware versions or regions",
+    "cross-volume output",
+    "bit-for-bit identical derived filesystem metadata across runs"
+  ],
+  "scope": "One complete local original-media preparation and headless application regression; not a generic firmware converter or full N9 hardware validation."
+}

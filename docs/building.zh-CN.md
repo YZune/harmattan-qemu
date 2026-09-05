@@ -11,7 +11,7 @@
 1. **源码开发**：主机测试，以及使用公开源码输入构建 QEMU/DGLES。
 2. **系统运行**：额外提供历史内核、适配后的 PR1.3 客体主盘，以及链接辅助程序所需的只读客体文件系统。
 
-首次发布尚未自动化从量产固件容器重建完整客体主盘。源码 DVD 不是启动镜像。若没有准备好的客体输入，可以先参与主机测试、源码构建，并查看[客体准备路线图](roadmap.zh-CN.md)。
+对于指定的原始 SDK 安装包和 PR1.3 固件，[资源获取与准备指南](guest-inputs.zh-CN.md)提供准确下载位置及本地磁盘准备脚本。源码 DVD 不是启动镜像。没有客体输入时，也可以参与主机测试与源码构建。
 
 ## 1. 主机工具
 
@@ -98,6 +98,21 @@ python3 scripts/check-environment.py --guest
 第一条只预览。第二条拒绝覆盖已有目标、验证固定输入，并通过 APFS 克隆大磁盘文件。它不会把日志、账户、任意目录或固件导入 Git。主盘属于已准备的本地状态，没有通用的发行摘要；导入器只记录其大小，不宣称验证了盘内内容。请使用可信、停止写入且无个人数据的来源副本。
 
 手动放置时，可通过 `HARMATTAN_KERNEL`、`HARMATTAN_GUEST_IMAGE`、`HARMATTAN_PUBLIC_ROOTFS` 覆盖内核、主盘和链接用文件系统。适配层动态库仍使用上面的相对位置。
+
+若要将[资源获取与准备指南](guest-inputs.zh-CN.md)的产物用于源码构建，选择该输出目录，并仅复制三个必需的 SDK 链接库到已忽略的布局。`cp -n` 保留已有文件；构建器会拒绝摘要不匹配的库。
+
+```sh
+HARMATTAN_PREPARED="$PWD/extracted/guest-from-original-media"
+export HARMATTAN_KERNEL="$HARMATTAN_PREPARED/zImage-2.6.32.26-qemu"
+export HARMATTAN_GUEST_IMAGE="$HARMATTAN_PREPARED/harmattan-pr1.3.raw"
+export HARMATTAN_PUBLIC_ROOTFS="$HARMATTAN_PREPARED/pr1.3-rootfs-qemu-rescue.ext4"
+mkdir -p extracted/pr1.0-qemu-adaptation/usr/lib
+for library in libEGL.so.1.3.0 libGLES_CM.so.1.4.5 libGLESv2.so.1.4.9; do
+  cp -n "$HARMATTAN_PREPARED/overlay/usr/lib/$library" extracted/pr1.0-qemu-adaptation/usr/lib/
+done
+```
+
+构建与启动时保留这些环境变量。独立准备脚本已经在输出磁盘内应用了 UI overlay，不要再把它应用到原始镜像。
 
 ### 已准备主盘的内容
 

@@ -47,6 +47,8 @@ An initial task can be: “Read AGENTS.md, inspect this checkout, and run the ch
 
 For a precompiled application, use the [macOS preview guide](docs/releases.md) and [GitHub Releases](https://github.com/YZune/harmattan-qemu/releases). It bundles the runtime and a code-drawn device frame; you still supply a prepared guest disk and matching kernel.
 
+**Where do I get the disk and kernel?** Follow [Get guest inputs](docs/guest-inputs.md) for the two exact download links, checksums and a local preparation script. It extracts the old SDK without installing it and creates a new disk from the specified PR1.3 firmware.
+
 Full guest execution requires **user-supplied historical inputs**. Firmware, kernel binaries, system images, fonts, and device artwork are not distributed here. A fresh clone is not a ready-to-boot virtual machine.
 
 Follow the [English build guide](docs/building.md) or [中文构建说明](docs/building.zh-CN.md). They cover dependencies, exact input locations and hashes, the build sequence, disposable snapshots, and current reconstruction gaps. The default window works without a device skin.

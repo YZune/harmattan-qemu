@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-09-05",
+  "scope": "Exact original media used by prepare-guest.py; availability is not a redistribution license.",
+  "sdk": {
+    "filename": "Qt_SDK_Win_offline_v1_1_2_en.exe",
+    "page": "https://archive.org/details/nokia-qt-sdk-1.1.2",
+    "url": "https://archive.org/download/nokia-qt-sdk-1.1.2/Qt_SDK_Win_offline_v1_1_2_en.exe",
+    "bytes": 1907658896,
+    "sha256": "ce16cbd7c99e607f51789d857fe8573852a999053a79af1fa20d645457044e30",
+    "runtime_component": {
+      "offset": 605462251,
+      "bytes": 329015924,
+      "sha256": "00b72ee9b9a8be12a948b1c2fd3bcf2bf3ef01b6b04ca6bf77d2a208e06e24c9"
+    }
+  },
+  "firmware": {
+    "filename": "DFL61_HARMATTAN_40.2012.21-3_PR_LEGACY_001-OEM1-958_ARM.bin",
+    "page": "https://archive.org/details/RM696",
+    "url": "https://archive.org/download/RM696/DFL61_HARMATTAN_40.2012.21-3_PR_LEGACY_001-OEM1-958_ARM.bin",
+    "bytes": 1248135798,
+    "sha256": "9614f29594f77f50dbd34d0f921c69a4e3511fc1373dfb7467d1b0e073ea3d51",
+    "rootfs_payload": {
+      "offset": 2813388,
+      "bytes": 1198369408,
+      "sha256": "2f23138831687e7f9cc9fa89963f3fbc6012c0031d9de70b96e39e6d6939ea2f"
+    }
+  },
+  "runtime": {
+    "member": "Madde/cache/DFL61_1.2011.22-5.S.tar.gz",
+    "bytes": 332959682,
+    "sha256": "271e3efcc72ba3f1d18d76afbb86b32ede03a3cd3f4b17dbee2ac0590b9f52eb"
+  },
+  "main_disk": {
+    "member": "arm-qemu-rm680-image.qcow2",
+    "bytes": 972488704,
+    "sha256": "97436bfa9963ae659aece32caf5e5dc8552095b148c2100e14976327bb4f8537"
+  },
+  "nand": {
+    "member": "arm-qemu-rm680-nand.qcow2",
+    "bytes": 6225920,
+    "sha256": "ec31ed03fdfb58f0e53428f277ade9ba3b0bf7fd72e35180f6733d1c3919842f"
+  },
+  "kernel": {
+    "offset_in_raw_nand": 526336,
+    "bytes": 2730104,
+    "sha256": "4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e"
+  },
+  "retail_rootfs": {
+    "bytes": 4294967296,
+    "sha256": "0376b8fc4a27b85007984842883be2f502a6fd72a6eaa70827dc05bc779e7805"
+  }
+}

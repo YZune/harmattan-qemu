@@ -42,6 +42,8 @@ Harmattan 源码 DVD 是源码包集合，本身不提供完整固件构建或�
 
 ## 外部客体输入身份
 
+SDK/固件的准确下载链接、完整文件 SHA-256 和本地提取命令见[资源获取与准备指南](guest-inputs.zh-CN.md)及 [guest-media.json](guest-media.json)。准备脚本接受用户自行提供的原始文件，创建新的私有磁盘，不下载或发布客体软件。
+
 历史运行时来自 Nokia Qt SDK 1.1.2 离线安装包，现由 [Internet Archive 条目](https://archive.org/details/nokia-qt-sdk-1.1.2)保存。其身份为 `DFL61_1.2011.22-5.S`，属于早期 PR1.0 时期，并非 PR1.2。原始研究记录了：
 
 | 材料 | SHA-1 标识 |
