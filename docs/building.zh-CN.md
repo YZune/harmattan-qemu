@@ -135,6 +135,8 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 
 正常交互开启 WFI、输入驱动活动声明、原版键盘与动画及显示交接；splash 保持关闭。
 
+正常交互和联合 usability 使用[真实就绪检测](performance.zh-CN.md)替代固定等待。`--startup-headless-diagnostic` 检查相同的启动路径，通过后退出，不打开窗口。
+
 重新构建的 Cocoa interaction 默认以[原版开机视频](boot-animation.zh-CN.md)覆盖启动检查过程。素材来自已准备的系统磁盘，源码与应用不包含开机图片或视频。诊断模式继续显示真实 framebuffer。这项显示改动不会缩短现有客体等待。
 
 常用变量：
@@ -143,6 +145,8 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 | --- | --- |
 | `HARMATTAN_USER_PROFILE` | 私有持久档案目录；默认不设置；仅用于交互会话 |
 | `HARMATTAN_UI_NETWORK` | `off`（默认）/ `user`；[SDK 以太网、DHCP 与用户态联网](networking.zh-CN.md) |
+| `HARMATTAN_UI_AUDIO` | `off`（默认）/ `pulse`；使用 SDK 网络的[私有 CoreAudio 输出](audio.zh-CN.md) |
+| `HARMATTAN_UI_STARTUP_WAITS` | `ready`（交互/usability/启动诊断默认）/ `fixed`（历史诊断默认） |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |
 | `HARMATTAN_UI_SKIN` | `off`（源码默认）/ `frame`（代码绘制，发行版默认）/ `black`（需自行取得素材并重新构建） |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |

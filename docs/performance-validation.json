@@ -1,0 +1,435 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "86259ef",
+  "scope": "Headless native QEMU startup with the interactive gates; no Cocoa frame rate or physical input latency claim.",
+  "host": {
+    "model": "Apple M5 Max",
+    "architecture": "arm64",
+    "os": "26.6.2",
+    "python": "3.12.2"
+  },
+  "configuration": {
+    "machine": "n00-port-spike",
+    "guest_cpu": "Cortex-A8",
+    "vcpus": 1,
+    "guest_ram_mib": 512,
+    "accelerator": "TCG",
+    "idle": "wfi",
+    "display": "none",
+    "rotation": 270,
+    "clock": "host",
+    "keyboard": "on",
+    "animations": "on",
+    "handoff": "on",
+    "network": "off",
+    "audio": "off",
+    "boot_movie": false,
+    "disk": "independent snapshots of the same prepared baseline"
+  },
+  "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+  "source_sha256": {
+    "scripts/harmattan-qemu/arm64-readiness.py": "8dde8a4a61b90d24eea500466a78e9c28dcc9efb2396c26cfe21ba76a9200992",
+    "scripts/harmattan-qemu/wait-shell-ready-guest.pl": "38af6b2a6efb8a2ab9356ea5ece9bfa8c5222fe9fea7cd110c7a524eceec435c",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "0487a635a8316c12dced49bbda736aa6951c7e8c9a855806c35d3e11295aecdb",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "50a91236211db42f4f82d49ed9dcb1d6118b9ddedc6d28dcdc3a43a1c5d1763b",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "8a4cda1461543e48261f9287ac94deb5d6dc88d8b8d7b4dbfe47c53437557e57"
+  },
+  "startup_comparison": {
+    "fixed": {
+      "seconds": [
+        68.839,
+        69.391,
+        68.662
+      ],
+      "median_seconds": 68.839,
+      "range_seconds": [
+        68.662,
+        69.391
+      ]
+    },
+    "ready": {
+      "seconds": [
+        51.464,
+        51.441,
+        51.677
+      ],
+      "median_seconds": 51.464,
+      "range_seconds": [
+        51.441,
+        51.677
+      ]
+    },
+    "median_reduction_seconds": 17.375,
+    "median_reduction_percent": 25.24,
+    "order": [
+      "fixed",
+      "ready",
+      "fixed",
+      "ready",
+      "fixed",
+      "ready"
+    ],
+    "timer_scope": "QEMU process start through verified Home and input release; excludes build/disk preparation, includes observations; host filesystem caches were not flushed",
+    "samples": [
+      {
+        "mode": "fixed",
+        "seconds": 68.839,
+        "phases": {
+          "bootstrap": {
+            "exit": 0,
+            "wall_seconds": 3.649
+          },
+          "theme": {
+            "exit": 0,
+            "wall_seconds": 3.125
+          },
+          "compositor": {
+            "exit": 0,
+            "wall_seconds": 8.541
+          },
+          "home": {
+            "exit": 0,
+            "wall_seconds": 25.314
+          },
+          "settled": {
+            "exit": 0,
+            "wall_seconds": 5.315
+          },
+          "final": {
+            "exit": 0,
+            "wall_seconds": 0.174
+          }
+        },
+        "home_settle": null,
+        "memory_kib": {
+          "MemTotal": 492468,
+          "MemFree": 216640,
+          "Buffers": 17284,
+          "Cached": 156140,
+          "SwapTotal": 0,
+          "SwapFree": 0
+        }
+      },
+      {
+        "mode": "ready",
+        "seconds": 51.464,
+        "phases": {
+          "bootstrap": {
+            "exit": 0,
+            "wall_seconds": 3.616
+          },
+          "theme": {
+            "exit": 0,
+            "wall_seconds": 3.133
+          },
+          "compositor": {
+            "exit": 0,
+            "wall_seconds": 1.861
+          },
+          "home": {
+            "exit": 0,
+            "wall_seconds": 10.765
+          },
+          "settled": {
+            "exit": 0,
+            "wall_seconds": 5.311
+          },
+          "final": {
+            "exit": 0,
+            "wall_seconds": 0.163
+          }
+        },
+        "home_settle": {
+          "samples": 24,
+          "seconds": 9.23,
+          "quiet_seconds": 5,
+          "scope": "stable nonempty Home including original scrollbar fade; not display FPS"
+        },
+        "memory_kib": {
+          "MemTotal": 492468,
+          "MemFree": 215864,
+          "Buffers": 17284,
+          "Cached": 156128,
+          "SwapTotal": 0,
+          "SwapFree": 0
+        }
+      },
+      {
+        "mode": "fixed",
+        "seconds": 69.391,
+        "phases": {
+          "bootstrap": {
+            "exit": 0,
+            "wall_seconds": 3.634
+          },
+          "theme": {
+            "exit": 0,
+            "wall_seconds": 3.13
+          },
+          "compositor": {
+            "exit": 0,
+            "wall_seconds": 8.495
+          },
+          "home": {
+            "exit": 0,
+            "wall_seconds": 25.32
+          },
+          "settled": {
+            "exit": 0,
+            "wall_seconds": 5.302
+          },
+          "final": {
+            "exit": 0,
+            "wall_seconds": 0.243
+          }
+        },
+        "home_settle": null,
+        "memory_kib": {
+          "MemTotal": 492468,
+          "MemFree": 216508,
+          "Buffers": 17276,
+          "Cached": 156108,
+          "SwapTotal": 0,
+          "SwapFree": 0
+        }
+      },
+      {
+        "mode": "ready",
+        "seconds": 51.441,
+        "phases": {
+          "bootstrap": {
+            "exit": 0,
+            "wall_seconds": 3.63
+          },
+          "theme": {
+            "exit": 0,
+            "wall_seconds": 3.122
+          },
+          "compositor": {
+            "exit": 0,
+            "wall_seconds": 1.805
+          },
+          "home": {
+            "exit": 0,
+            "wall_seconds": 10.726
+          },
+          "settled": {
+            "exit": 0,
+            "wall_seconds": 5.291
+          },
+          "final": {
+            "exit": 0,
+            "wall_seconds": 0.158
+          }
+        },
+        "home_settle": {
+          "samples": 24,
+          "seconds": 9.233,
+          "quiet_seconds": 5,
+          "scope": "stable nonempty Home including original scrollbar fade; not display FPS"
+        },
+        "memory_kib": {
+          "MemTotal": 492468,
+          "MemFree": 215368,
+          "Buffers": 17284,
+          "Cached": 156264,
+          "SwapTotal": 0,
+          "SwapFree": 0
+        }
+      },
+      {
+        "mode": "fixed",
+        "seconds": 68.662,
+        "phases": {
+          "bootstrap": {
+            "exit": 0,
+            "wall_seconds": 3.63
+          },
+          "theme": {
+            "exit": 0,
+            "wall_seconds": 3.127
+          },
+          "compositor": {
+            "exit": 0,
+            "wall_seconds": 8.406
+          },
+          "home": {
+            "exit": 0,
+            "wall_seconds": 25.314
+          },
+          "settled": {
+            "exit": 0,
+            "wall_seconds": 5.297
+          },
+          "final": {
+            "exit": 0,
+            "wall_seconds": 0.163
+          }
+        },
+        "home_settle": null,
+        "memory_kib": {
+          "MemTotal": 492468,
+          "MemFree": 216608,
+          "Buffers": 17276,
+          "Cached": 156108,
+          "SwapTotal": 0,
+          "SwapFree": 0
+        }
+      },
+      {
+        "mode": "ready",
+        "seconds": 51.677,
+        "phases": {
+          "bootstrap": {
+            "exit": 0,
+            "wall_seconds": 3.618
+          },
+          "theme": {
+            "exit": 0,
+            "wall_seconds": 3.119
+          },
+          "compositor": {
+            "exit": 0,
+            "wall_seconds": 1.823
+          },
+          "home": {
+            "exit": 0,
+            "wall_seconds": 10.688
+          },
+          "settled": {
+            "exit": 0,
+            "wall_seconds": 5.318
+          },
+          "final": {
+            "exit": 0,
+            "wall_seconds": 0.163
+          }
+        },
+        "home_settle": {
+          "samples": 24,
+          "seconds": 9.217,
+          "quiet_seconds": 5,
+          "scope": "stable nonempty Home including original scrollbar fade; not display FPS"
+        },
+        "memory_kib": {
+          "MemTotal": 492468,
+          "MemFree": 215748,
+          "Buffers": 17292,
+          "Cached": 156220,
+          "SwapTotal": 0,
+          "SwapFree": 0
+        }
+      }
+    ]
+  },
+  "checks": {
+    "host_suite": "285 tests passed",
+    "bounded_startup": {
+      "passed": true,
+      "startup_waits": "ready",
+      "startup_wall_seconds": 52.16,
+      "host": {
+        "clean": true,
+        "warnings": [],
+        "gpu_contexts": 3,
+        "known_guest_api_defects": [
+          "client 3: original eglTerminate repeats with NULL, correctly rejected"
+        ],
+        "compiles": 9,
+        "links": 6,
+        "uploads": 149,
+        "draws": 8,
+        "calls": 1653,
+        "swaps": 9,
+        "rejects": 0,
+        "faults": 0,
+        "workers_joined": true
+      },
+      "qemu_exit": 0,
+      "scope": "bounded interactive startup gates and clean exit; no physical input or display latency"
+    },
+    "early_input": {
+      "passed": true,
+      "discarded_button_events": 4,
+      "home_content_equal": true,
+      "calculator": true
+    },
+    "audio_enabled_ui": {
+      "passed": true,
+      "original_notes_and_maliit": true,
+      "calculator": true,
+      "transitions": true,
+      "host": {
+        "clean": true,
+        "warnings": [],
+        "gpu_contexts": 3,
+        "known_guest_api_defects": [
+          "client 3: original eglTerminate repeats with NULL, correctly rejected"
+        ],
+        "compiles": 9,
+        "links": 6,
+        "uploads": 263,
+        "draws": 670,
+        "calls": 18605,
+        "swaps": 191,
+        "rejects": 0,
+        "faults": 0,
+        "workers_joined": true
+      }
+    }
+  },
+  "response_observation": {
+    "scope": "QMP press to first changed guest RAM text region; includes 120 ms press and sampling overhead; not display latency or FPS",
+    "notes_launch_seconds": 2.493,
+    "key_median_seconds": 0.22,
+    "samples": [
+      {
+        "key": "Q",
+        "seconds": 0.338,
+        "text_region_changed_pixels": 967
+      },
+      {
+        "key": "e",
+        "seconds": 0.222,
+        "text_region_changed_pixels": 240
+      },
+      {
+        "key": "m",
+        "seconds": 0.209,
+        "text_region_changed_pixels": 283
+      },
+      {
+        "key": "u",
+        "seconds": 0.226,
+        "text_region_changed_pixels": 220
+      },
+      {
+        "key": "x",
+        "seconds": 0.204,
+        "text_region_changed_pixels": 218
+      },
+      {
+        "key": "Backspace",
+        "seconds": 0.218,
+        "text_region_changed_pixels": 218
+      }
+    ],
+    "home_idle_cpu_one_core_percent": 0.498,
+    "home_host_rss_mib_range": [
+      729.640625,
+      729.6875
+    ],
+    "comparison": "single regression observation; not a before/after input speed improvement"
+  },
+  "races_corrected": [
+    "Mapped Home can precede the original scrollbar fade; require five seconds of stable full content.",
+    "Compositor ownership precedes its real root resize event; observe original initialization before reporting.",
+    "Mapped Home can still be in disk sleep; collect the strict process checkpoint after pixel stability."
+  ],
+  "not_tested": [
+    "Native Cocoa startup timing or physical input latency",
+    "Additional RAM/vCPUs, alternate CPU frequencies or higher display FPS",
+    "A different Mac, cold host caches, memory pressure or long sessions",
+    "Updated prebuilt packaging and relocation"
+  ]
+}

@@ -37,6 +37,8 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 源码新增可选[声音输出](audio.zh-CN.md)，经独立 PulseAudio 服务连接 Mac CoreAudio。[声音记录](audio-validation.json)覆盖 281 项宿主测试、客体原版 libpulse PCM、GStreamer WAV、静音和启用声音的联合 UI 回归。此路径不代表完整 Nokia 音频硬件及策略仿真。
 
+正常源码启动现已通过[真实就绪检测](performance.zh-CN.md)替代合成器和 Home 的固定延时。[性能记录](performance-validation.json)覆盖 285 项宿主测试、成对启动计时、早期输入保护和开启声音的 Home/Notes/键盘/Calculator/转场回归。单核 Cortex-A8/512 MiB 板级模型与原版动画时长保持不变；本次不代表屏幕 FPS 提升。
+
 ## 尚未完成
 
 原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。

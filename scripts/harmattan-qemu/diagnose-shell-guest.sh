@@ -13,6 +13,7 @@ if [ -n "${N00_UI_AUDIO_SERVER:-}" ]; then
     user_env="$user_env PULSE_SERVER=$N00_UI_AUDIO_SERVER PULSE_COOKIE=/tmp/n00-audio.cookie"
 fi
 compositor_env=
+case ${N00_UI_READY_WAITS:-0} in 0|1) ;; *) echo 'Invalid startup wait mode' >&2; exit 2 ;; esac
 case ${N00_UI_CLOCK_SYNC:-0} in
     0) ;;
     1)
@@ -88,6 +89,17 @@ report_animations() {
         if grep -q '/tmp/n00-compositor-matrices.so$' "/proc/$id/maps"; then return 1; fi
     done
     printf 'N00_ANIMATIONS_PROCESS_SCOPE_OK\nN00_ANIMATIONS_END\n'
+}
+
+report_home() {
+    tail -200 /tmp/n00-shell-home.log
+    report_processes
+    pidof meegotouchhome
+    if [ "${N00_UI_SYSTEMUI:-0}" = 1 ]; then report_systemui; fi
+    if [ "${N00_UI_ANIMATIONS:-0}" = 1 ]; then report_animations; fi
+    perl /tmp/n00-shell-x11.pl
+    if [ "${N00_UI_SPLASH:-0}" = 1 ]; then report_splash; fi
+    check_startup_input home
 }
 
 report_splash() {
@@ -286,7 +298,11 @@ case ${1:-} in
             chmod 0644 /tmp/n00-compositor-matrices.so
         fi
         su user -c "$user_env $compositor_env mcompositor -nohung >/tmp/n00-shell-compositor.log 2>&1 &"
-        sleep 8
+        if [ "${N00_UI_READY_WAITS:-0}" = 1 ]; then
+            perl /tmp/n00-ui-helpers/wait-shell-ready-guest.pl compositor
+        else
+            sleep 8
+        fi
         tail -160 /tmp/n00-shell-compositor.log
         report_processes
         pidof mcompositor
@@ -308,20 +324,23 @@ case ${1:-} in
     keyboard-cpu)
         perl -e 'for $f ("/proc/stat", "/proc/uptime", glob("/proc/[0-9]*/stat")) { if (open(my $h, "<", $f)) { print "$f ", scalar(<$h>); close $h; } }'
         ;;
-    home)
+    home|home-start)
         # Same no-weather/raster choices as the established hybrid UI path.
         weather=/usr/share/meegotouch/applicationextensions/events-weather.desktop
         if [ -f "$weather" ]; then mv "$weather" /tmp/n00-shell-weather.desktop; fi
         su user -c "$user_env meegotouchhome -local-theme -graphicssystem raster >/tmp/n00-shell-home.log 2>&1 &"
-        sleep 25
-        tail -200 /tmp/n00-shell-home.log
-        report_processes
-        pidof meegotouchhome
-        if [ "${N00_UI_SYSTEMUI:-0}" = 1 ]; then report_systemui; fi
-        if [ "${N00_UI_ANIMATIONS:-0}" = 1 ]; then report_animations; fi
-        perl /tmp/n00-shell-x11.pl
-        if [ "${N00_UI_SPLASH:-0}" = 1 ]; then report_splash; fi
-        check_startup_input home
+        if [ "${N00_UI_READY_WAITS:-0}" = 1 ]; then
+            perl /tmp/n00-ui-helpers/wait-shell-ready-guest.pl home
+        else
+            sleep 25
+        fi
+        if [ "$1" = home ]; then report_home; fi
+        ;;
+    home-report)
+        # The host has observed stable real pixels before requesting this
+        # checkpoint. A mapped window alone can still be loading from disk.
+        test "${N00_UI_READY_WAITS:-0}" = 1
+        report_home
         ;;
     settled)
         sleep 5
@@ -335,6 +354,9 @@ case ${1:-} in
         check_startup_input settled
         ;;
     final)
+        printf '\nN00_GUEST_MEMORY_BEGIN\n'
+        cat /proc/meminfo
+        printf 'N00_GUEST_MEMORY_END\n'
         if [ "${N00_UI_SYSTEMUI:-0}" = 1 ]; then
             printf '\nN00_SHELL_LOG /tmp/n00-shell-sysuid.log\n'
             tail -160 /tmp/n00-shell-sysuid.log
@@ -410,8 +432,9 @@ case ${1:-} in
 esac
 
 case ${1:-} in
+    home-report) report_clock home ;;
     bootstrap|theme|compositor|home|settled|final) report_clock "$1" ;;
 esac
 if [ "${N00_UI_KEYBOARD:-0}" = 1 ]; then
-    case ${1:-} in home|settled|final) report_input_method ;; esac
+    case ${1:-} in home|home-report|settled|final) report_input_method ;; esac
 fi

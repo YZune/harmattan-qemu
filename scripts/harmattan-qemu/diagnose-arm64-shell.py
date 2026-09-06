@@ -63,6 +63,9 @@ STORAGE_SPEC.loader.exec_module(storage)
 AUDIO_SPEC = importlib.util.spec_from_file_location('audio', Path(__file__).with_name('arm64-audio.py'))
 audio = importlib.util.module_from_spec(AUDIO_SPEC)
 AUDIO_SPEC.loader.exec_module(audio)
+READINESS_SPEC = importlib.util.spec_from_file_location('readiness', Path(__file__).with_name('arm64-readiness.py'))
+readiness = importlib.util.module_from_spec(READINESS_SPEC)
+READINESS_SPEC.loader.exec_module(readiness)
 PHASES = ("bootstrap", "theme", "compositor", "home", "settled", "final")
 LIBRARIES = {
     "/usr/bin/mcompositor": "52d29f7f90d03277ded463ebc3c5f33d",
@@ -222,6 +225,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--network", choices=("off", "user"), default="off")
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
+    parser.add_argument('--startup-waits', choices=('fixed', 'ready'), default='fixed')
     parser.add_argument('--profile', type=Path, help='private persistent disk directory; interactive mode only')
     parser.add_argument('--profile-base', type=Path, help='launcher-created private raw clone')
     parser.add_argument('--profile-image-tool', type=Path, help='matching qemu-img executable')
@@ -232,6 +236,7 @@ def main():
     parser.add_argument("--verify-input", action="store_true", help="require real Xorg MXT input, changed Home pixels and exact drag restoration")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--interactive", action="store_true", help="validate startup, then keep the native window running until closed")
+    parser.add_argument('--exit-on-ready', action='store_true', help='bounded startup diagnostic using the interactive readiness gates')
     parser.add_argument('--boot-animation', type=Path, help='private raw clone containing the original boot movie; interactive Cocoa only')
     parser.add_argument("--device-orientation", choices=('display', 'disabled', 'top', 'left', 'bottom', 'right'),
                         help="virtual ContextKit pose; default follows display in interactive mode, disabled in historical diagnostics")
@@ -249,6 +254,8 @@ def main():
     parser.add_argument("--measure-performance", action="store_true", help="bounded CPU and guest framebuffer observations using the Calculator workflow; not FPS")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.exit_on_ready and (not args.interactive or args.profile or args.boot_animation):
+        parser.error('bounded startup requires interactive readiness with an independent snapshot and no boot movie')
     if args.profile and (not args.interactive or not args.profile_base or not args.profile_image_tool):
         parser.error('profiles require interactive mode and the launcher\'s private base/image tool')
     if not args.profile and (args.profile_base or args.profile_image_tool):
@@ -343,6 +350,9 @@ def main():
         guard_payloads, metadata = startup.prepare()
         helper_payloads.update(guard_payloads)
         guard_info.update(metadata)
+    if args.startup_waits == 'ready':
+        for name in ('N00X11.pm', 'wait-shell-ready-guest.pl'):
+            helper_payloads[name] = Path(__file__).with_name(name).read_bytes()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
     boot_info = {'enabled': False}
@@ -479,6 +489,8 @@ def main():
                 serial.sendall(b'export N00_UI_SPLASH=1\n')
             if guard_on:
                 serial.sendall(b'export N00_UI_STARTUP_GUARD=1\n')
+            if args.startup_waits == 'ready':
+                serial.sendall(b'export N00_UI_READY_WAITS=1\n')
             if systemui_on:
                 serial.sendall(b'export N00_UI_SYSTEMUI=1\n')
             if keyboard_on:
@@ -496,7 +508,20 @@ def main():
                 phase_started = time.monotonic()
                 if phase == 'home' and args.boot_animation:
                     boot_animation.signal(out / 'boot', 'play')
-                serial.sendall(f"printf '\\nN00_SHELL_BEGIN_{phase}\\n'; sh /tmp/n00-shell-guest.sh {phase}; printf '\\nN00_SHELL_PHASE_{phase}_%s\\n' $?\n".encode())
+                phase_command = phase
+                if phase == 'home' and args.startup_waits == 'ready':
+                    serial.sendall(b"sh /tmp/n00-shell-guest.sh home-start; printf '\\nN00_HOME_START_EXIT_%s\\n' $?; printf 'N00_HOME_START_DONE\\n'\n")
+                    wait_line(b'N00_HOME_START_DONE')
+                    if re.findall(rb'^N00_HOME_START_EXIT_(\d+)$', (out / 'serial.log').read_bytes().replace(b'\r', b''), re.M) != [b'0']:
+                        raise ValueError('original Home did not finish window initialization')
+                    def observe_home():
+                        capture('home-readiness')
+                        return raw_frame('home-readiness')
+                    timings['home_settle'] = readiness.settle(observe_home,
+                        lambda a, b: guest_clock.compare_home_frames(a, b, systemui_on and clock_on)['content_equal'],
+                        desktop_frame, drain)
+                    phase_command = 'home-report'
+                serial.sendall(f"printf '\\nN00_SHELL_BEGIN_{phase}\\n'; sh /tmp/n00-shell-guest.sh {phase_command}; printf '\\nN00_SHELL_PHASE_{phase}_%s\\n' $?\n".encode())
                 pattern = rb"(?:^|\n)N00_SHELL_PHASE_" + phase.encode() + rb"_(\d+)\n"
                 if args.measure_performance and phase == 'home':
                     probe = performance.FrameProbe(qmp, out / 'startup-probe', drain)
@@ -637,7 +662,7 @@ def main():
                     boot_animation.reveal(out / 'boot', drain)
                     boot_info['desktop_revealed'] = True
                 guard_info['released'] = startup.validate(startup.collect(serial, wait_line, out, release=True), released=True)
-                ready = {'state': 'ready', 'scope': 'verified original Home startup with real input; manual use is not app/performance acceptance',
+                ready = {'state': 'ready', 'scope': 'verified original Home startup with real guest input; no app or physical-input acceptance',
                     'command': command, 'qemu_pid': process.pid, 'controller_pid': os.getpid(),
                     'control_socket': control_path, 'rotation': args.rotation,
                     'surface_size': [480, 864] if args.rotation in (90, 270) else [864, 480],
@@ -657,8 +682,9 @@ def main():
                     'guest': guest_result, 'native_frame': settled,
                     'host_startup': host_startup,
                     'startup_wall_seconds': round(time.monotonic() - started, 3)}
+                ready.update(startup_waits=args.startup_waits, startup_observations=timings, phases=phases)
                 (out / 'ready.json').write_text(json.dumps(ready, indent=2) + '\n')
-                print(f'READY: original Home in the native window; input enabled. Evidence: {out}', flush=True)
+                print(f'READY: original Home; input enabled. Evidence: {out}', flush=True)
                 print('Left-button drag to scroll; close QEMU or Ctrl-C to stop. ' +
                       ('Saved files persist in the private profile.' if profile_session else 'Snapshot writes are discarded.'), flush=True)
                 # Keep serial/QMP pipes drained while Cocoa owns user interaction.
@@ -676,6 +702,8 @@ def main():
                     qmp.call('quit')
                     process.wait(timeout=10)
                 try:
+                    if args.exit_on_ready:
+                        quit_guest()
                     while process.poll() is None:
                         if audio_output:
                             audio_output.check()
@@ -701,6 +729,15 @@ def main():
                     'scope': 'interactive lifecycle only; inspect logs for application/GLES failures'}, indent=2) + '\n')
                 if process.returncode != 0:
                     raise RuntimeError(f'interactive QEMU exited with {process.returncode}')
+                if args.exit_on_ready:
+                    final_host = host_validator((out / 'qemu-stderr.log').read_bytes())
+                    (out / 'startup-result.json').write_text(json.dumps({
+                        'passed': True, 'startup_waits': args.startup_waits,
+                        'startup_wall_seconds': ready['startup_wall_seconds'],
+                        'host': final_host, 'qemu_exit': process.returncode,
+                        'scope': 'bounded interactive startup gates and clean exit; no physical input or display latency'},
+                        indent=2) + '\n')
+                    print(f'PASS: bounded original Home startup; evidence: {out}', flush=True)
                 return
             # quit joins bridge workers; process presence above is not UI acceptance.
             qmp.call("quit")
@@ -733,6 +770,8 @@ def main():
                 "compositor_animations": animation_info,
                 "splash": splash_info,
                 "startup_input": guard_info,
+                "startup_waits": args.startup_waits,
+                "startup_observations": timings,
                 "idle_profile": os.environ.get('HARMATTAN_UI_IDLE_PROFILE', 'unspecified'),
                 "total_wall_seconds": round(time.monotonic() - started, 3)}
             (out / "diagnostic.json").write_text(json.dumps(result, indent=2) + "\n")
