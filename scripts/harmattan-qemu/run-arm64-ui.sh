@@ -23,6 +23,8 @@ fi
 network=${HARMATTAN_UI_NETWORK:-off}
 audio=${HARMATTAN_UI_AUDIO:-off}
 ca_certificates=${HARMATTAN_UI_CA_CERTIFICATES:-off}
+browser_mode=${HARMATTAN_UI_BROWSER_MODE:-original}
+case "$browser_mode" in original|basic) ;; *) echo 'HARMATTAN_UI_BROWSER_MODE must be original or basic.' >&2; exit 2 ;; esac
 case "$ca_certificates" in host|off) ;; *) echo 'HARMATTAN_UI_CA_CERTIFICATES must be host or off.' >&2; exit 2 ;; esac
 if [ "$mode" = --audio-diagnostic ]; then audio=pulse; fi
 case "$audio:$mode" in
@@ -32,6 +34,9 @@ case "$audio:$mode" in
 esac
 case "$mode" in --network-diagnostic|--install-packages) network=user ;; esac
 case "$network" in user|off) ;; *) echo 'HARMATTAN_UI_NETWORK must be user or off.' >&2; exit 2 ;; esac
+if [ "$browser_mode" = basic ] && [ "$network" != user ]; then
+    echo 'Basic browser mode requires HARMATTAN_UI_NETWORK=user or audio pulse.' >&2; exit 2
+fi
 case "$mode" in
     --startup-headless-diagnostic) ;;
     --audio-diagnostic) ;;
@@ -360,4 +365,4 @@ if [ -n "$user_profile" ]; then
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
-    --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
+    --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --browser-mode "$browser_mode" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"

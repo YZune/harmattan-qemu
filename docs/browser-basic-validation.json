@@ -1,0 +1,261 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "a3b8127",
+  "scope": "Explicit basic web mode in the pinned original browser, plus a separate generated Finder shortcut; original remains the default.",
+  "host": {
+    "system": "macOS 26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2"
+  },
+  "source_sha256": {
+    "scripts/create-local-launcher.py": "de269456ad316676b2aa3048ef55dbbf0488942ea5bd1d8add098c0b84f00cd3",
+    "scripts/harmattan-qemu/arm64-browser.py": "3edb1b4db590b6fd83b52136c639faad438c1a59024e1db49d9973f795f35b5c",
+    "scripts/harmattan-qemu/browser-guest.c": "1b73cea5bdbe1317f6c1eb62b7c8cf05021c95b099266bc8451c14f851035c16",
+    "scripts/harmattan-qemu/browser-launch-guest.sh": "96d47358879c269f8d8a978839c660f2a59c0a1557be33931cd1559cbf54bdff",
+    "scripts/harmattan-qemu/browser-setup-guest.sh": "86937131992b925a7f4b86450a13f39edbe30b739c354bf1a05ddeb84111ead0",
+    "scripts/harmattan-qemu/build-browser-guest.sh": "fead40aef6739e06af695b51eb97d0d9e1630f7676575c3e3dab1b0c9511d2e9",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "f1af833812c6cf0ec56e3e2ca1bf673e20bd49e1be3d91ad0c3a230d49a7ea51",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "c3d374fbef35bbe80c49d806a4c9ce0394cfbd3a91b68d95588949b5ee3d8582",
+    "scripts/harmattan-qemu/tests/browser-host.c": "8dea37ac44e335bc9bf299151a874fc5e35b65ae58ff5b97fae9adc98c6600fd",
+    "scripts/harmattan-qemu/tests/test_arm64_browser.py": "8207d4a1e27f49892b57973a3c6a29c85683b9e9d14b11122cb1eea179e94c9c",
+    "scripts/harmattan-qemu/tests/test_local_launcher.py": "57a292d878e891385e771e5de518494ea30c4f7798853386d1d38c7a2f33043c"
+  },
+  "host_suite": {
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'",
+    "passed": 306,
+    "seconds": 25.535
+  },
+  "build": {
+    "fresh_qemu_build": false,
+    "fresh_browser_helper": true,
+    "reason": "Guest helper and launch configuration change; existing native networking build reused.",
+    "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+    "helper_sha256": "d0dc488461edfb3972dbb84d612a9c59707a28d0376abe5e39d82cea3ebad464"
+  },
+  "browser_setup": {
+    "enabled": true,
+    "mode": "basic",
+    "javascript_policy": "disabled",
+    "helper_md5": "b66548542b9fd0a48967760712a94a06",
+    "helper_sha256": "d0dc488461edfb3972dbb84d612a9c59707a28d0376abe5e39d82cea3ebad464",
+    "source_sha256": "1b73cea5bdbe1317f6c1eb62b7c8cf05021c95b099266bc8451c14f851035c16",
+    "scope": "pinned Grob software compositing and optional basic browsing through original preferences APIs; per-application entry",
+    "entries": {
+      "/usr/share/applications/browser.desktop": "733e4323374b955574fdff5b71aab8fd",
+      "/usr/share/dbus-1/services/com.nokia.browser.service": "68ac7b3f9f70e19a68aeb5801ae1feb2"
+    }
+  },
+  "original_identities": {
+    "grob": {
+      "version": "0.73.2-1+0m8",
+      "md5": "6162b4b46f28d53e93b9fcba7f4f3f7b"
+    },
+    "QtWebProcess": {
+      "md5": "5f4bff7d2401dd97cc9f88b1e4b02127",
+      "sha256": "2bf6b89587989adb5ed5f52ae3c448abe28cd33f402087881b5ff794cf1761a0"
+    },
+    "webkit": {
+      "package": "libgrob-qtwebkit 0.73.0-1+0m8",
+      "md5": "d93364105cdecaf69b53571275480d04"
+    }
+  },
+  "diagnosis": {
+    "scope": "Earlier exploratory original-mode runs, separate from the final maintained-helper run. Some diagnostic runs used temporary inspection preloads and renderer register sampling; none were present in final validation.",
+    "observed": "Baidu homepage loaded through actual address-bar keyboard input, but search kept QtWebProcess running while Grob slept. Subsequent control-page navigation made no HTTP request.",
+    "exact_script_or_engine_defect_identified": false,
+    "javascript_engine_fixed": false
+  },
+  "workflows": {
+    "web_icon": {
+      "passed": true,
+      "scope": "Original Home Web icon, desktop/D-Bus wrapper, then original MApplication URL navigation."
+    },
+    "baidu_https_home": {
+      "passed": true,
+      "url": "https://www.baidu.com/",
+      "frame_sha256": "1700f717d7ff396917f04fd82f6ff7abb1e4a99815833414eda39108bad7b7da"
+    },
+    "original_keyboard": {
+      "passed": true,
+      "text": "nokia",
+      "scope": "QMP pointer taps on the original Maliit keyboard into the real Baidu search field, followed by Go.",
+      "frame_sha256": "11e28b37ccabdc8875dab2150ade851844d3ec4bce344b156e8ba8edabdfad92"
+    },
+    "baidu_search": {
+      "passed": true,
+      "scope": "Baidu-provided basic result page showed Nokia Corporation | Nokia and www.nokia.com. An initial 20-second capture was still intermediate; a later capture showed the results.",
+      "whole_route_https": false,
+      "redirect": "The site selected an HTTP m.baidu.com basic page; no URL rewriting by the helper.",
+      "frame_sha256": "981abee7921370b10e514e11b411249307f10fc43f75fa969a7c148a28a85100"
+    },
+    "form_after_search": {
+      "passed": true,
+      "scope": "Separate loopback control page loaded after Baidu search; original Submit button sent GET /result?q=nokia and displayed Submitted / nokia. This checks continued navigation and forms, not public Internet access.",
+      "server_status": 200,
+      "frame_sha256": "751d9a105b596fbad891180fbe967af6a70d60d06e85d16f2b8faabfb321ad98"
+    },
+    "invalid_certificate": {
+      "rejected": true,
+      "url": "https://self-signed.badssl.com/",
+      "cancel_selected": true,
+      "continue_anyway_selected": false,
+      "frame_sha256": "fe313781310cd57b7efa0f17369f007c2b066d602fe0fc2e4cba3b2922597e52"
+    },
+    "valid_https_after_rejection": {
+      "passed": true,
+      "url": "https://example.com/",
+      "frame_sha256": "6f967260ac52186ee3a7ccad42698f8a34fb550804c37f92432428255200782b"
+    }
+  },
+  "runtime": {
+    "javascript_disable_verified_markers": 10,
+    "browser_uid": 29999,
+    "renderer_uid": 29999,
+    "renderer_tracer_pid": 0,
+    "renderer_final_sample": {
+      "state": "sleeping",
+      "guest_uptime_seconds": [
+        451.64,
+        452.66
+      ],
+      "user_ticks": [
+        842,
+        842
+      ],
+      "system_ticks": [
+        333,
+        333
+      ],
+      "scope": "Bounded idle sample after the workflows; not a responsiveness benchmark."
+    },
+    "browser_helper_absent_from": [
+      "meegotouchhome",
+      "sysuid",
+      "mcompositor"
+    ],
+    "ca_certificates": {
+      "enabled": true,
+      "source": "selected host Python default TLS CA store",
+      "count": 193,
+      "bytes": 290237,
+      "sha256": "48d9c7cf605e15e46bbb674a7c9b5075a61f3ba4f1965e8ed9216ecca9f50805",
+      "md5": "23aab37c38ea4b0f1ec96024ab1325a0",
+      "scope": "temporary guest CA mount; certificate, hostname and validity checks remain enabled"
+    },
+    "final_host_graphics": {
+      "clean": true,
+      "warnings": [],
+      "gpu_contexts": 3,
+      "known_guest_api_defects": [
+        "client 3: original eglTerminate repeats with NULL, correctly rejected"
+      ],
+      "compiles": 9,
+      "links": 6,
+      "uploads": 279,
+      "draws": 411,
+      "calls": 11964,
+      "swaps": 130,
+      "rejects": 0,
+      "faults": 0,
+      "workers_joined": true
+    },
+    "qemu_exit": 0
+  },
+  "local_shortcuts": {
+    "original_entry": "Run N9.command",
+    "original_bytes_unchanged": true,
+    "original_sha256": "3444bf0b795f67cbbd2eee594163e360946e83234923310e02dd956428fc3715",
+    "new_entry": "Run N9 Basic Web.command",
+    "new_sha256": "01087188182e1501da50c2cd8495324cf98cfcaad32a25b8a8336052cdf90d9c",
+    "network": "user",
+    "audio": "pulse",
+    "ca_certificates": "host",
+    "browser_mode": "basic"
+  },
+  "entry_regression": {
+    "command": "Run N9 Basic Web.command --usability-headless-diagnostic",
+    "initial": {
+      "result": "FAIL",
+      "controller_exit": 2,
+      "qemu_exit": 0,
+      "functional_checks_passed": true,
+      "host_graphics_clean": true,
+      "stages": {
+        "open": {
+          "samples": 367,
+          "black_samples": 0,
+          "motion_frames_present": true
+        },
+        "return": {
+          "samples": 132,
+          "black_samples": 1,
+          "motion_frames_present": true
+        },
+        "restore": {
+          "samples": 97,
+          "black_samples": 0,
+          "motion_frames_present": true
+        },
+        "final": {
+          "samples": 131,
+          "black_samples": 0,
+          "motion_frames_present": true
+        }
+      },
+      "scope": "One all-black RAM observation during Calculator return while the separate browser probe was also active. Concurrency is context, not an established cause.",
+      "diagnostic_sha256": "63d272197bc1423e54ae5fb6f727ab954b852ba58349e8aca5e6111fb51ebf61",
+      "transition_sha256": "421a884ee68594525755735b4443d11a014e57fdfe6bebc1ee016e3f68ee2c50"
+    },
+    "repeat": {
+      "result": "PASS",
+      "controller_exit": 0,
+      "qemu_exit": 0,
+      "home_notes_keyboard_calculator_transitions_gpu": true,
+      "stages": {
+        "open": {
+          "samples": 364,
+          "black_samples": 0,
+          "motion_frames_present": true
+        },
+        "return": {
+          "samples": 129,
+          "black_samples": 0,
+          "motion_frames_present": true
+        },
+        "restore": {
+          "samples": 98,
+          "black_samples": 0,
+          "motion_frames_present": true
+        },
+        "final": {
+          "samples": 130,
+          "black_samples": 0,
+          "motion_frames_present": true
+        }
+      },
+      "scope": "Same code, options and unchanged validators, after the task-owned browser probe exited. The user existing session was preserved.",
+      "diagnostic_sha256": "9060219cc5e0a8225f4d766dd404cfd324228a4c75a3d7f4d36923073a8b8b43",
+      "transition_sha256": "712d530ba1f3ba9e12b0bafdbfba2a3705acc9c908a5cad8936bc79c30d0c369",
+      "keyboard_sha256": "48ac6efcc750cc3f0f0943c1c71a4d26f9bfb834cc2415a3c770c2f10a3f80ff"
+    }
+  },
+  "evidence": {
+    "scope": "Private bounded QMP action driver after original startup gates; fresh disposable disk, maintained basic helper only, no manual browser configuration or additional guest inspection preload in final validation. Raw artifacts remain private.",
+    "exploration": {
+      "scope": "private bounded QMP exploration of actual browser and ringtone UI",
+      "controller_sha256": "f1af833812c6cf0ec56e3e2ca1bf673e20bd49e1be3d91ad0c3a230d49a7ea51",
+      "instrumented_controller_sha256": "9f28c19790b9f59003bea74c0af296391af60f825dbc0d7d4122c0e7292fced9",
+      "exploration_sha256": "44d04ac5006ad7b503231d6702d23732d1cc58258b9b3a5ea3beec02a1fc1f7c"
+    },
+    "serial_sha256": "0f4aabaab6d3df2e63c7e5463cde0e93f662582a9359eacaae72ac780fde83ce",
+    "host_log_sha256": "1f64fbeba915c0de9552820fbfa8dfc1bc393b9897884e3e48bbfb06b18be417",
+    "private_controller_exit": 0
+  },
+  "limitations": [
+    "Basic mode disables webpage JavaScript; JavaScript-dependent pages, arbitrary modern CSS/WebGL and original-mode Baidu search are not accepted.",
+    "Baidu basic search can still wait on site redirects/resources; no loading-time target is established and the entire route was not HTTPS.",
+    "The initial transition regression failed one black RAM sample. The unchanged isolated repeat passed; this does not establish long-session or zero-flash stability. RAM sampling may race guest writes and is not display FPS.",
+    "Physical Cocoa input, acoustic listening, persistent-profile browsing and a new prebuilt app release were not performed for this change.",
+    "No original browser binaries, firmware, trust bundle, website content or private raw traces are redistributed."
+  ]
+}

@@ -4,7 +4,7 @@
 #include <string.h>
 
 extern void _ZN14QWKPreferences12setAttributeENS_12WebAttributeEb(void *, int, _Bool);
-static int mode, calls, sets, queries;
+static int mode, calls, sets, queries, js_sets;
 static char reference;
 static void *private = &reference;
 static void **owner = &private;
@@ -27,6 +27,18 @@ static _Bool get(void *ref)
     return mode == 9;
 }
 
+static void js_set(void *ref, _Bool on)
+{
+    assert(calls == 1 && sets == 1 && ref == &reference && !on);
+    js_sets++;
+}
+
+static _Bool js_get(void *ref)
+{
+    assert(js_sets == 1 && ref == &reference);
+    return mode == 16;
+}
+
 void *dlsym(void *handle, const char *name)
 {
     assert(handle == (void *)-1);
@@ -35,11 +47,19 @@ void *dlsym(void *handle, const char *name)
     queries++;
     if (!strcmp(name, "WKPreferencesSetAcceleratedCompositingEnabled")) return mode == 7 ? 0 : (void *)set;
     if (!strcmp(name, "WKPreferencesGetAcceleratedCompositingEnabled")) return mode == 8 ? 0 : (void *)get;
+    if (!strcmp(name, "WKPreferencesSetJavaScriptEnabled")) return mode == 14 ? 0 : (void *)js_set;
+    if (!strcmp(name, "WKPreferencesGetJavaScriptEnabled")) return mode == 15 ? 0 : (void *)js_get;
     abort();
 }
 
 char *getenv(const char *name)
 {
+    if (!strcmp(name, "N00_BROWSER_MODE")) {
+        if (mode == 17) return "unknown";
+        if (mode == 18) return "original";
+        if (mode == 1 || (mode >= 13 && mode <= 16)) return "basic";
+        return 0;
+    }
     assert(!strcmp(name, "N00_BROWSER_RASTER"));
     if (mode == 2) return "unverified";
     if (mode == 3) return 0;
@@ -65,7 +85,8 @@ int main(int argc, char **argv)
     if (mode == 12) private = 0;
     _ZN14QWKPreferences12setAttributeENS_12WebAttributeEb(mode == 10 ? 0 : &owner, 1, 1);
     assert(calls == 1);
-    assert(sets == (mode == 0));
-    assert(queries == (mode == 0 ? 2 : 0));
+    assert(sets == (mode == 0 || mode == 13 || mode == 18));
+    assert(js_sets == (mode == 13));
+    assert(queries == (mode == 13 ? 4 : (mode == 0 || mode == 18) ? 2 : 0));
     return 0;
 }

@@ -41,7 +41,7 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 正常源码启动现已通过[真实就绪检测](performance.zh-CN.md)替代合成器和 Home 的固定延时。[性能记录](performance-validation.json)覆盖 285 项宿主测试、成对启动计时、早期输入保护和开启声音的 Home/Notes/键盘/Calculator/转场回归。单核 Cortex-A8/512 MiB 板级模型与原版动画时长保持不变；本次不代表屏幕 FPS 提升。
 
-启用网络的 UI 启动现已增加固定版本原版浏览器的软件合成适配，并可选择宿主 CA 信任库。[浏览器记录](browser-validation.json)覆盖 302 项宿主测试、Web 图标启动、百度 HTTPS 首页、原版键盘输入、证书拒绝和生成的快捷入口 UI 回归。百度搜索结果和任意现代站点仍未通过验收。
+启用网络的 UI 启动现已增加固定版本原版浏览器的软件合成适配，并可选择宿主 CA 信任库。此前的[浏览器记录](browser-validation.json)覆盖 302 项宿主测试、Web 图标启动、百度 HTTPS 首页、原版键盘输入、证书拒绝和生成的快捷入口 UI 回归。可选[基础网页模式](networking.zh-CN.md#可选基础网页模式)新增关闭网页 JavaScript 的独立入口，原入口与默认设置保持不变。[基础模式记录](browser-basic-validation.json)覆盖 306 项宿主测试和全新客体中的百度精简版搜索结果。启用 JavaScript 的搜索及任意现代站点仍未通过验收。
 
 ## 尚未完成
 

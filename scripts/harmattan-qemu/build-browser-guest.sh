@@ -33,6 +33,7 @@ extract_input libc.so.6 /lib/libc-2.10.1.so 434c9ee9c201b0a3ae07ca6dbb85430719ed
 extract_input libdl.so.2 /lib/libdl-2.10.1.so 46e89f3e896c176377ee1aca99ce27a33cc6dc3820ed6235403ed0fefe234149
 # Validate the owners of the pinned qwk_1.0 API/layout; do not link them in.
 extract_input grob /usr/bin/grob c0cd8e101827a2227d01a67388e1ae547ff76e9557f6e08b0178847952691cc6
+extract_input QtWebProcess /usr/bin/QtWebProcess 2bf6b89587989adb5ed5f52ae3c448abe28cd33f402087881b5ff794cf1761a0
 extract_input libQtWebKit2experimental.so.4 /usr/lib/libQtWebKit2experimental.so.4.9.0 03a98f03623e1bdca3270fbff5147c1dc7cf63796dc3c47279154b8823a19ce4
 "$cc" --target=arm-linux-gnueabihf -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=hard \
     -fuse-ld=lld -nostdlib -ffreestanding -fno-builtin -fPIC -shared -O2 -Wall -Wextra -Werror \
