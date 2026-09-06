@@ -27,7 +27,7 @@ def install(serial, wait_line, upload, output, payload, info):
     serial.sendall(b"sh -eu <<'N00_CA_PREPARE'\n"
         b"test ! -L /tmp/n00-host-ca\n"
         b"test ! -L /etc/ssl/certs\n"
-        b"! grep -q ' /etc/ssl/certs ' /proc/mounts\n"
+        b"if grep -q ' /etc/ssl/certs ' /proc/mounts; then exit 1; fi\n"
         b"mkdir -p /tmp/n00-host-ca /etc/ssl/certs\n"
         b"mount -t tmpfs -o size=3m,mode=0755 tmpfs /tmp/n00-host-ca\n"
         b"mount --bind /tmp/n00-host-ca /etc/ssl/certs\n"

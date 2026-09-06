@@ -227,6 +227,10 @@ start_heartbeat() {
 case ${1:-} in
     bootstrap)
         dmesg -n 1
+        if [ -f /tmp/n00-ui-helpers/browser-setup-guest.sh ]; then
+            . /tmp/n00-ui-helpers/browser-setup-guest.sh
+            prepare_browser
+        fi
         if [ "${N00_UI_SPLASH:-0}" = 1 ]; then
             # Only the known direct-invoker adaptation in this fresh snapshot.
             test "$(md5sum /usr/bin/invoker | cut -d ' ' -f 1)" = ca6f09e9035fdc66a34daae5d48e9083

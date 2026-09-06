@@ -37,8 +37,15 @@ HARMATTAN_UI_NETWORK=user HARMATTAN_UI_CA_CERTIFICATES=host \
 
 选项默认 `off`。生成本地启动入口时添加 `--ca-certificates host` 可保存此选择。证书、主机名与有效期校验继续生效。原版 OpenSSL 协议能力和 WebKit 渲染限制仍然存在；TLS 证书通过不代表现代网页已经能正常显示或使用。
 
+[证书验证记录](certificates-validation.json)覆盖生成的快捷入口界面回归、原版浏览器显示有效 HTTPS 页面，以及拒绝自签名证书站点。百度页面渲染的独立适配见下文。
 
-[证书验证记录](certificates-validation.json)覆盖生成的快捷入口界面回归、原版浏览器显示有效 HTTPS 页面，以及拒绝自签名证书站点。百度页面渲染是另一项独立排查。
+## 原版浏览器渲染
+
+使用 `HARMATTAN_UI_NETWORK=user` 的 UI 启动现会为原版 Grob 0.73.2 / libgrob-qtwebkit 0.73.0 准备限定范围的软件合成适配。浏览器的页面加速合成可能在没有当前上下文时进入 SDK GLES 包装层，加载百度时因此崩溃。适配通过原版 WebKit 的偏好设置接口关闭页面加速，并调用读取接口确认生效。JavaScript 设置、TLS 校验和 GLES 错误处理保持原样。
+
+只有固定版本浏览器的桌面和 D-Bus 入口会通过临时内存挂载接入包装脚本。磁盘上的原始内容保持完整，持久化 profile 也一样。每次启动校验可执行文件、实际 WebKit 库链接及辅助库身份，其他应用不会继承该浏览器预加载库。未知版本会明确失败，不套用固定 ABI。构建器和发布辅助库清单已包含新的 ARM 辅助库；已下载的旧预览应用不会随源码自动更新。
+
+[浏览器验证记录](browser-validation.json)覆盖 Web 图标/D-Bus 启动、百度 HTTPS 首页、原版键盘文字输入、有效 HTTPS 页面、自签名证书拒绝和联合 UI 回归。百度搜索结果及广泛的现代 JavaScript/CSS 兼容尚未通过：此前的搜索探针停留在加载页。这项适配不会把历史 WebKit 引擎升级为现代浏览器。
 
 ## 应用边界
 
