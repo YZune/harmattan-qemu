@@ -1,0 +1,111 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "a4d2ec2",
+  "scope": "Home-launched ownNotes and Filebox local functions, QMP pointer input, saved data and same-profile reboot; FBReader explicitly remains a failing GLES case.",
+  "host": {
+    "architecture": "arm64",
+    "os": "26.6.2",
+    "python": "3.12.2"
+  },
+  "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+  "source_sha256": {
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "885f5695880445533f809c58117b37594cd889baef288e76ca438274743f6d59",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "50a91236211db42f4f82d49ed9dcb1d6118b9ddedc6d28dcdc3a43a1c5d1763b"
+  },
+  "package_identities": "applications-validation.json",
+  "application_executable_md5": {
+    "ownNotes": "1423a155ce4a0ec4028e6ab823a42759",
+    "Filebox": "a6996e72d58b48e4fc0109e09ac09152",
+    "FBReader": "a4f60e9b2da8416348101b04140950c0"
+  },
+  "interaction": {
+    "display": "none",
+    "input": "QEMU QMP absolute pointer/button events, including original Maliit keys; no macOS input automation",
+    "driver": "private bounded instrumented controller; not a shipped automated application diagnostic",
+    "instrumentation": {
+      "scope": "private instrumented controller with bounded QEMU-only actions; not a maintained diagnostic acceptance",
+      "controller_sha256": "50a91236211db42f4f82d49ed9dcb1d6118b9ddedc6d28dcdc3a43a1c5d1763b",
+      "instrumented_controller_sha256": "e497bad259fa6369c856ed8d49e367f4cc4eeff30a14cc06f5b1054f918f29d1",
+      "exploration_sha256": "8ed29a8730c40d3c211acd815aef17bdb152fa3913107b9182c49e81593ad05a"
+    },
+    "application_binaries_desktop_entries_qml_and_assets_changed": false
+  },
+  "checks": {
+    "host_suite": "285 tests passed",
+    "combined_audio_enabled_usability": {
+      "keyboard": true,
+      "application": true,
+      "transition": true
+    },
+    "original_home_on_reboot": true,
+    "two_application_reboot_gpu": {
+      "clean": true,
+      "warnings": [],
+      "gpu_contexts": 3,
+      "known_guest_api_defects": [
+        "client 2: original eglTerminate repeats with NULL, correctly rejected"
+      ],
+      "compiles": 9,
+      "links": 6,
+      "uploads": 222,
+      "draws": 436,
+      "calls": 12357,
+      "swaps": 127,
+      "rejects": 0,
+      "faults": 0,
+      "workers_joined": true
+    },
+    "same_profile_clean_exit": true,
+    "profile_sessions_after_reboot": 9
+  },
+  "applications": {
+    "ownNotes": {
+      "status": "PASS",
+      "version": "1.2.3",
+      "functions": [
+        "Home icon launch",
+        "original toolbar and Maliit",
+        "create note, type Qemu, dismiss keyboard, Back save",
+        "reopen editor",
+        "read same content after guest reboot"
+      ],
+      "saved_body_hex": "51656d750a",
+      "saved_body_md5": "7e7fe23610141622ceb3ed6a23de2978",
+      "cloud_sync": "NOT VALIDATED; original unconfigured WebDAV worker errors are nonfatal to tested local notes"
+    },
+    "Filebox": {
+      "status": "PASS",
+      "version": "0.1.0",
+      "functions": [
+        "Home icon launch",
+        "double-tap Documents",
+        "long-press Copy, navigate up, select Clipboard item and copy",
+        "read copied file after guest reboot"
+      ],
+      "source": "/home/user/MyDocs/Documents/native-file-test.txt",
+      "destination": "/home/user/MyDocs/native-file-test.txt",
+      "source_and_destination_equal": true,
+      "md5": "d65675a655aca1655d6abf56a72f5e98"
+    },
+    "FBReader": {
+      "status": "FAIL",
+      "version": "0.99.5",
+      "observed": "Original executable and mapped active window, but black output. It explicitly creates a QGLWidget viewport despite QT_GRAPHICSSYSTEM=raster. Unsupported GLES calls remain.",
+      "epub_navigation_and_saved_position": false
+    }
+  },
+  "evidence_sha256": {
+    "first_serial": "2fc80c14d8ed009936f921254ca2845582b4da000a4862d1e9d9ae5d8a56e326",
+    "first_gpu_with_fbreader_failure": "e6db36abc791b1c87e1b3ffc8a8819923b6facccfa62c3ffddfdfc19f532903a",
+    "reboot_serial": "861f12a07c095e75a983c73ec0af3ee84e2720470e8ed509a31f464ece4d4d16",
+    "reboot_gpu": "cac3c930208d847220c3d0b0a7d4c3ba6ada0d26106b52ddff59010465ed49c7",
+    "ownnotes_reboot_capture": "9caa7f7b8df894d71de471a15c01d3b4b2201685930f60a5a8a858c0ea8905c7",
+    "filebox_reboot_capture": "0ce992f144b015d54679c3db131caaf87f4241a9b502ffbf5146591747af6765"
+  },
+  "not_tested": [
+    "Cocoa window or physical pointer input for these third-party functions; Mac was locked",
+    "ownNotes WebDAV accounts, reader navigation, modern TLS or other ARMEL apps",
+    "display FPS, acoustic output or long-session stability",
+    "new prebuilt release packaging and relocation"
+  ]
+}
