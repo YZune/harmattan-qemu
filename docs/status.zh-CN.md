@@ -33,7 +33,7 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 显式选择[用户档案](storage.zh-CN.md)现可跨启动保留客体已保存文件。[存储记录](storage-validation.json)覆盖 269 项宿主测试、全新原生构建、两次启动的系统/home 文件校验、快照隔离，以及通过原生输入保存 Notes 笔记、Cocoa 退出重启后内容仍可见。同一改动修正了关闭网络时的路径，未放宽宿主错误校验。
 
-[应用安装器](applications.zh-CN.md)可将已审查的 ARMEL 包传入显式档案，保留依赖失败，并在包触发器执行后恢复 SDK 图形链接。[安装记录](applications-validation.json)覆盖依赖配置和重启。后续[日常应用记录](daily-applications-validation.json)覆盖 285 项宿主测试、从 Home 启动的 ownNotes 编辑和 Filebox 复制、档案重启后保存数据一致，以及开启音频的 UI 联合回归。这些功能使用无窗口 QMP 输入验证，物理 Cocoa 输入仍未测试；FBReader 的显式 OpenGL 视口仍未通过。
+[应用安装器](applications.zh-CN.md)可将已审查的 ARMEL 包传入显式档案，保留依赖失败，并在包触发器执行后恢复 SDK 图形链接。[安装记录](applications-validation.json)覆盖依赖配置和重启，[日常应用记录](daily-applications-validation.json)覆盖 ownNotes 编辑与 Filebox 复制。后续[阅读器记录](reader-validation.json)增加了限定 FBReader 0.99.5 的视口适配、290 项宿主测试、本地 EPUB 阅读，以及客体重启后的页面和状态一致，并在同一档案中验证三个应用。这些功能使用无窗口 QMP 输入；物理 Cocoa 输入、阅读器滑动翻页和 Add Book 选择器仍不在通过范围内。
 
 源码新增可选[声音输出](audio.zh-CN.md)，经独立 PulseAudio 服务连接 Mac CoreAudio。[声音记录](audio-validation.json)覆盖 281 项宿主测试、客体原版 libpulse PCM、GStreamer WAV、静音和启用声音的联合 UI 回归。此路径不代表完整 Nokia 音频硬件及策略仿真。
 

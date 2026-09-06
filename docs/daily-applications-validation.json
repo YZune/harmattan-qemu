@@ -1,6 +1,7 @@
 {
   "date": "2026-09-06",
   "base_commit": "a4d2ec2",
+  "follow_up_record": "reader-validation.json",
   "scope": "Home-launched ownNotes and Filebox local functions, QMP pointer input, saved data and same-profile reboot; FBReader explicitly remains a failing GLES case.",
   "host": {
     "architecture": "arm64",

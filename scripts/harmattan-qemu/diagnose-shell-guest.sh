@@ -332,7 +332,12 @@ case ${1:-} in
         # Qt Components local theme provider (mdeclarativeimageprovider.cpp).
         # It reads the original Blanco files without remote pixmap transport.
         # Explicitly OpenGL applications still need separate GLES support.
-        su user -c "$user_env QT_GRAPHICSSYSTEM=raster M_FORCE_LOCAL_THEME=1 meegotouchhome -local-theme -graphicssystem raster >/tmp/n00-shell-home.log 2>&1 &"
+        app_viewport_env=
+        if [ -f /tmp/n00-ui-helpers/app-viewport-guest.sh ]; then
+            . /tmp/n00-ui-helpers/app-viewport-guest.sh
+            prepare_app_viewport
+        fi
+        su user -c "$user_env $app_viewport_env QT_GRAPHICSSYSTEM=raster M_FORCE_LOCAL_THEME=1 meegotouchhome -local-theme -graphicssystem raster >/tmp/n00-shell-home.log 2>&1 &"
         if [ "${N00_UI_READY_WAITS:-0}" = 1 ]; then
             perl /tmp/n00-ui-helpers/wait-shell-ready-guest.pl home
         else

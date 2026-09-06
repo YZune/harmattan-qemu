@@ -12,6 +12,7 @@ HELPERS = {
     'handoff': ('compositor-guest/n00-compositor-handoff.so', 3),
     'orientation': ('orientation-guest/n00-orientation-provider', 2),
     'keyboard': ('keyboard-probe/keyboard-notes-read', 2),
+    'app-viewport': ('app-viewport-guest/n00-app-viewport.so', 3),
 }
 
 
