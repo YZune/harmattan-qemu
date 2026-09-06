@@ -17,7 +17,7 @@ diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
  #include "qemu/error-report.h"
  #include "qemu/units.h"
  #include "target/arm/cpu-qom.h"
-@@ -70,6 +72,32 @@
+@@ -70,6 +72,35 @@
          sysbus_connect_irq(bus, i * 3, qdev_get_gpio_in(intc, 29 + i));
      }
      return dev;
@@ -29,6 +29,9 @@ diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
 + */
 +static void n00_network_init(DeviceState *intc, struct omap_mpu_state_s *mpu)
 +{
++    if (!qemu_find_nic_info("smc91c111", true, "smc91c111")) {
++        return; /* -nic none keeps the original disconnected board. */
++    }
 +    DeviceState *nic = qdev_new("smc91c111");
 +    SysBusDevice *bus = SYS_BUS_DEVICE(nic);
 +    MemoryRegion *window = g_new0(MemoryRegion, 1);
@@ -50,7 +53,7 @@ diff --git a/hw/arm/n00_port_spike.c b/hw/arm/n00_port_spike.c
  }
  
  static void n00_display_init(DeviceState *intc, struct omap_mpu_state_s *mpu)
-@@ -544,6 +572,7 @@
+@@ -544,6 +575,7 @@
                           N00_SRAM_BASE, N00_SRAM_SIZE);
      n00_mmc2_init(intc, mpu->drq);
      n00_display_init(intc, mpu);

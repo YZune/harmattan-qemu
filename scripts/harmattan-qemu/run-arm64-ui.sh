@@ -1,5 +1,5 @@
 #!/bin/sh
-# Native Cocoa presentation; always a private snapshot, never the old launcher.
+# Native Cocoa presentation with private snapshots or an explicit user profile.
 set -eu
 umask 077
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -8,19 +8,23 @@ python_bin=${HARMATTAN_PYTHON:-python3}
 kernel=${HARMATTAN_KERNEL:-"$repo_root/extracted/pr1.0-qemu-adaptation/zImage-2.6.32.26-qemu"}
 raw=${HARMATTAN_GUEST_IMAGE:-"$repo_root/extracted/hybrid-pr1.3-qemu/arm-qemu-rm680-image-pr1.3-ui.raw"}
 mode=${1:-interactive}
+user_profile=${HARMATTAN_USER_PROFILE:-}
+if [ -n "$user_profile" ] && [ "$mode" != interactive ]; then
+    echo 'User profiles are for interactive use; diagnostics create independent disks.' >&2; exit 2
+fi
 network=${HARMATTAN_UI_NETWORK:-off}
 if [ "$mode" = --network-diagnostic ]; then network=user; fi
 case "$network" in user|off) ;; *) echo 'HARMATTAN_UI_NETWORK must be user or off.' >&2; exit 2 ;; esac
 case "$mode" in
-    interactive|--network-diagnostic|--usability-diagnostic|--usability-headless-diagnostic|--smoke|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-diagnostic|--calculator-headless-diagnostic|--orientation-diagnostic|--orientation-headless-diagnostic|--gpu-diagnostic|--gpu-headless-diagnostic|--animation-diagnostic|--animation-headless-diagnostic|--splash-diagnostic|--splash-headless-diagnostic|--handoff-diagnostic|--handoff-headless-diagnostic|--startup-input-diagnostic|--startup-input-headless-diagnostic|--performance-diagnostic|--performance-headless-diagnostic) ;;
-    *) echo "Usage: sh $0 [--network-diagnostic|--usability-diagnostic|--usability-headless-diagnostic|--smoke|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-diagnostic|--calculator-headless-diagnostic|--orientation-diagnostic|--orientation-headless-diagnostic|--gpu-diagnostic|--gpu-headless-diagnostic|--animation-diagnostic|--animation-headless-diagnostic|--splash-diagnostic|--splash-headless-diagnostic|--handoff-diagnostic|--handoff-headless-diagnostic|--startup-input-diagnostic|--startup-input-headless-diagnostic|--performance-diagnostic|--performance-headless-diagnostic]" >&2; exit 2 ;;
+    interactive|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic|--smoke|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-diagnostic|--calculator-headless-diagnostic|--orientation-diagnostic|--orientation-headless-diagnostic|--gpu-diagnostic|--gpu-headless-diagnostic|--animation-diagnostic|--animation-headless-diagnostic|--splash-diagnostic|--splash-headless-diagnostic|--handoff-diagnostic|--handoff-headless-diagnostic|--startup-input-diagnostic|--startup-input-headless-diagnostic|--performance-diagnostic|--performance-headless-diagnostic) ;;
+    *) echo "Usage: sh $0 [--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic|--smoke|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-diagnostic|--calculator-headless-diagnostic|--orientation-diagnostic|--orientation-headless-diagnostic|--gpu-diagnostic|--gpu-headless-diagnostic|--animation-diagnostic|--animation-headless-diagnostic|--splash-diagnostic|--splash-headless-diagnostic|--handoff-diagnostic|--handoff-headless-diagnostic|--startup-input-diagnostic|--startup-input-headless-diagnostic|--performance-diagnostic|--performance-headless-diagnostic]" >&2; exit 2 ;;
 esac
 test "$#" -le 1 || exit 2
 # Existing diagnostics retain their historical build/idle defaults. Normal use
 # and the combined regression share the verified idle/input-capable build.
 runtime=${HARMATTAN_UI_RUNTIME:-}
 if [ -z "$runtime" ]; then
-    case "$mode" in interactive|--network-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
+    case "$mode" in interactive|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
 fi
 case "$runtime" in
     responsive) default_bin="$work_root/qemu-9.1.3-interaction/build-arm64-interaction"; default_idle=wfi ;;
@@ -119,7 +123,7 @@ display=cocoa,zoom-to-fit=on
 case "$mode" in
     # The touch-only guest has no pointer to replace Cocoa's hidden host cursor.
     interactive) display="$display,show-cursor=on" ;;
-    --network-diagnostic|--usability-headless-diagnostic|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-headless-diagnostic|--orientation-headless-diagnostic|--gpu-headless-diagnostic|--animation-headless-diagnostic|--splash-headless-diagnostic|--handoff-headless-diagnostic|--startup-input-headless-diagnostic|--performance-headless-diagnostic) display=none ;;
+    --network-diagnostic|--storage-diagnostic|--usability-headless-diagnostic|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-headless-diagnostic|--orientation-headless-diagnostic|--gpu-headless-diagnostic|--animation-headless-diagnostic|--splash-headless-diagnostic|--handoff-headless-diagnostic|--startup-input-headless-diagnostic|--performance-headless-diagnostic) display=none ;;
 esac
 if [ "$mode" = --landscape-smoke ]; then rotation=0; fi
 if [ "$display" = none ]; then N00_COCOA_N9_SKIN=off; fi
@@ -158,6 +162,17 @@ if [ "$runtime" = responsive ]; then
     }
 fi
 qemu_binary="$bin_root/qemu-system-arm"
+if [ "$mode" = interactive ] && [ "$runtime" = responsive ] && [ -z "${HARMATTAN_APP_CONTENTS:-}" ]; then
+    # Use the builder's native application identity for Cocoa lifecycle and
+    # accessibility, including when the optional device frame is disabled.
+    qemu_binary="$bin_root/Harmattan N9.app/Contents/MacOS/qemu-system-arm"
+    test -x "$qemu_binary" || { echo 'Rebuild the native Cocoa application first.' >&2; exit 1; }
+fi
+if [ -n "$user_profile" ]; then
+    strings "$qemu_binary" | grep -q N00_COCOA_STORAGE_SHUTDOWN || {
+        echo 'Persistent profiles require a fresh --cocoa-interaction build with graceful storage shutdown.' >&2; exit 1;
+    }
+fi
 if [ "$network" = user ]; then
     strings "$qemu_binary" | grep -q n00-smc91c111-window || {
         echo 'Networking requires a fresh native build with the N00 network patch.' >&2; exit 1;
@@ -250,6 +265,10 @@ if [ -n "$trace_options" ]; then
     set -- "$@" -trace "$trace_options"
 fi
 case "$mode" in
+    --storage-diagnostic)
+        exec "$python_bin" -B "$repo_root/scripts/harmattan-qemu/smoke-arm64-storage.py" \
+            --output "$run_root/storage" --base "$run_root/pr13-backing.raw" \
+            --image-tool "$bin_root/qemu-img" -- "$@" ;;
     --network-diagnostic)
         exec "$python_bin" -B "$repo_root/scripts/harmattan-qemu/smoke-arm64-network.py" \
             --output "$run_root/network" -- "$@" ;;
@@ -286,10 +305,18 @@ case "$mode" in
         if [ "$skin" = black ]; then echo 'Black N9 artwork by Livven: glass supports edge swipes; drag the outer body to move. HARMATTAN_UI_SKIN=off disables it.'; fi
         echo 'Left-button drag scrolls Home.'
         if [ "$keyboard" = on ]; then echo 'Focused text fields use the original on-screen keyboard.'; fi
-        echo 'Close QEMU or press Ctrl-C here to exit; all guest writes are discarded.'
+        if [ -n "$user_profile" ]; then
+            echo 'Close QEMU or press Ctrl-C after READY; saved files persist in the selected profile.'
+        else
+            echo 'Close QEMU or press Ctrl-C here to exit; all guest writes are discarded.'
+        fi
         set -- --interactive --compositor-animations "$animations" --splash "$splash" --display-handoff "$handoff" -- "$@"
         if [ "$boot_animation" = on ]; then set -- --boot-animation "$run_root/pr13-backing.raw" "$@"; fi ;;
     *) set -- --verify-input -- "$@" ;;
 esac
+if [ -n "$user_profile" ]; then
+    set -- --profile "$user_profile" --profile-base "$run_root/pr13-backing.raw" \
+        --profile-image-tool "$bin_root/qemu-img" "$@"
+fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
     --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"

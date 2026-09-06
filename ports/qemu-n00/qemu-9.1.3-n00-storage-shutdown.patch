@@ -1,0 +1,29 @@
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include "n00-storage-shutdown.h"
+ 
+ #import <Cocoa/Cocoa.h>
+ #import <QuartzCore/QuartzCore.h>
+@@ -1470,9 +1471,17 @@
+     if (![self verifyQuit]) {
+         return NSTerminateCancel;
+     }
++    int storage_request = n00_storage_shutdown_request();
++    if (storage_request < 0) {
++        return NSTerminateCancel;
++    }
+     n00_cocoa_termination_pending = true;
+     [cocoaView ungrabMouse];
+     [cocoaView raiseAllKeys];
++    if (storage_request > 0) {
++        /* Keep pumping AppKit while the controller syncs the guest disk. */
++        return NSTerminateLater;
++    }
+     with_bql(^{
+         shutdown_action = SHUTDOWN_ACTION_POWEROFF;
+         qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);

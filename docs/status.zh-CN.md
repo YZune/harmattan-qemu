@@ -31,6 +31,8 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 源码现已支持以[原版开机画面](boot-animation.zh-CN.md)覆盖原有启动检查。[验证记录](boot-animation-validation.json)覆盖干净原生构建、257 项宿主测试及可见 Cocoa 启动、输入和退出。已经下载的预览应用需要重新构建才能包含此改动。
 
+显式选择[用户档案](storage.zh-CN.md)现可跨启动保留客体已保存文件。[存储记录](storage-validation.json)覆盖 269 项宿主测试、全新原生构建、两次启动的系统/home 文件校验、快照隔离，以及通过原生输入保存 Notes 笔记、Cocoa 退出重启后内容仍可见。同一改动修正了关闭网络时的路径，未放宽宿主错误校验。
+
 ## 尚未完成
 
 原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。

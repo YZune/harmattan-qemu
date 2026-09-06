@@ -31,6 +31,8 @@ The [original-media preparation record](guest-preparation-validation.json) cover
 
 The source now supports [original boot presentation](boot-animation.md) over unchanged startup checks. Its [validation record](boot-animation-validation.json) covers a clean native build, 257 host tests and visible Cocoa startup/input/exit. Existing downloaded preview apps require rebuilding to include it.
 
+Explicit [user profiles](storage.md) now preserve saved guest files across launches. The [storage record](storage-validation.json) covers 269 host tests, a clean native build, system/home file checks across two boots, snapshot isolation and an original Notes note saved through native input and still visible after Cocoa quit/restart. The same change fixes the disabled-network path without relaxing host-error validators.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

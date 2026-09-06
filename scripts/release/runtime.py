@@ -100,7 +100,9 @@ def check(state):
     return kernel, disk
 
 
-def run(state, contents, mode, skin, boot_animation=True):
+def run(state, contents, mode, skin, boot_animation=True, profile=None):
+    if profile and mode != 'interactive':
+        raise ValueError('User profiles cannot be used by destructive application diagnostics')
     kernel, disk = check(state)
     state.mkdir(parents=True, exist_ok=True)
     # flock avoids overlapping launchers while preserving the user's source run.
@@ -128,6 +130,8 @@ def run(state, contents, mode, skin, boot_animation=True):
                # Bundled scripts deliberately fail if a builder path is reached.
                HARMATTAN_ARMEL_CLANG='/nonexistent/release-does-not-compile',
                HARMATTAN_DEBUGFS='/nonexistent/release-does-not-extract-link-inputs')
+    if profile:
+        env['HARMATTAN_USER_PROFILE'] = str(profile.expanduser().resolve())
     return subprocess.call(['/bin/sh', str(project / 'scripts/harmattan-qemu/run-arm64-ui.sh'), mode], env=env)
 
 
@@ -144,6 +148,7 @@ def main():
     runner.add_argument('--diagnostic', action='store_true')
     runner.add_argument('--no-frame', action='store_true')
     runner.add_argument('--no-boot-animation', action='store_true')
+    runner.add_argument('--profile', type=Path, help='private persistent guest directory; interactive mode only')
     args = parser.parse_args()
     state = data_home()
     try:
@@ -155,7 +160,7 @@ def main():
         else:
             return run(state, args.contents.resolve(),
                        '--usability-headless-diagnostic' if args.diagnostic else 'interactive',
-                       'off' if args.no_frame else 'frame', not args.no_boot_animation)
+                       'off' if args.no_frame else 'frame', not args.no_boot_animation, args.profile)
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         print(str(error), file=sys.stderr)
         return 1

@@ -106,19 +106,22 @@ int main(int argc, const char **argv)
         cbowner = [ClipboardDouble new];
         application = [ApplicationDouble new];
         ControllerDouble *controller = [ControllerDouble new];
-        if ([mode isEqualToString:@"cancel"]) {
+        BOOL persistent = [mode isEqualToString:@"persistent"];
+        if ([mode isEqualToString:@"cancel"] || [mode isEqualToString:@"storage-fail"]) {
+            controller.confirm = [mode isEqualToString:@"storage-fail"];
             assert([controller applicationShouldTerminate:nil] == NSTerminateCancel);
             assert(!n00_cocoa_termination_pending && requests == 0 && steps.count == 0);
             assert(controller.confirmations == 1 && exit_status == -1);
         } else {
-            BOOL local = [mode isEqualToString:@"ui"];
+            BOOL local = [mode isEqualToString:@"ui"] || persistent;
             if (local) {
                 controller.confirm = YES;
                 assert([controller applicationShouldTerminate:nil] == NSTerminateLater);
                 assert([controller applicationShouldTerminate:nil] == NSTerminateLater);
-                assert(n00_cocoa_termination_pending && requests == 1);
+                assert(n00_cocoa_termination_pending && requests == (persistent ? 0 : 1));
                 assert(controller.confirmations == 1 && application.replyCount == 0);
-                assert(([steps isEqualToArray:@[@"release mouse", @"release keys", @"request"]]));
+                assert(([steps isEqualToArray:(persistent ? @[@"release mouse", @"release keys"] :
+                                                          @[@"release mouse", @"release keys", @"request"])]));
                 [steps removeAllObjects];
             }
             /* Completion originates off the main thread, just like QEMU. */

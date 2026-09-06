@@ -1,5 +1,7 @@
 from pathlib import Path
+import os
 import platform
+import re
 import subprocess
 import tempfile
 import unittest
@@ -32,20 +34,45 @@ class CocoaShutdownTests(unittest.TestCase):
         source = Path(__file__).with_name('cocoa-shutdown-host.m')
         patch = source.parents[3] / 'ports/qemu-n00/qemu-9.1.3-n00-cocoa-shutdown.patch'
         code = postimage(patch.read_text())
-        (work / 'shutdown-request.inc').write_text(body(
-            code, '- (NSApplicationTerminateReply)applicationShouldTerminate:') + '\n')
+        request = body(code, '- (NSApplicationTerminateReply)applicationShouldTerminate:') + '\n'
+        # Apply the actual incremental method hunk to the tested old body.
+        # The separate include-only hunk is supplied by the compiler below.
+        increment = patch.with_name('qemu-9.1.3-n00-storage-shutdown.patch').read_text()
+        applied = 0
+        for hunk in re.split(r'^@@[^\n]*\n', increment, flags=re.M)[1:]:
+            before = ''.join(line[1:] for line in hunk.splitlines(True) if line.startswith((' ', '-')))
+            after = ''.join(line[1:] for line in hunk.splitlines(True) if line.startswith((' ', '+')))
+            if before in request:
+                request = request.replace(before, after, 1)
+                applied += 1
+        if applied != 1:
+            raise ValueError('expected one complete storage shutdown method hunk')
+        (work / 'shutdown-request.inc').write_text(request)
         completion = body(code, '    dispatch_async(dispatch_get_main_queue()')
         (work / 'shutdown-completion.inc').write_text(completion + ');\n')
         cls.binary = str(work / 'shutdown')
         compiled = subprocess.run(['clang', '-Wall', '-Wextra', '-Wno-unused-parameter',
-                                   '-framework', 'Cocoa', '-I', str(work), str(source),
+                                   '-framework', 'Cocoa', '-I', str(work),
+                                   '-include', str(patch.with_name('n00-storage-shutdown.h')), str(source),
                                    '-o', cls.binary], capture_output=True, text=True)
         if compiled.returncode:
             raise RuntimeError(compiled.stderr)
 
     def run_case(self, mode, status):
-        result = subprocess.run([self.binary, mode, str(status)],
-                                check=True, capture_output=True, text=True, timeout=5)
+        env = os.environ.copy()
+        env.pop('N00_COCOA_STORAGE_SHUTDOWN', None)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'request'
+            if mode in ('persistent', 'storage-fail'):
+                env['N00_COCOA_STORAGE_SHUTDOWN'] = str(path)
+            if mode == 'storage-fail':
+                path.write_bytes(b'keep')
+            result = subprocess.run([self.binary, mode, str(status)], env=env,
+                                    check=True, capture_output=True, text=True, timeout=5)
+            if mode == 'persistent':
+                self.assertEqual(path.read_bytes(), b'sync\n')
+            if mode == 'storage-fail':
+                self.assertEqual(path.read_bytes(), b'keep')
         self.assertIn('PASS:', result.stdout)
 
     def test_cancel_does_not_shutdown_or_release_input(self):
@@ -60,3 +87,9 @@ class CocoaShutdownTests(unittest.TestCase):
         for status in (0, 7):
             with self.subTest(status=status):
                 self.run_case('remote', status)
+
+    def test_persistent_quit_waits_for_controller_and_preserves_cleanup(self):
+        self.run_case('persistent', 0)
+
+    def test_failed_storage_request_keeps_guest_running(self):
+        self.run_case('storage-fail', 0)
