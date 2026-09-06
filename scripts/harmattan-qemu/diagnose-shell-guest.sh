@@ -47,6 +47,43 @@ case ${N00_UI_KEYBOARD:-0} in
 esac
 ulimit -l unlimited
 
+start_audio_policy() {
+    # Original ringtone previews wait for libresource grants before starting
+    # GStreamer. Keep the original manager and rules in this private guest;
+    # a reachable PulseAudio server alone does not satisfy that contract.
+    test -z "$(pidof ohmd 2>/dev/null || true)"
+    test "$(md5sum /usr/sbin/ohmd | cut -d ' ' -f 1)" = 96dc1f6be9c836dc5b2c51b54f4d74b4
+    DISPLAY=:9 DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/n00-shell-session-bus \
+        /usr/sbin/ohmd --no-daemon >/tmp/n00-audio-policy.log 2>&1 &
+    audio_policy_pid=$!
+    audio_policy_ready=0
+    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        kill -0 "$audio_policy_pid"
+        audio_policy_ready=1
+        for service in org.freedesktop.ohm org.maemo.resource.manager; do
+            owner=$(dbus-send --system --print-reply --reply-timeout=1000 \
+                --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+                org.freedesktop.DBus.GetConnectionUnixProcessID "string:$service" \
+                2>/dev/null | sed -n 's/^[[:space:]]*uint32 //p')
+            if [ "$owner" != "$audio_policy_pid" ]; then audio_policy_ready=0; fi
+        done
+        if [ "$audio_policy_ready" = 1 ]; then break; fi
+        sleep 1
+    done
+    test "$audio_policy_ready" = 1
+    printf '\nN00_AUDIO_POLICY_BEGIN\nN00_AUDIO_POLICY_PID %s\n' "$audio_policy_pid"
+    sed -n '1,8p' "/proc/$audio_policy_pid/status"
+    readlink "/proc/$audio_policy_pid/exe"
+    md5sum /usr/sbin/ohmd "/proc/$audio_policy_pid/exe"
+    for service in org.freedesktop.ohm org.maemo.resource.manager; do
+        printf 'N00_AUDIO_POLICY_OWNER %s\n' "$service"
+        dbus-send --system --print-reply --reply-timeout=1000 \
+            --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+            org.freedesktop.DBus.GetConnectionUnixProcessID "string:$service"
+    done
+    printf 'N00_AUDIO_POLICY_END\n'
+}
+
 report_systemui() {
     ids=$(pidof sysuid) || return 1
     case "$ids" in ''|*[!0-9]*) echo 'Expected one sysuid process' >&2; return 1 ;; esac
@@ -246,6 +283,7 @@ case ${1:-} in
             sleep 1
         done
         ls -l /var/run/dbus/system_bus_socket /tmp/n00-shell-session-bus /tmp/.X11-unix/X9
+        if [ -n "${N00_UI_AUDIO_SERVER:-}" ]; then start_audio_policy; fi
         if [ "${N00_UI_STARTUP_GUARD:-0}" = 1 ]; then
             mkdir -m 0755 /tmp/n00-startup-input
             mkfifo /tmp/n00-startup-input/control

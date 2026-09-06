@@ -1,0 +1,73 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "009ebf1",
+  "scope": "Original Settings > Sounds and vibration > Ringtone > Nokia tune, in a fresh disposable guest with the maintained startup fix. No firmware or applet replacement.",
+  "host": {
+    "system": "macOS 26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2"
+  },
+  "source_sha256": {
+    "scripts/harmattan-qemu/arm64-audio.py": "ff41351b92f0360e7ba5bc82bdeb6286dd4cbdf0822c5d57d19ceff5ed8c8fce",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "03ae1cf38510663a6fd5be285a9cf09b957fea6a577c38e7a546861bbfa94bba",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "48922723b00caafd545363c17bd032e1e998e71d74f07f6a7f74f6ccc31b487d",
+    "scripts/harmattan-qemu/tests/test_arm64_audio.py": "617086f077cf0eb9a0c3b9e4af9e4af411a39ed77fe2ce05a940b21e262a64ad"
+  },
+  "host_suite": {
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "passed": 294,
+    "seconds": 19.63
+  },
+  "build": {
+    "fresh_qemu_build": false,
+    "reason": "Guest startup and host validation changed; reused the networking/storage validated native build.",
+    "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d"
+  },
+  "regression": {
+    "entry": "Run N9.command --usability-headless-diagnostic",
+    "network": "user",
+    "audio": "pulse",
+    "home_notes_keyboard_calculator_transitions_gpu": "passed",
+    "diagnostic_sha256": "cba6e80033729bb6bdb365bfaa4b10bd7bc78c14fb078e7dfbd009855c9e46d8"
+  },
+  "ringtone": {
+    "scope": "headless QMP input in original Settings; private CoreAudio output monitor, no acoustic measurement",
+    "bytes": 2278576,
+    "seconds": 12.9171,
+    "rms": 557.25,
+    "peak": 2085,
+    "pcm_sha256": "11c5ecf5c522337fa7facf03ae4d1be4a5080e0c3e441eff7af92b32f08d7fe7",
+    "title": "Nokia tune",
+    "artist": "Nokia",
+    "binary": "duicontrolpanel.launch",
+    "sample_specification": "s16le 2ch 48000Hz",
+    "preview_stopped": true,
+    "passed": true
+  },
+  "runtime_md5": {
+    "/usr/sbin/ohmd": "96dc1f6be9c836dc5b2c51b54f4d74b4",
+    "/usr/bin/duicontrolpanel.launch": "2929bf8462a84e3673b0ece4428cf539",
+    "/usr/lib/duicontrolpanel/applets/libsoundsettingsapplet.so": "7910bdb3a1dfe0a24e822da5e2c3b256",
+    "/usr/share/sounds/ring-tones/Nokia tune.mp3": "8af6d9f63ed150e6d0fa5d700dc5c3f6"
+  },
+  "evidence": {
+    "method": "Private bounded QMP action driver added after the unmodified original-Home startup gates. Guest Settings taps, original process/library identity, metadata and the private output monitor were inspected. No M_FORCE_LOCAL_THEME or GST_DEBUG override was used in this fresh run.",
+    "driver_sha256": "162bce4773e808c39ea447a89a6841c283d1e86ff55257f4faaf7790872f63d9",
+    "exploration": {
+      "scope": "private bounded QMP exploration of actual browser and ringtone UI",
+      "controller_sha256": "03ae1cf38510663a6fd5be285a9cf09b957fea6a577c38e7a546861bbfa94bba",
+      "instrumented_controller_sha256": "2254e10e6fc86be565ce1ad0ece2dc6c0332e6d4222db5da9067132a8feb746e",
+      "exploration_sha256": "b53608c3efd97398b65cfa82936fdb9676753c59f6e53c2c205b2d8c31243e0d"
+    },
+    "serial_sha256_at_ringtone_acceptance": "7413780e141a50de845e77b9a71667544346684981ea1aa85640edc5bf4d108e",
+    "playing_frame_sha256": "da714d3ad8816d6e1e4b807162c05bfd3aa069940e430c3a9951e808480dda5e",
+    "stopped_frame_sha256": "da714d3ad8816d6e1e4b807162c05bfd3aa069940e430c3a9951e808480dda5e"
+  },
+  "limitations": [
+    "Headless QMP input; physical Cocoa taps and acoustic output quality were not measured.",
+    "One original MP3 ringtone and explicit stop; other tones, long sessions and hardware routing were not accepted.",
+    "Original OHM logs unavailable videoipc/Upstart integration; its two real resource service owners and ringtone grants passed.",
+    "The separate PCM/WAV diagnostic retains its own signal/mute checks; it does not establish ringtone UI support.",
+    "Baidu HTTPS browsing is a separate investigation and is not passed by this record."
+  ]
+}

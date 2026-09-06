@@ -24,7 +24,11 @@ HARMATTAN_UI_AUDIO=pulse sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-h
 
 控制器向客体会话传入 `PULSE_SERVER` 和私有 cookie。继承环境、使用普通 PulseAudio 客户端的应用可通过 SDK 以太网输出声音。独立服务初始软件音量为 50%，Mac 原有音量/静音控制仍可使用。诊断只采集该独立输出的 monitor，不录制麦克风或其他应用音频。
 
+启用声音的 UI 启动还会在打开应用前启动来宾原版 OHM 资源管理器。设置中的铃声预览必须先通过 `libresourceqt` 取得音频授权，才会启动 GStreamer 播放管线。启动器检查固定版本 OHM 可执行文件、存活进程，以及两项策略服务的实际归属；保留原版规则和库，服务无法就绪时明确报错。单独的 PCM/WAV 诊断不经过这项应用资源申请。
+
 ## 覆盖范围
+
+[铃声验证记录](ringtone-validation.json)单独覆盖原版“设置 → 声音和振动 → 铃声 → Nokia tune”：原版 MP3 预览产生约 12.9 秒非静音 CoreAudio 输出，再次点击同一铃声后音频流停止。同时通过 294 项宿主测试和启用声音的 Home、Notes、键盘、计算器及切换回归。应用验证使用无窗口 QMP 点击，没有测量 Cocoa 实体输入或声学输出。
 
 实际结果见[声音验证记录](audio-validation.json)。分别记录原版 libpulse PCM、原版 GStreamer `filesrc → wavparse → audioconvert → audioresample → pulsesink` 和既有 UI 回归。输出 monitor 检查时长、频率、音量及双声道一致性，不能据此宣称声学质量或硬件延迟已达标。
 

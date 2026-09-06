@@ -24,10 +24,14 @@ Each launch owns a separate foreground PulseAudio process, a random loopback TCP
 
 The guest session receives `PULSE_SERVER` and its private cookie through the controller. Applications that inherit this environment and use the normal PulseAudio client path can send output over SDK Ethernet. The private server starts at 50% software volume; the Mac's normal volume/mute controls remain available. The diagnostic's short tones are measured through this private output's monitor, never a microphone or other application audio.
 
+Audio-enabled UI launches also start the guest's original OHM resource manager before opening applications. Settings ringtone previews request an audio grant through `libresourceqt` before their GStreamer pipeline starts. The launcher checks the pinned OHM executable, live process and ownership of both policy services. Original rules and libraries stay in place; startup fails explicitly if the service cannot become ready. The standalone PCM/WAV diagnostic does not exercise this application resource request.
+
 ## Coverage
 
 See the [audio validation record](audio-validation.json) for actual results. The checks distinguish original libpulse PCM, original GStreamer `filesrc → wavparse → audioconvert → audioresample → pulsesink`, and the existing UI regression. The output monitor verifies duration, frequency, level and equal stereo channels; it does not establish acoustic quality or hardware latency.
 
 This route bypasses the guest's incomplete McBSP/DAC33/ALSA hardware path. It does not emulate physical speaker routing, telephony, Bluetooth, microphone input or Nokia's full PulseAudio policy modules. Applications that explicitly connect to the retail Unix socket, require Nokia policy extensions, or depend on missing device services may still fail. Nokia Music UI, arbitrary codecs, long playback, device switching and end-to-end audible assessment require their own validation.
+
+The [ringtone record](ringtone-validation.json) separately covers original Settings → Sounds and vibration → Ringtone → Nokia tune: the original MP3 preview produced about 12.9 seconds of non-silent CoreAudio output, and tapping the same tone stopped its stream. It also records 294 host tests and the audio-enabled Home/Notes/keyboard/Calculator/transition regression. The application evidence uses headless QMP taps, not physical Cocoa input or an acoustic recording.
 
 The underlying host modules are documented in the [PulseAudio CoreAudio source](https://github.com/pulseaudio/pulseaudio/blob/v17.0/src/modules/macosx/module-coreaudio-device.c); the optional package is the [Homebrew PulseAudio formula](https://formulae.brew.sh/formula/pulseaudio).
