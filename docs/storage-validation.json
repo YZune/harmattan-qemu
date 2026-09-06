@@ -1,0 +1,65 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "0741ff9",
+  "scope": "Source profiles, clean native build, three low-level guest boots and three interactive profile sessions; not a new prebuilt release.",
+  "host": {
+    "os": "26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2"
+  },
+  "source_sha256": {
+    "ports/qemu-n00/qemu-9.1.3-n00-network.patch": "2ac904092bfdd24f303fc3714a0a10b33658addd5679d58e17eec42c70a6742d",
+    "ports/qemu-n00/qemu-9.1.3-n00-storage-shutdown.patch": "f8526f492ee7738bdda70bbc948cc0a08b1e1c7ec5daa2fc12d87acb0fac0d5c",
+    "ports/qemu-n00/n00-storage-shutdown.h": "3237893d69a5facf675d933cb0189c38b2c085282db82a25d44129b3f0910967",
+    "scripts/harmattan-qemu/arm64-storage.py": "9bdf0bde27af9b98f68eff7432afbb89d498fd8f9e56191dd97f3825e82446a4",
+    "scripts/harmattan-qemu/smoke-arm64-storage.py": "8f97a37f4fcd40a19c7f2aa0ee3f2bd9ef5e48be3a16895fb77460bace5ecef3",
+    "scripts/harmattan-qemu/build-arm64-port.sh": "4806201f1f7547bd0f8b453e5cf362faf32b62b3dd7b0793c0dc4ec6eb814506",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "597e869db90342e0f00c441efe9288ae712c2762d8d25a6c63998492a574c743",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "d0601fda0ca81bb2cc230241a7b7b1602b9c3c737cef04c63bbdf3b722e54350",
+    "scripts/release/runtime.py": "000d6a22b014958b7a612e56a38065ca3b6bac224cd20c0bc8d5bc7ecdb80977"
+  },
+  "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+  "checks": {
+    "fresh_pinned_qemu_build": "build-arm64-port.sh --cocoa-interaction passed",
+    "dgles": "unchanged native build and smoke from networking validation",
+    "host_suite": "269 tests passed",
+    "storage": {
+      "passed": true,
+      "scope": "system/home file persistence through two clean boots and snapshot isolation; not application data or power-loss acceptance",
+      "bytes_per_file": 1024,
+      "md5": "20a2997440167f977dfe731b3e001f2d",
+      "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+      "write": {
+        "passed": true,
+        "profile_state": "clean"
+      },
+      "read": {
+        "passed": true,
+        "profile_state": "clean"
+      },
+      "snapshot_isolated": true,
+      "source_raw_metadata_unchanged": true
+    },
+    "network_regression": true,
+    "offline_regression": "network device is absent with -nic none; strict no-unexpected-stderr gate passed",
+    "ctrl_c_exit": "guest sync, QEMU exit 0 and clean profile state",
+    "cocoa_window_quit": "native close and confirmation, deferred guest sync, QEMU exit 0 and clean profile state in two sessions",
+    "original_notes": "Qemu entered with native mouse clicks on the original keyboard, saved, then visibly present after window quit and full restart",
+    "interactive_profile_sessions": 3,
+    "final_profile_state": "clean",
+    "default_snapshot_isolation": true
+  },
+  "commands": [
+    "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction",
+    "sh scripts/harmattan-qemu/run-arm64-ui.sh --storage-diagnostic",
+    "sh scripts/harmattan-qemu/run-arm64-ui.sh --network-diagnostic",
+    "HARMATTAN_USER_PROFILE=<private-test-profile> HARMATTAN_UI_BOOT_ANIMATION=off sh scripts/harmattan-qemu/run-arm64-ui.sh",
+    "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'"
+  ],
+  "not_tested": [
+    "new prebuilt packaging/relocation or its profile CLI end to end",
+    "physical input in another macOS version or on a second Mac",
+    "power-loss durability, automated rollback, arbitrary CPU/RAM save-state",
+    "all applications, early-close races and forced-exit recovery of unsaved application content"
+  ]
+}

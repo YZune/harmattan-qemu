@@ -54,7 +54,7 @@ Commit, push the feature branch, and open a pull request to `main`. Require a su
 ## Builds, inputs, and backups
 
 - Preserve original downloads and prepared base guest disks separately from disposable run directories. [Guest preparation](guest-inputs.md) requires the exact external original media even though its script is public; GitHub is not a backup of the complete runtime environment.
-- The normal native launcher uses per-run clones and snapshots. Notes edits in those sessions are discarded on exit. Historical launch scripts can behave differently; follow the native entry point in the build guide.
+- The native launcher defaults to per-run clones and snapshots. Notes edits in those sessions are discarded on exit; explicit [user profiles](storage.md) preserve saved files. Diagnostics use separate disks. Historical launch scripts can behave differently; follow the native entry point in the build guide.
 - Before removing an old run, retain any needed test results and check that no active QEMU process uses it. Do not run a blanket cleanup over `extracted/`: it also contains guest inputs and graphics dependencies.
 - Keep machine-specific paths in shell environment settings. The input importer is for initial preparation, refuses existing destinations, and is not a continuous directory-sync tool.
 

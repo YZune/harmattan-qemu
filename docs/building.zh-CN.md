@@ -131,7 +131,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic
 sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 ```
 
-启动器按需构建辅助程序，创建独立 APFS 克隆和 qcow2 层，使用 `-snapshot`。客体写入在退出时丢弃。每次运行产物保留在唯一命名、已忽略的目录中供检查；这不代表 Notes 内容可跨启动持久保存。克隆前应关闭来源主盘的写入进程。
+启动器默认按需构建辅助程序，创建独立 APFS 克隆和 qcow2 层，使用 `-snapshot`；客体写入在退出时丢弃。显式选择[用户档案](storage.zh-CN.md)可跨启动保留已保存文件。每次运行的诊断产物保留在唯一命名、已忽略的目录中。克隆前应关闭来源主盘的写入进程。
 
 正常交互开启 WFI、输入驱动活动声明、原版键盘与动画及显示交接；splash 保持关闭。
 
@@ -141,6 +141,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 
 | 变量 | 值与用途 |
 | --- | --- |
+| `HARMATTAN_USER_PROFILE` | 私有持久档案目录；默认不设置；仅用于交互会话 |
 | `HARMATTAN_UI_NETWORK` | `off`（默认）/ `user`；[SDK 以太网、DHCP 与用户态联网](networking.zh-CN.md) |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |
 | `HARMATTAN_UI_SKIN` | `off`（源码默认）/ `frame`（代码绘制，发行版默认）/ `black`（需自行取得素材并重新构建） |

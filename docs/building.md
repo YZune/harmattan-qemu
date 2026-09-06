@@ -131,7 +131,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic
 sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 ```
 
-The launcher builds helper binaries as needed, creates a private APFS clone plus a qcow2 layer, and uses `-snapshot`. Guest writes are discarded at exit. Each run's files remain in a uniquely named ignored directory for inspection; they are not evidence of persistent Notes storage across launches. Close the source disk's writer before cloning it.
+By default the launcher builds helpers as needed, creates a private APFS clone plus a qcow2 layer, and uses `-snapshot`; guest writes are discarded at exit. Explicit [user profiles](storage.md) retain saved files across launches. Each run's diagnostic files remain in a uniquely named ignored directory. Close the source disk's writer before cloning it.
 
 Normal interaction enables WFI, input-driven activity, the original keyboard and animations, and display handoff. Splash stays disabled.
 
@@ -141,6 +141,7 @@ Useful overrides:
 
 | Variable | Values / use |
 | --- | --- |
+| `HARMATTAN_USER_PROFILE` | Private persistent profile directory; unset by default; interactive use only |
 | `HARMATTAN_UI_NETWORK` | `off` (default) / `user`; [SDK Ethernet, DHCP and user networking](networking.md) |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`; activity releases after 8 seconds without input |
 | `HARMATTAN_UI_SKIN` | `off` (source default) / `frame` (code-drawn, release default) / `black` (requires separately obtained artwork and rebuild) |

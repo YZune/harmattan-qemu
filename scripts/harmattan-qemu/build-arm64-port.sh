@@ -84,6 +84,11 @@ fi
     frame_patch="$port_root/qemu-9.1.3-n00-n9-frame.patch"
     boot_patch="$port_root/qemu-9.1.3-n00-boot-animation.patch"
     network_patch="$port_root/qemu-9.1.3-n00-network.patch"
+    storage_patch="$port_root/qemu-9.1.3-n00-storage-shutdown.patch"
+
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$storage_patch" >/dev/null 2>&1; then
+        git apply --reverse "$storage_patch"
+    fi
 
     if git apply --reverse --check "$network_patch" >/dev/null 2>&1; then
         git apply --reverse "$network_patch"
@@ -267,6 +272,11 @@ fi
     fi
     git apply --check "$network_patch"
     git apply "$network_patch"
+    if [ "$mode" = --cocoa-interaction ]; then
+        git apply --check "$storage_patch"
+        git apply "$storage_patch"
+        cp "$port_root/n00-storage-shutdown.h" ui/n00-storage-shutdown.h
+    fi
 )
 
 build_name=build-arm64-headless

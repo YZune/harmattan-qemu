@@ -39,6 +39,7 @@ The prefix below is `qemu-9.1.3-n00`. The builder selects only the appropriate o
 | 16 | `-n9-frame.patch` | Original code-drawn frame for prebuilt distribution |
 | 17 | `-boot-animation.patch` | Host presentation of the user's original boot movie |
 | 18 | `-network.patch` | SDK SMC91C111 Ethernet on GPMC CS1/GPIO54, with SLIRP |
+| 19 | `-storage-shutdown.patch` | Defer Cocoa profile exit until the controller flushes guest files |
 
 The normal `--cocoa-interaction` build includes the idle/input activity path and the host view/shutdown code. It does not require artwork. The DGLES patch applies to a different source archive; never apply it to the QEMU tree.
 

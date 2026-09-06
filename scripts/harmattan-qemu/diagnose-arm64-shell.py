@@ -57,6 +57,9 @@ KEYBOARD_SPEC.loader.exec_module(keyboard)
 NETWORK_SPEC = importlib.util.spec_from_file_location('network', Path(__file__).with_name('arm64-network.py'))
 network = importlib.util.module_from_spec(NETWORK_SPEC)
 NETWORK_SPEC.loader.exec_module(network)
+STORAGE_SPEC = importlib.util.spec_from_file_location('storage', Path(__file__).with_name('arm64-storage.py'))
+storage = importlib.util.module_from_spec(STORAGE_SPEC)
+STORAGE_SPEC.loader.exec_module(storage)
 PHASES = ("bootstrap", "theme", "compositor", "home", "settled", "final")
 LIBRARIES = {
     "/usr/bin/mcompositor": "52d29f7f90d03277ded463ebc3c5f33d",
@@ -213,6 +216,9 @@ def desktop_frame(data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--network", choices=("off", "user"), default="off")
+    parser.add_argument('--profile', type=Path, help='private persistent disk directory; interactive mode only')
+    parser.add_argument('--profile-base', type=Path, help='launcher-created private raw clone')
+    parser.add_argument('--profile-image-tool', type=Path, help='matching qemu-img executable')
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--verify-desktop", action="store_true", help="require mapped Home, WM ownership and stable nonempty rendering; not input")
@@ -237,6 +243,10 @@ def main():
     parser.add_argument("--measure-performance", action="store_true", help="bounded CPU and guest framebuffer observations using the Calculator workflow; not FPS")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.profile and (not args.interactive or not args.profile_base or not args.profile_image_tool):
+        parser.error('profiles require interactive mode and the launcher\'s private base/image tool')
+    if not args.profile and (args.profile_base or args.profile_image_tool):
+        parser.error('profile inputs require a profile directory')
     if args.boot_animation and not args.interactive:
         parser.error('boot presentation is only used by interactive Cocoa startup')
     if args.exercise_keyboard and (args.interactive or args.rotation != 270 or args.measure_performance or not args.exercise_transitions):
@@ -345,6 +355,9 @@ def main():
     deadline = started + args.timeout
     serial, child = socket.socketpair()
     process = None
+    profile_session = None
+    profile_synced = False
+    shutdown_request = out / 'storage-shutdown.request'
     phases = {}
     control = []
     if args.interactive or args.measure_performance:
@@ -357,11 +370,16 @@ def main():
         return display.native_ppm((out / f'{name}.ppm').read_bytes(), args.rotation)
 
     try:
+        if args.profile:
+            profile_session = storage.Profile(args.profile, args.profile_base, args.profile_image_tool)
+            command = storage.persistent_command(command, profile_session.disk)
+            boot_environment['N00_COCOA_STORAGE_SHUTDOWN'] = str(shutdown_request)
         with (out / "serial.log").open("xb") as log, (out / "qemu-stderr.log").open("xb") as errors:
             process = subprocess.Popen(command + control + ["-qmp", "stdio", "-chardev",
                 f"socket,id=n00serial,fd={child.fileno()}", "-serial", "chardev:n00serial", "-monitor", "none"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors,
-                env=display.qemu_environment() | boot_environment, pass_fds=(child.fileno(),), bufsize=0)
+                env=display.qemu_environment() | boot_environment,
+                pass_fds=(child.fileno(),) + ((profile_session.fd,) if profile_session else ()), bufsize=0)
             child.close()
             qmp = display.QMP(process, deadline)
 
@@ -401,9 +419,6 @@ def main():
             display.wait_serial(serial, process, log,
                 lambda data: b"shell ready" in data and b"/ # " in data, deadline)
             timings['boot_to_serial_shell_seconds'] = time.monotonic() - started
-            if args.network == 'user':
-                network_result = network.configure(serial, process, log, deadline, display)
-                (out / 'network-result.json').write_text(json.dumps(network_result, indent=2) + '\n')
             serial.sendall(b"dmesg -n 1; stty -echo; PS2=''; printf '\\nN00_SHELL_UPLOAD_READY\\n'\n")
             wait_line(b"N00_SHELL_UPLOAD_READY")
             if os.environ.get('HARMATTAN_UI_IDLE_PROFILE', '').startswith('wfi'):
@@ -416,6 +431,11 @@ def main():
                     b"test \"$(cat /sys/devices/platform/serial8250.2/sleep_timeout)\" = 0 && "
                     b"printf '\\nN00_IDLE_UART_AWAKE\\n'\n")
                 wait_line(b'N00_IDLE_UART_AWAKE')
+            if profile_session:
+                storage.prepare_guest(serial, process, log, display)
+            if args.network == 'user':
+                network_result = network.configure(serial, process, log, deadline, display)
+                (out / 'network-result.json').write_text(json.dumps(network_result, indent=2) + '\n')
             def upload(payload, target, tag):
                 serial.sendall(f"/usr/bin/perl -ne 'chomp; print pack(\"H*\",$_)' > {target} <<'{tag}'\n".encode())
                 encoded = payload.hex()
@@ -616,19 +636,34 @@ def main():
                     'splash': splash_info,
                     'startup_input': guard_info,
                     'boot_animation': boot_info,
+                    'storage': {'persistent': profile_session is not None,
+                                'profile': str(profile_session.path) if profile_session else None},
                     'guest': guest_result, 'native_frame': settled,
                     'host_startup': host_startup,
                     'startup_wall_seconds': round(time.monotonic() - started, 3)}
                 (out / 'ready.json').write_text(json.dumps(ready, indent=2) + '\n')
                 print(f'READY: original Home in the native window; input enabled. Evidence: {out}', flush=True)
-                print('Left-button drag to scroll; close QEMU or Ctrl-C to stop. Snapshot writes are discarded.', flush=True)
+                print('Left-button drag to scroll; close QEMU or Ctrl-C to stop. ' +
+                      ('Saved files persist in the private profile.' if profile_session else 'Snapshot writes are discarded.'), flush=True)
                 # Keep serial/QMP pipes drained while Cocoa owns user interaction.
                 # This is the launcher lifecycle, not a background monitoring task.
                 def interrupt(signum, frame):
                     raise KeyboardInterrupt
                 previous_term = signal.signal(signal.SIGTERM, interrupt)
+                def quit_guest():
+                    nonlocal profile_synced
+                    qmp.deadline = time.monotonic() + 40
+                    if profile_session:
+                        storage.sync_guest(serial, process, log, display)
+                        profile_synced = True
+                        qmp.call('stop')
+                    qmp.call('quit')
+                    process.wait(timeout=10)
                 try:
                     while process.poll() is None:
+                        if profile_session and storage.shutdown_requested(shutdown_request):
+                            quit_guest()
+                            break
                         readable, _, _ = select.select([serial, process.stdout], [], [], 1)
                         for source in readable:
                             chunk = os.read(source.fileno(), 65536)
@@ -636,11 +671,12 @@ def main():
                                 log.write(chunk); log.flush()
                 except KeyboardInterrupt:
                     if process.poll() is None:
-                        qmp.deadline = time.monotonic() + 5
-                        qmp.call('quit')
-                    process.wait(timeout=5)
+                        quit_guest()
+                    process.wait(timeout=10)
                 finally:
                     signal.signal(signal.SIGTERM, previous_term)
+                if profile_session:
+                    profile_session.finish(synced=profile_synced, exit_code=process.returncode)
                 (out / 'interactive-exit.json').write_text(json.dumps({
                     'state': 'exited', 'qemu_exit': process.returncode,
                     'wall_seconds': round(time.monotonic() - started, 3),
@@ -799,6 +835,8 @@ def main():
                 except subprocess.TimeoutExpired:
                     process.kill(); process.wait(timeout=5)
             process.stdin.close(); process.stdout.close()
+        if profile_session:
+            profile_session.close()
 
 
 if __name__ == "__main__":
