@@ -1,0 +1,65 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "13e86a3",
+  "scope": "Optional current CA trust anchors for the original Qt/OpenSSL browser; no TLS verification bypass and no browser rendering change.",
+  "host": {
+    "system": "macOS 26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2"
+  },
+  "source_sha256": {
+    "scripts/harmattan-qemu/arm64-certificates.py": "404a7ff8e76cb4e0abf8243dca5fbf45c230b2582b8ad98026d7c7fb3c5069cb",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "01cef58419ed4906143af477726b5f785ba0e31771a451b9f5e179639e64fd56",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "db9384a88322f3b7887c8741317a991e3f9c2132b49899bf6a80f30aa39de7a3",
+    "scripts/create-local-launcher.py": "1ed5701f847f6e5905bf47926a2893695dee82919ef1e51452091a4e5d9f5674",
+    "scripts/harmattan-qemu/tests/test_arm64_certificates.py": "e76f64e66c184c2556cb6f54740c9c43ec37fcb1dff2ab614e8c41b5062b7e29"
+  },
+  "host_suite": {
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "passed": 297,
+    "seconds": 19.548
+  },
+  "build": {
+    "fresh_qemu_build": false,
+    "reason": "Guest configuration and host validation only; reused the previously validated networking/storage build.",
+    "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d"
+  },
+  "trust_store": {
+    "enabled": true,
+    "source": "selected host Python default TLS CA store",
+    "count": 193,
+    "bytes": 290237,
+    "sha256": "48d9c7cf605e15e46bbb674a7c9b5075a61f3ba4f1965e8ed9216ecca9f50805",
+    "md5": "23aab37c38ea4b0f1ec96024ab1325a0",
+    "scope": "temporary guest CA mount; certificate, hostname and validity checks remain enabled"
+  },
+  "regression": {
+    "entry": "Run N9.command --usability-headless-diagnostic",
+    "network": "user",
+    "audio": "pulse",
+    "ca_certificates": "host",
+    "home_notes_keyboard_calculator_transitions_gpu": "passed",
+    "diagnostic_sha256": "8a5b936fd334f7a62e52e45f7a621b3ed06127e94f4674836f841f4e600c49d8"
+  },
+  "original_browser": {
+    "version": "grob 0.73.2-1+0m8",
+    "executable_md5": "6162b4b46f28d53e93b9fcba7f4f3f7b",
+    "valid_https": {
+      "url": "https://example.com/",
+      "result": "Original page content rendered with lock indicator",
+      "frame_sha256": "3b6c8a39b02f8d7d64be2aa843302fcff45671ceb66daf8d7c7dfd9da00e669e"
+    },
+    "invalid_https": {
+      "url": "https://self-signed.badssl.com/",
+      "result": "Original untrusted certificate dialog blocked navigation; Continue anyway was not selected",
+      "frame_sha256": "04005ae738c83713946dd60e34d2d1627fcd6b86d35b95320e3181bba4df2f5d"
+    },
+    "scope": "Headless QMP captures of the original browser, launched with its raster arguments, orientation provider and no browser helper preload. The same disposable diagnostic guest was also used for separate rendering experiments."
+  },
+  "limitations": [
+    "No new QEMU source build, prebuilt app release, physical Cocoa input or long session acceptance.",
+    "Host Python trust-store selection does not necessarily mirror the macOS Keychain.",
+    "The successful certificate checks do not establish Baidu or arbitrary modern website rendering; a separate GLES crash was observed on Baidu.",
+    "No host CA bundle, original browser binary, firmware or private raw evidence is redistributed."
+  ]
+}

@@ -22,6 +22,8 @@ if [ -n "$user_profile" ] && [ "$mode" != interactive ] && [ "$mode" != --instal
 fi
 network=${HARMATTAN_UI_NETWORK:-off}
 audio=${HARMATTAN_UI_AUDIO:-off}
+ca_certificates=${HARMATTAN_UI_CA_CERTIFICATES:-off}
+case "$ca_certificates" in host|off) ;; *) echo 'HARMATTAN_UI_CA_CERTIFICATES must be host or off.' >&2; exit 2 ;; esac
 if [ "$mode" = --audio-diagnostic ]; then audio=pulse; fi
 case "$audio:$mode" in
     off:*) ;;
@@ -358,4 +360,4 @@ if [ -n "$user_profile" ]; then
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
-    --startup-waits "$startup_waits" --audio "$audio" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
+    --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"

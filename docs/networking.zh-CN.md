@@ -24,6 +24,22 @@ HARMATTAN_UI_NETWORK=user sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-
 
 有界诊断启动仅监听宿主回环地址的 HTTP 服务，以摘要校验随机 64 KiB 下载和上传，在客体内解析 `example.com`，并要求从 `http://example.com/` 取得非空 HTTP 200 响应。客体命令、DHCP、DNS、公网连接、内容完整性或 QEMU 退出校验失败都会使验收失败。该诊断需要公网连接，宿主离线不能记为通过。本地记录包含串口、QEMU 错误输出及 `network-result.json`。
 
+## HTTPS 信任库
+
+准备后的客体缺少原版 Qt/OpenSSL 浏览器使用的标准 CA 目录。UI 启动可显式采用所选宿主 Python 当前的 TLS CA 信任库：
+
+```sh
+HARMATTAN_UI_NETWORK=user HARMATTAN_UI_CA_CERTIFICATES=host \
+  sh scripts/harmattan-qemu/run-arm64-ui.sh
+```
+
+控制器只导出该信任库的公开信任锚，校验 PEM，分块传输，并核对客体内的字节摘要、证书数量和覆盖 `/etc/ssl/certs` 的临时内存挂载。原有磁盘证书库保持完整，持久化 profile 也一样；临时 CA 内容在 QEMU 退出后消失。此功能不捆绑或下载根证书，不修改宿主信任设置，也不复制私钥或客户端凭据。具体信任哪些 CA 由配置的 Python 信任库决定，不一定与 macOS 钥匙串相同。
+
+选项默认 `off`。生成本地启动入口时添加 `--ca-certificates host` 可保存此选择。证书、主机名与有效期校验继续生效。原版 OpenSSL 协议能力和 WebKit 渲染限制仍然存在；TLS 证书通过不代表现代网页已经能正常显示或使用。
+
+
+[证书验证记录](certificates-validation.json)覆盖生成的快捷入口界面回归、原版浏览器显示有效 HTTPS 页面，以及拒绝自签名证书站点。百度页面渲染是另一项独立排查。
+
 ## 应用边界
 
 此项恢复 SDK 以太网和 IP 访问。量产机 Wi-Fi 扫描、蜂窝、原版连接管理服务图及状态栏联网指示仍属独立工作。即使直接 socket 可用，依赖这些服务的应用仍可能显示离线。界面不伪造 Wi-Fi 或移动信号。

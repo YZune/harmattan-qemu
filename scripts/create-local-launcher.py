@@ -83,6 +83,7 @@ def main():
     parser.add_argument('--debugfs', default='debugfs')
     parser.add_argument('--network', choices=('off', 'user'), default='off')
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
+    parser.add_argument('--ca-certificates', choices=('off', 'host'), default='off')
     parser.add_argument('--pulseaudio', default='pulseaudio')
     parser.add_argument('--skin', choices=('off', 'frame', 'black'), default='off')
     parser.add_argument('--replace', action='store_true')
@@ -92,13 +93,16 @@ def main():
             raise ValueError('Use Python 3.12 or newer')
         build = args.build_root.expanduser().resolve(strict=True)
         network = 'user' if args.audio == 'pulse' else args.network
+        if args.ca_certificates == 'host' and network != 'user':
+            raise ValueError('Host CA certificates require --network user or --audio pulse')
         validate_build(build, network, args.skin)
         settings = {'HARMATTAN_UI_BUILD_ROOT': build,
                     'HARMATTAN_PORT_WORKSPACE': args.workspace.expanduser().resolve(),
                     'HARMATTAN_PYTHON': Path(sys.executable).resolve(),
                     'HARMATTAN_ARMEL_CLANG': executable(args.armel_clang),
                     'HARMATTAN_DEBUGFS': executable(args.debugfs),
-                    'HARMATTAN_UI_SKIN': args.skin, 'HARMATTAN_UI_NETWORK': network}
+                    'HARMATTAN_UI_SKIN': args.skin, 'HARMATTAN_UI_NETWORK': network,
+                    'HARMATTAN_UI_CA_CERTIFICATES': args.ca_certificates}
         if args.audio == 'pulse':
             pulse = Path(executable(args.pulseaudio))
             for name in ('pactl', 'parec'):
