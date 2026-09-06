@@ -20,11 +20,14 @@ class BrowserTests(unittest.TestCase):
             binary = str(Path(temporary) / 'probe')
             subprocess.run(['cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
                 str(SCRIPTS / 'browser-guest.c'), str(SCRIPTS / 'tests/browser-host.c'), '-o', binary], check=True)
-            for mode in range(13):
+            for mode in range(19):
                 with self.subTest(mode=mode):
                     result = subprocess.run([binary, str(mode)], capture_output=True, timeout=5)
-                    self.assertEqual(result.returncode, 123 if mode >= 6 else 0, result.stderr)
-                    self.assertEqual(result.stdout, b'N00_BROWSER_SOFTWARE_COMPOSITING verified\n' if mode == 0 else b'')
+                    self.assertEqual(result.returncode, 123 if 6 <= mode <= 12 or 14 <= mode <= 17 else 0, result.stderr)
+                    expected = b'N00_BROWSER_SOFTWARE_COMPOSITING verified\n' if mode in (0, 13, 18) else b''
+                    if mode == 13:
+                        expected = b'N00_BROWSER_JAVASCRIPT disabled\n' + expected
+                    self.assertEqual(result.stdout, expected)
 
     def test_entry_requires_pinned_bytes_and_preserves_arguments(self):
         data = b'Exec=/usr/bin/invoker --type=m /usr/bin/grob -prestart\n'
@@ -64,6 +67,7 @@ class BrowserTests(unittest.TestCase):
     def test_setup_requires_original_identities_and_both_volatile_entry_mounts(self):
         info = {'helper_md5': '1' * 32, 'entries': {p: h for p, h in BROWSER.ENTRIES.values()}}
         hashes = {'/usr/bin/grob': '6162b4b46f28d53e93b9fcba7f4f3f7b',
+            '/usr/bin/QtWebProcess': '5f4bff7d2401dd97cc9f88b1e4b02127',
             '/usr/lib/libQtWebKit2experimental.so.4': 'd93364105cdecaf69b53571275480d04',
             '/tmp/n00-ui-helpers/n00-browser.so': '1' * 32, **info['entries']}
         data = ('N00_BROWSER_SETUP_BEGIN\n' + ''.join(f'{h}  {p}\n' for p, h in hashes.items()) +
@@ -73,7 +77,8 @@ class BrowserTests(unittest.TestCase):
         for bad in (b'', data + data, data.replace(b'1' * 32, b'2' * 32),
                     data.replace(b'tmpfs ', b'ext4 ', 1),
                     data.replace(b'N00_BROWSER_SETUP_BEGIN', b''),
-                    data.replace(b'6162b4b46f28d53e93b9fcba7f4f3f7b', b'0' * 32)):
+                    data.replace(b'6162b4b46f28d53e93b9fcba7f4f3f7b', b'0' * 32),
+                    data.replace(b'5f4bff7d2401dd97cc9f88b1e4b02127', b'0' * 32)):
             with self.assertRaises(ValueError):
                 BROWSER.validate_setup(bad, info)
 
@@ -87,9 +92,36 @@ class BrowserTests(unittest.TestCase):
             with patch.dict(os.environ, HARMATTAN_PREBUILT_HELPERS='', HARMATTAN_PORT_WORKSPACE=temporary), \
                     patch.object(BROWSER.subprocess, 'run'):
                 payloads, info = BROWSER.prepare()
+                self.assertEqual(info['mode'], 'original')
+                self.assertEqual(info['javascript_policy'], 'preserve-original')
+                self.assertIn(b'export N00_BROWSER_MODE=original\n', payloads['browser-launch-guest.sh'])
                 self.assertIn(info['helper_md5'].encode(), payloads['browser-launch-guest.sh'])
                 self.assertNotIn(b'@HELPER_MD5@', payloads['browser-launch-guest.sh'])
+                payloads, info = BROWSER.prepare('basic')
+                self.assertEqual(info['mode'], 'basic')
+                self.assertEqual(info['javascript_policy'], 'disabled')
+                self.assertIn(b'export N00_BROWSER_MODE=basic\n', payloads['browser-launch-guest.sh'])
                 for malformed in (b'', bytes(64), data[:16] + b'\x02\x00\x28\x00' + data[20:]):
                     binary.write_bytes(malformed)
                     with self.assertRaises(ValueError):
                         BROWSER.prepare()
+
+    def test_unknown_mode_fails_before_building(self):
+        with patch.object(BROWSER.subprocess, 'run') as build:
+            with self.assertRaises(ValueError):
+                BROWSER.prepare('basic; echo unexpected')
+            build.assert_not_called()
+
+    def test_launcher_rejects_invalid_or_disconnected_basic_mode_before_creating_run(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / 'must-not-exist'
+            for mode, network, expected in (('invalid', 'user', 'must be original or basic'),
+                                             ('basic', 'off', 'requires HARMATTAN_UI_NETWORK=user')):
+                env = {k: v for k, v in os.environ.items() if not k.startswith('HARMATTAN_')}
+                env.update(HARMATTAN_UI_BROWSER_MODE=mode, HARMATTAN_UI_NETWORK=network,
+                           HARMATTAN_PORT_WORKSPACE=str(output))
+                result = subprocess.run(['sh', str(SCRIPTS / 'run-arm64-ui.sh')],
+                    env=env, capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn(expected, result.stderr)
+                self.assertFalse(output.exists())

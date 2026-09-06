@@ -24,7 +24,7 @@ prepare_browser() {
     done
     chmod 0755 /tmp/n00-ui-helpers/browser-launch-guest.sh
     printf '\nN00_BROWSER_SETUP_BEGIN\n'
-    md5sum /usr/bin/grob /usr/lib/libQtWebKit2experimental.so.4 \
+    md5sum /usr/bin/grob /usr/bin/QtWebProcess /usr/lib/libQtWebKit2experimental.so.4 \
         /tmp/n00-ui-helpers/n00-browser.so /usr/share/applications/browser.desktop \
         /usr/share/dbus-1/services/com.nokia.browser.service
     grep -E ' /usr/share/(applications/browser.desktop|dbus-1/services/com.nokia.browser.service) tmpfs ' /proc/mounts

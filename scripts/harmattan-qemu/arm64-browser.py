@@ -17,7 +17,9 @@ def adapt_entry(data, expected):
     return data.replace(b'/usr/bin/grob', b'/tmp/n00-ui-helpers/browser-launch-guest.sh')
 
 
-def prepare():
+def prepare(mode='original'):
+    if mode not in ('original', 'basic'):
+        raise ValueError('browser mode must be original or basic')
     scripts = Path(__file__).resolve().parent
     subprocess.run(['sh', str(scripts / 'build-browser-guest.sh')], check=True)
     work = Path(os.environ.get('HARMATTAN_PREBUILT_HELPERS') or
@@ -29,14 +31,17 @@ def prepare():
     # Entry files are supplied by the guest at installation, never bundled.
     md5 = hashlib.md5(data).hexdigest()
     launch = (scripts / 'browser-launch-guest.sh').read_bytes()
-    if launch.count(b'@HELPER_MD5@') != 1:
-        raise ValueError('browser launch identity placeholder changed')
+    for placeholder, value in ((b'@HELPER_MD5@', md5), (b'@BROWSER_MODE@', mode)):
+        if launch.count(placeholder) != 1:
+            raise ValueError('browser launch placeholder changed')
+        launch = launch.replace(placeholder, value.encode())
     payloads = {'n00-browser.so': data,
-        'browser-launch-guest.sh': launch.replace(b'@HELPER_MD5@', md5.encode())}
-    return payloads, {'enabled': True, 'helper_md5': md5,
+        'browser-launch-guest.sh': launch}
+    return payloads, {'enabled': True, 'mode': mode,
+        'javascript_policy': 'disabled' if mode == 'basic' else 'preserve-original', 'helper_md5': md5,
         'helper_sha256': hashlib.sha256(data).hexdigest(),
         'source_sha256': hashlib.sha256((scripts / 'browser-guest.c').read_bytes()).hexdigest(),
-        'scope': 'pinned Grob software compositing through original preferences APIs; per-application entry'}
+        'scope': 'pinned Grob software compositing and optional basic browsing through original preferences APIs; per-application entry'}
 
 
 def install(serial, wait_line, upload, output, info):
@@ -79,6 +84,7 @@ def validate_setup(data, info):
             data.splitlines().count(b'N00_BROWSER_SETUP_END') != 1):
         raise ValueError('browser setup report is missing or ambiguous')
     expected = {'/usr/bin/grob': '6162b4b46f28d53e93b9fcba7f4f3f7b',
+        '/usr/bin/QtWebProcess': '5f4bff7d2401dd97cc9f88b1e4b02127',
         '/usr/lib/libQtWebKit2experimental.so.4': 'd93364105cdecaf69b53571275480d04',
         '/tmp/n00-ui-helpers/n00-browser.so': info['helper_md5'], **info['entries']}
     hashes = re.findall(rb'^([0-9a-f]{32})  (/[^\n]+)$', reports[0], re.M)

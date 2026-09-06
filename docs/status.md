@@ -41,7 +41,7 @@ Audio-enabled UI startup now includes the original OHM resource manager. The [ri
 
 Normal source startup now uses [actual readiness checks](performance.md) instead of fixed compositor/Home delays. The [performance record](performance-validation.json) covers 285 host tests, paired startup timings, early-input protection and the audio-enabled Home/Notes/keyboard/Calculator/transition regression. The change keeps the single Cortex-A8/512 MiB board and original animation timings; it does not establish a display FPS improvement.
 
-Network-enabled UI launches now select software page compositing in the pinned original browser, with optional host CA trust. The [browser record](browser-validation.json) covers 302 host tests, Web-icon startup, the Baidu HTTPS homepage, original keyboard entry, certificate rejection and the generated shortcut UI regression. Baidu search results and arbitrary modern sites remain unaccepted.
+Network-enabled UI launches now select software page compositing in the pinned original browser, with optional host CA trust. The earlier [browser record](browser-validation.json) covers 302 host tests, Web-icon startup, the Baidu HTTPS homepage, original keyboard entry, certificate rejection and the generated shortcut UI regression. The optional [basic web mode](networking.md#optional-basic-web-mode) adds a separate shortcut that disables webpage JavaScript; the original entry and default remain unchanged. The [basic mode record](browser-basic-validation.json) covers 306 host tests and Baidu's basic search results in a fresh guest. Search with JavaScript enabled and arbitrary modern sites remain unaccepted.
 
 ## Open limitations
 

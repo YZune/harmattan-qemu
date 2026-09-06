@@ -41,11 +41,26 @@ HARMATTAN_UI_NETWORK=user HARMATTAN_UI_CA_CERTIFICATES=host \
 
 ## 原版浏览器渲染
 
-使用 `HARMATTAN_UI_NETWORK=user` 的 UI 启动现会为原版 Grob 0.73.2 / libgrob-qtwebkit 0.73.0 准备限定范围的软件合成适配。浏览器的页面加速合成可能在没有当前上下文时进入 SDK GLES 包装层，加载百度时因此崩溃。适配通过原版 WebKit 的偏好设置接口关闭页面加速，并调用读取接口确认生效。JavaScript 设置、TLS 校验和 GLES 错误处理保持原样。
+使用 `HARMATTAN_UI_NETWORK=user` 的 UI 启动现会为原版 Grob 0.73.2 / libgrob-qtwebkit 0.73.0 准备限定范围的软件合成适配。浏览器的页面加速合成可能在没有当前上下文时进入 SDK GLES 包装层，加载百度时因此崩溃。适配通过原版 WebKit 的偏好设置接口关闭页面加速，并调用读取接口确认生效。默认 `original` 浏览器模式保留 JavaScript 设置；两种模式均保留 TLS 校验和 GLES 错误处理。
 
-只有固定版本浏览器的桌面和 D-Bus 入口会通过临时内存挂载接入包装脚本。磁盘上的原始内容保持完整，持久化 profile 也一样。每次启动校验可执行文件、实际 WebKit 库链接及辅助库身份，其他应用不会继承该浏览器预加载库。未知版本会明确失败，不套用固定 ABI。构建器和发布辅助库清单已包含新的 ARM 辅助库；已下载的旧预览应用不会随源码自动更新。
+只有固定版本浏览器的桌面和 D-Bus 入口会通过临时内存挂载接入包装脚本。磁盘上的原始内容保持完整，持久化 profile 也一样。每次启动校验 Grob、QtWebProcess、实际 WebKit 库链接及辅助库身份，其他应用不会继承该浏览器预加载库。未知版本会明确失败，不套用固定 ABI。构建器和发布辅助库清单已包含 ARM 辅助库；已下载的旧预览应用不会随源码自动更新。
 
-[浏览器验证记录](browser-validation.json)覆盖 Web 图标/D-Bus 启动、百度 HTTPS 首页、原版键盘文字输入、有效 HTTPS 页面、自签名证书拒绝和联合 UI 回归。百度搜索结果及广泛的现代 JavaScript/CSS 兼容尚未通过：此前的搜索探针停留在加载页。这项适配不会把历史 WebKit 引擎升级为现代浏览器。
+此前的[浏览器验证记录](browser-validation.json)覆盖 Web 图标/D-Bus 启动、百度 HTTPS 首页、原版键盘文字输入、有效 HTTPS 页面、自签名证书拒绝和联合 UI 回归；其中的搜索探针停留在加载页。
+
+## 可选基础网页模式
+
+后续独立运行发现，启用 JavaScript 的百度搜索让独立的 `QtWebProcess` 渲染进程持续忙碌，之后访问其他页面也停止加载。Grob 界面进程本身处于休眠，单独检查它会漏掉问题。通过原版 WebKit 的偏好设置及读取接口关闭网页 JavaScript 后，百度自身提供的精简版搜索结果可以显示。尚未定位到具体脚本或引擎缺陷。
+
+如需浏览文字、链接及普通 HTML 表单，可显式选择此兼容模式：
+
+```sh
+HARMATTAN_UI_NETWORK=user HARMATTAN_UI_CA_CERTIFICATES=host \
+  HARMATTAN_UI_BROWSER_MODE=basic sh scripts/harmattan-qemu/run-arm64-ui.sh
+```
+
+如需独立 Finder 入口，在[本地启动器生成命令](building.zh-CN.md)后追加 `--browser-mode basic --name 'Run N9 Basic Web.command'`。这会新增第二个入口，保留 `Run N9.command` 及其设置。生成器和源码启动器仍默认 `original`，显式环境变量覆盖继续优先。基础模式要求用户态联网，启动时会提示网页 JavaScript 已关闭。
+
+[基础模式验证记录](browser-basic-validation.json)分别记录搜索、后续导航、证书拒绝和 UI 回归。基础模式不支持必须依赖 JavaScript 的页面，也没有修复 JavaScript 引擎或实现广泛的现代 CSS 兼容。网站可能将精简版表单或重定向指向 HTTP，本次百度搜索就是如此；适配层不会改写网址或忽略证书错误。HTTPS 首页与完整搜索链路属于不同验收项。
 
 ## 应用边界
 

@@ -232,6 +232,7 @@ def main():
     parser.add_argument("--network", choices=("off", "user"), default="off")
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
     parser.add_argument('--ca-certificates', choices=('off', 'host'), default='off')
+    parser.add_argument('--browser-mode', choices=('original', 'basic'), default='original')
     parser.add_argument('--startup-waits', choices=('fixed', 'ready'), default='fixed')
     parser.add_argument('--profile', type=Path, help='private persistent disk directory; interactive mode only')
     parser.add_argument('--profile-base', type=Path, help='launcher-created private raw clone')
@@ -261,6 +262,8 @@ def main():
     parser.add_argument("--measure-performance", action="store_true", help="bounded CPU and guest framebuffer observations using the Calculator workflow; not FPS")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.browser_mode == 'basic' and args.network != 'user':
+        parser.error('basic browser mode requires --network user')
     if args.exit_on_ready and (not args.interactive or args.profile or args.boot_animation):
         parser.error('bounded startup requires interactive readiness with an independent snapshot and no boot movie')
     if args.profile and (not args.interactive or not args.profile_base or not args.profile_image_tool):
@@ -344,7 +347,7 @@ def main():
     helper_payloads = {}
     browser_info = {'enabled': False}
     if args.network == 'user':
-        browser_payloads, browser_info = browser.prepare()
+        browser_payloads, browser_info = browser.prepare(args.browser_mode)
         helper_payloads.update(browser_payloads)
     app_viewport_info = {'profile_helpers_prepared': bool(args.profile)}
     if args.profile:

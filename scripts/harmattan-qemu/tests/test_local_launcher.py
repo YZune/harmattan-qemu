@@ -1,3 +1,4 @@
+import argparse
 import importlib.util
 import os
 from pathlib import Path
@@ -23,14 +24,42 @@ class LocalLauncherTests(unittest.TestCase):
                                                        'HARMATTAN_UI_NETWORK': 'user'}, 'pulse'))
             env = {k: v for k, v in os.environ.items() if not k.startswith('HARMATTAN_')}
             result = subprocess.run(['/bin/sh', str(command)], env=env, check=True, capture_output=True, text=True)
-            self.assertEqual(result.stdout.splitlines(), ['Network: user; audio: pulse', str(root), 'pulse'])
+            self.assertEqual(result.stdout.splitlines(), ['Network: user; audio: pulse; browser: original', str(root), 'pulse'])
             self.assertTrue((root / 'fresh runs').is_dir())
             env['HARMATTAN_UI_BUILD_ROOT'] = 'explicit override'
             result = subprocess.run(['/bin/sh', str(command), '--network-diagnostic', 'one argument'],
                                     env=env, check=True, capture_output=True, text=True)
-            self.assertEqual(result.stdout.splitlines(), ['Network: user; audio: off', 'explicit override', 'off',
+            self.assertEqual(result.stdout.splitlines(), ['Network: user; audio: off; browser: original', 'explicit override', 'off',
                                                          '--network-diagnostic', 'one argument'])
             self.assertFalse((root / 'UNEXPECTED').exists())
+
+    def test_separate_basic_shortcut_preserves_original_and_allows_explicit_override(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / 'scripts/harmattan-qemu'
+            scripts.mkdir(parents=True)
+            (scripts / 'run-arm64-ui.sh').write_text('printf "%s\\n" "$HARMATTAN_UI_BROWSER_MODE"\n')
+            original = root / 'Run N9.command'
+            original.write_bytes(b'original settings\n')
+            basic = root / launcher.launcher_name('Run N9 Basic Web.command')
+            launcher.write_launcher(basic, launcher.render(root, {
+                'HARMATTAN_PORT_WORKSPACE': root / 'runs', 'HARMATTAN_UI_NETWORK': 'user',
+                'HARMATTAN_UI_BROWSER_MODE': 'basic'}, 'off'))
+            env = {k: v for k, v in os.environ.items() if not k.startswith('HARMATTAN_')}
+            result = subprocess.run(['sh', str(basic)], env=env, check=True, capture_output=True, text=True)
+            self.assertIn('webpage JavaScript is disabled', result.stdout)
+            self.assertEqual(result.stdout.splitlines()[-1], 'basic')
+            env['HARMATTAN_UI_BROWSER_MODE'] = 'original'
+            result = subprocess.run(['sh', str(basic)], env=env, check=True, capture_output=True, text=True)
+            self.assertNotIn('JavaScript is disabled', result.stdout)
+            self.assertEqual(result.stdout.splitlines()[-1], 'original')
+            self.assertEqual(original.read_bytes(), b'original settings\n')
+
+    def test_shortcut_name_cannot_escape_output_directory(self):
+        for name in ('../escape.command', '/tmp/escape.command', 'dir/escape.command',
+                     'dir\\escape.command', '.command', 'name.sh', 'a\x00.command', 'a\n.command'):
+            with self.subTest(name=name), self.assertRaises(argparse.ArgumentTypeError):
+                launcher.launcher_name(name)
 
     def test_replacement_keeps_exact_original_and_rejects_symlink(self):
         with tempfile.TemporaryDirectory() as temporary:

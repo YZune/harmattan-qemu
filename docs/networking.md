@@ -41,11 +41,26 @@ The [certificate validation record](certificates-validation.json) covers the gen
 
 ## Original browser rendering
 
-UI launches with `HARMATTAN_UI_NETWORK=user` now prepare a scoped software compositing adapter for the original Grob 0.73.2 / libgrob-qtwebkit 0.73.0. The browser's accelerated page compositor can enter the SDK GLES wrapper without a current context and crash while loading Baidu. The adapter uses the original WebKit preference setter and checks its getter to disable page acceleration. JavaScript settings, TLS verification and GLES error handling are preserved.
+UI launches with `HARMATTAN_UI_NETWORK=user` now prepare a scoped software compositing adapter for the original Grob 0.73.2 / libgrob-qtwebkit 0.73.0. The browser's accelerated page compositor can enter the SDK GLES wrapper without a current context and crash while loading Baidu. The adapter uses the original WebKit preference setter and checks its getter to disable page acceleration. The default `original` browser mode preserves JavaScript settings. TLS verification and GLES error handling are preserved in both modes.
 
-Only the pinned browser's desktop and D-Bus entries receive a wrapper, through temporary memory mounts. Their original on-disk contents remain intact, including in a persistent profile. Each launch checks the executable, actual WebKit library link and helper identities. Other applications do not inherit this browser preload. Unknown versions fail explicitly instead of using the pinned ABI. The builder and release helper manifest include the new ARM helper; an already downloaded preview app is unchanged.
+Only the pinned browser's desktop and D-Bus entries receive a wrapper, through temporary memory mounts. Their original on-disk contents remain intact, including in a persistent profile. Each launch checks Grob, QtWebProcess, the actual WebKit library link and helper identities. Other applications do not inherit this browser preload. Unknown versions fail explicitly instead of using the pinned ABI. The builder and release helper manifest include the ARM helper; an already downloaded preview app is unchanged.
 
-The [browser validation record](browser-validation.json) covers Web-icon/D-Bus startup, the Baidu HTTPS homepage, original keyboard text entry, a valid HTTPS page, rejection of a self-signed certificate and the combined UI regression. Baidu search results and broad modern JavaScript/CSS compatibility are not accepted: an earlier search probe remained on a loading page. This adapter does not turn the historical WebKit engine into a current browser.
+The earlier [browser validation record](browser-validation.json) covers Web-icon/D-Bus startup, the Baidu HTTPS homepage, original keyboard text entry, a valid HTTPS page, rejection of a self-signed certificate and the combined UI regression. Its search probe remained on a loading page.
+
+## Optional basic web mode
+
+In a subsequent isolated run, Baidu search with JavaScript enabled kept the separate `QtWebProcess` renderer busy, and later navigation also stopped loading. The Grob UI process itself was sleeping, so inspecting that process alone missed the problem. Disabling webpage JavaScript through the original WebKit preference setter/getter allowed Baidu's own basic search results to render. The exact script or engine defect has not been isolated.
+
+Select this workaround explicitly for text, links and ordinary HTML forms:
+
+```sh
+HARMATTAN_UI_NETWORK=user HARMATTAN_UI_CA_CERTIFICATES=host \
+  HARMATTAN_UI_BROWSER_MODE=basic sh scripts/harmattan-qemu/run-arm64-ui.sh
+```
+
+For a separate Finder shortcut, append `--browser-mode basic --name 'Run N9 Basic Web.command'` to the [local launcher generator](building.md) command. This creates a second entry while retaining `Run N9.command` and its settings. New generators and the source launcher default to `original`; an explicit environment override still takes precedence. Basic mode requires user networking and reports that webpage JavaScript is disabled at launch.
+
+The [basic mode validation record](browser-basic-validation.json) separates search, subsequent navigation, certificate rejection and UI regression. Basic mode does not support pages that require JavaScript, repair the JavaScript engine, or establish broad modern CSS compatibility. A site may send its basic form or redirect to HTTP, as Baidu did in the search probe; the adapter does not rewrite URLs or waive certificate errors. The HTTPS homepage and the complete search route are separate checks.
 
 ## Application boundaries
 

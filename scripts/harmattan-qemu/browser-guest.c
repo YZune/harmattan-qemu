@@ -1,9 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
  * Grob 0.73.2 / libgrob-qtwebkit 0.73.0 only. The launcher verifies both
- * binaries before enabling this helper. The pinned qwk_1.0 setAttribute ABI
+ * binaries and QtWebProcess before enabling this helper. The pinned qwk_1.0
+ * setAttribute ABI
  * reads QWKPreferences -> private -> WKPreferencesRef (two pointer loads at
  * offset zero). Use that reference with the original exported preferences
- * APIs. Do not change JavaScript, TLS verification or GLES error handling.
+ * APIs. Only explicit basic mode disables webpage JavaScript. TLS verification
+ * and GLES error handling are unchanged in both modes.
  */
 extern void *dlsym(void *, const char *);
 extern int readlink(const char *, char *, unsigned int);
@@ -42,6 +44,9 @@ void _ZN14QWKPreferences12setAttributeENS_12WebAttributeEb(void *self, int attr,
         original(self, attr, on);
         return;
     }
+    const char *mode = getenv("N00_BROWSER_MODE");
+    int basic = mode && !strcmp(mode, "basic");
+    if (mode && !basic && strcmp(mode, "original")) fail();
     if (!self || !*(void **)self || !**(void ***)self) fail();
     Set set = (Set)dlsym((void *)-1, "WKPreferencesSetAcceleratedCompositingEnabled");
     Get get = (Get)dlsym((void *)-1, "WKPreferencesGetAcceleratedCompositingEnabled");
@@ -50,6 +55,15 @@ void _ZN14QWKPreferences12setAttributeENS_12WebAttributeEb(void *self, int attr,
     void *preferences = **(void ***)self;
     set(preferences, 0);
     if (get(preferences)) fail();
+    if (basic) {
+        Set js_set = (Set)dlsym((void *)-1, "WKPreferencesSetJavaScriptEnabled");
+        Get js_get = (Get)dlsym((void *)-1, "WKPreferencesGetJavaScriptEnabled");
+        if (!js_set || !js_get) fail();
+        js_set(preferences, 0);
+        if (js_get(preferences)) fail();
+        const char marker[] = "N00_BROWSER_JAVASCRIPT disabled\n";
+        write(1, marker, sizeof(marker) - 1);
+    }
     const char marker[] = "N00_BROWSER_SOFTWARE_COMPOSITING verified\n";
     write(1, marker, sizeof(marker) - 1);
 }

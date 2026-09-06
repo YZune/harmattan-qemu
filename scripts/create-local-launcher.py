@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create an ignored Run N9.command with explicit source-build selections."""
+"""Create an ignored local .command shortcut with explicit source-build selections."""
 import argparse
 import os
 from pathlib import Path
@@ -16,6 +16,13 @@ def executable(value):
     if not found:
         raise ValueError('Executable not found: ' + value)
     return str(Path(found).resolve())
+
+
+def launcher_name(value):
+    if (not value.endswith('.command') or value == '.command' or
+            any(c in value for c in ('/', '\\', '\x00', '\n', '\r'))):
+        raise argparse.ArgumentTypeError('Use a plain filename ending in .command')
+    return value
 
 
 def validate_build(root, network, skin):
@@ -46,7 +53,9 @@ def render(repo, settings, audio):
               '  *) default_audio=off ;;',
               'esac', 'export HARMATTAN_UI_AUDIO="${HARMATTAN_UI_AUDIO:-$default_audio}"',
               'mkdir -p "$HARMATTAN_PORT_WORKSPACE"',
-              'printf "Network: %s; audio: %s\\n" "$HARMATTAN_UI_NETWORK" "$HARMATTAN_UI_AUDIO"',
+              'printf "Network: %s; audio: %s; browser: %s\\n" "$HARMATTAN_UI_NETWORK" "$HARMATTAN_UI_AUDIO" "${HARMATTAN_UI_BROWSER_MODE:-original}"',
+              'if [ "${HARMATTAN_UI_BROWSER_MODE:-original}" = basic ]; then',
+              '  echo "Basic web mode: webpage JavaScript is disabled."', 'fi',
               'exec /bin/sh scripts/harmattan-qemu/run-arm64-ui.sh "$@"']
     return '\n'.join(lines) + '\n'
 
@@ -84,6 +93,8 @@ def main():
     parser.add_argument('--network', choices=('off', 'user'), default='off')
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
     parser.add_argument('--ca-certificates', choices=('off', 'host'), default='off')
+    parser.add_argument('--browser-mode', choices=('original', 'basic'), default='original')
+    parser.add_argument('--name', type=launcher_name, default='Run N9.command', help='filename inside artifacts/local')
     parser.add_argument('--pulseaudio', default='pulseaudio')
     parser.add_argument('--skin', choices=('off', 'frame', 'black'), default='off')
     parser.add_argument('--replace', action='store_true')
@@ -95,6 +106,8 @@ def main():
         network = 'user' if args.audio == 'pulse' else args.network
         if args.ca_certificates == 'host' and network != 'user':
             raise ValueError('Host CA certificates require --network user or --audio pulse')
+        if args.browser_mode == 'basic' and network != 'user':
+            raise ValueError('Basic browser mode requires --network user or --audio pulse')
         validate_build(build, network, args.skin)
         settings = {'HARMATTAN_UI_BUILD_ROOT': build,
                     'HARMATTAN_PORT_WORKSPACE': args.workspace.expanduser().resolve(),
@@ -102,17 +115,18 @@ def main():
                     'HARMATTAN_ARMEL_CLANG': executable(args.armel_clang),
                     'HARMATTAN_DEBUGFS': executable(args.debugfs),
                     'HARMATTAN_UI_SKIN': args.skin, 'HARMATTAN_UI_NETWORK': network,
-                    'HARMATTAN_UI_CA_CERTIFICATES': args.ca_certificates}
+                    'HARMATTAN_UI_CA_CERTIFICATES': args.ca_certificates,
+                    'HARMATTAN_UI_BROWSER_MODE': args.browser_mode}
         if args.audio == 'pulse':
             pulse = Path(executable(args.pulseaudio))
             for name in ('pactl', 'parec'):
                 if not os.access(pulse.with_name(name), os.X_OK):
                     raise ValueError('PulseAudio requires matching ' + name)
             settings['HARMATTAN_PULSEAUDIO'] = pulse
-        output = ROOT / 'artifacts/local/Run N9.command'
+        output = ROOT / 'artifacts/local' / args.name
         backup = write_launcher(output, render(ROOT, settings, args.audio), args.replace)
         print(output)
-        print('Network:', network, '; audio:', args.audio)
+        print('Network:', network, '; audio:', args.audio, '; browser:', args.browser_mode)
         if backup:
             print('Previous launcher retained:', backup)
         print('Selections are validated when launched; existing QEMU sessions keep their original settings.')
