@@ -135,6 +135,17 @@ By default the launcher builds helpers as needed, creates a private APFS clone p
 
 Normal interaction enables WFI, input-driven activity, the original keyboard and animations, and display handoff. Splash stays disabled.
 
+For a Finder shortcut, generate an ignored `artifacts/local/Run N9.command` with your verified build and tools. This example explicitly enables networking and CoreAudio output (install PulseAudio first):
+
+```sh
+python3 scripts/create-local-launcher.py \
+  --build-root "$HARMATTAN_PORT_WORKSPACE/qemu-9.1.3-interaction/build-arm64-interaction" \
+  --armel-clang "${HARMATTAN_ARMEL_CLANG:-clang}" \
+  --debugfs "${HARMATTAN_DEBUGFS:-debugfs}" --network user --audio pulse
+```
+
+Add `--replace` to update an existing shortcut while retaining its exact previous contents in a private backup. The generator records the chosen build separately from the run workspace, checks both the plain and Cocoa binaries for the networking patch, and retains explicit environment overrides. It prints the selected network/audio modes at launch. Non-audio diagnostics keep audio off. Existing windows retain their original settings until restarted; updating source alone does not update an older shortcut or binary. See the [entry validation record](local-launcher-validation.json). HTTP/PCM diagnostic success does not establish modern HTTPS browser or original ringtone-preview support.
+
 [Startup readiness](performance.md) replaces fixed waits in normal interaction and combined usability runs. `--startup-headless-diagnostic` checks that same startup and exits without opening a window.
 
 Fresh Cocoa interaction builds show the [original boot movie](boot-animation.md) over the startup checks by default. The prepared disk supplies the movie; the source and app contain no boot artwork. Diagnostics keep the real framebuffer visible. This presentation does not shorten the existing guest waits.

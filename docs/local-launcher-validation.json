@@ -1,0 +1,71 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "2d3c8b7",
+  "scope": "Generated local Finder shortcut explicitly selects a verified build, networking and optional audio; source defaults and existing sessions unchanged.",
+  "source_sha256": {
+    "scripts/create-local-launcher.py": "2a223c2573f91ddd40926f17835003b4771a0481c78660f9b55362fe0afed97b",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "8a4cda1461543e48261f9287ac94deb5d6dc88d8b8d7b4dbfe47c53437557e57"
+  },
+  "host_tests": "293 passed in 19.611 seconds",
+  "entry_network_diagnostic": {
+    "passed": true,
+    "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+    "scope": "SDK SMC91C111, DHCP, external DNS/HTTP and bidirectional host HTTP; no TLS or UI connection manager",
+    "setup": {
+      "enabled": true,
+      "backend": "slirp",
+      "interface": "eth0",
+      "address": "10.0.2.15",
+      "gateway": "10.0.2.2",
+      "dns": "10.0.2.3",
+      "dhcp": true,
+      "scope": "SDK Ethernet and initial DHCP lease; no Wi-Fi or connection-manager emulation"
+    },
+    "transfer": {
+      "download_md5": "6bc045333dad52354858518e0fbc3514",
+      "upload_md5": "6bc045333dad52354858518e0fbc3514",
+      "bytes_each_way": 65536,
+      "dns_name": "example.com",
+      "dns_address": "172.66.147.243",
+      "internet_url": "http://example.com/",
+      "internet_status": 200,
+      "internet_bytes": 559
+    }
+  },
+  "entry_audio_diagnostic": {
+    "passed": true,
+    "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+    "probe_sha256": "19a52bde481add0c582f22a9b51059ca00ef31a09d73a97430bfd5e5f1293b5c",
+    "playback": {
+      "pulse": {
+        "format": "s16le",
+        "rate": 44100,
+        "channels": 2,
+        "active_seconds": 2.9998,
+        "rms": 288.8,
+        "frequency_hz": 440.02,
+        "peak": 503,
+        "scope": "monitor of this private CoreAudio output stream; not a microphone or acoustic measurement"
+      },
+      "gstreamer": {
+        "format": "s16le",
+        "rate": 44100,
+        "channels": 2,
+        "active_seconds": 3.0,
+        "rms": 288.81,
+        "frequency_hz": 440.0,
+        "peak": 532,
+        "scope": "monitor of this private CoreAudio output stream; not a microphone or acoustic measurement"
+      },
+      "muted": {
+        "silent": true,
+        "seconds": 3.0184
+      }
+    },
+    "scope": "original guest libpulse and GStreamer WAV pipeline, private CoreAudio output monitor; not Nokia Music UI or acoustic acceptance"
+  },
+  "not_validated_by_this_record": [
+    "Original browser HTTPS and Settings ringtone preview",
+    "Physical Cocoa input or new prebuilt app release"
+  ]
+}
