@@ -135,6 +135,8 @@ By default the launcher builds helpers as needed, creates a private APFS clone p
 
 Normal interaction enables WFI, input-driven activity, the original keyboard and animations, and display handoff. Splash stays disabled.
 
+[Startup readiness](performance.md) replaces fixed waits in normal interaction and combined usability runs. `--startup-headless-diagnostic` checks that same startup and exits without opening a window.
+
 Fresh Cocoa interaction builds show the [original boot movie](boot-animation.md) over the startup checks by default. The prepared disk supplies the movie; the source and app contain no boot artwork. Diagnostics keep the real framebuffer visible. This presentation does not shorten the existing guest waits.
 
 Useful overrides:
@@ -143,6 +145,8 @@ Useful overrides:
 | --- | --- |
 | `HARMATTAN_USER_PROFILE` | Private persistent profile directory; unset by default; interactive use only |
 | `HARMATTAN_UI_NETWORK` | `off` (default) / `user`; [SDK Ethernet, DHCP and user networking](networking.md) |
+| `HARMATTAN_UI_AUDIO` | `off` (default) / `pulse`; [private CoreAudio output](audio.md), with SDK networking |
+| `HARMATTAN_UI_STARTUP_WAITS` | `ready` (interactive/usability/startup diagnostic default) / `fixed` (historical diagnostic default) |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`; activity releases after 8 seconds without input |
 | `HARMATTAN_UI_SKIN` | `off` (source default) / `frame` (code-drawn, release default) / `black` (requires separately obtained artwork and rebuild) |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |

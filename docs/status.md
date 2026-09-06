@@ -37,6 +37,8 @@ The [package installer](applications.md) now transfers reviewed ARMEL packages i
 
 Source launches now offer optional [sound output](audio.md) through a private PulseAudio server and Mac CoreAudio. The [audio record](audio-validation.json) covers 281 host tests, original guest libpulse PCM, GStreamer WAV, mute and the combined UI regression with audio enabled. This is separate from full Nokia audio hardware and policy emulation.
 
+Normal source startup now uses [actual readiness checks](performance.md) instead of fixed compositor/Home delays. The [performance record](performance-validation.json) covers 285 host tests, paired startup timings, early-input protection and the audio-enabled Home/Notes/keyboard/Calculator/transition regression. The change keeps the single Cortex-A8/512 MiB board and original animation timings; it does not establish a display FPS improvement.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

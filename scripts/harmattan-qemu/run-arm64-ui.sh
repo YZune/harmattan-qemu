@@ -9,6 +9,14 @@ kernel=${HARMATTAN_KERNEL:-"$repo_root/extracted/pr1.0-qemu-adaptation/zImage-2.
 raw=${HARMATTAN_GUEST_IMAGE:-"$repo_root/extracted/hybrid-pr1.3-qemu/arm-qemu-rm680-image-pr1.3-ui.raw"}
 mode=${1:-interactive}
 user_profile=${HARMATTAN_USER_PROFILE:-}
+startup_waits=${HARMATTAN_UI_STARTUP_WAITS:-}
+if [ -z "$startup_waits" ]; then
+    case "$mode" in
+        interactive|--startup-headless-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) startup_waits=ready ;;
+        *) startup_waits=fixed ;;
+    esac
+fi
+case "$startup_waits" in fixed|ready) ;; *) echo 'HARMATTAN_UI_STARTUP_WAITS must be fixed or ready.' >&2; exit 2 ;; esac
 if [ -n "$user_profile" ] && [ "$mode" != interactive ] && [ "$mode" != --install-packages ]; then
     echo 'User profiles are for interactive use; diagnostics create independent disks.' >&2; exit 2
 fi
@@ -23,6 +31,7 @@ esac
 case "$mode" in --network-diagnostic|--install-packages) network=user ;; esac
 case "$network" in user|off) ;; *) echo 'HARMATTAN_UI_NETWORK must be user or off.' >&2; exit 2 ;; esac
 case "$mode" in
+    --startup-headless-diagnostic) ;;
     --audio-diagnostic) ;;
     --install-packages)
         test "$#" -ge 2 && test -n "$user_profile" || {
@@ -36,7 +45,7 @@ if [ "$mode" != --install-packages ]; then test "$#" -le 1 || exit 2; fi
 # and the combined regression share the verified idle/input-capable build.
 runtime=${HARMATTAN_UI_RUNTIME:-}
 if [ -z "$runtime" ]; then
-    case "$mode" in interactive|--audio-diagnostic|--install-packages|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
+    case "$mode" in interactive|--startup-headless-diagnostic|--audio-diagnostic|--install-packages|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
 fi
 case "$runtime" in
     responsive) default_bin="$work_root/qemu-9.1.3-interaction/build-arm64-interaction"; default_idle=wfi ;;
@@ -54,7 +63,7 @@ N00_COCOA_N9_SKIN=$skin
 export N00_COCOA_N9_SKIN
 keyboard=${HARMATTAN_UI_KEYBOARD:-}
 if [ -z "$keyboard" ]; then
-    case "$mode" in interactive|--usability-diagnostic|--usability-headless-diagnostic) keyboard=on ;; *) keyboard=off ;; esac
+    case "$mode" in interactive|--startup-headless-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) keyboard=on ;; *) keyboard=off ;; esac
 fi
 case "$keyboard" in on|off) ;; *) echo 'HARMATTAN_UI_KEYBOARD must be on or off' >&2; exit 2 ;; esac
 animations=${HARMATTAN_UI_ANIMATIONS:-on}
@@ -64,12 +73,16 @@ case "$splash" in on|off) ;; *) echo 'HARMATTAN_UI_SPLASH must be on or off' >&2
 boot_animation=${HARMATTAN_UI_BOOT_ANIMATION:-on}
 case "$boot_animation" in on|off) ;; *) echo 'HARMATTAN_UI_BOOT_ANIMATION must be on or off' >&2; exit 2 ;; esac
 default_handoff=off
-if [ "$mode" = interactive ] && [ "$animations" = on ] && [ "$splash" = off ]; then default_handoff=on; fi
+case "$mode" in
+    interactive|--startup-headless-diagnostic)
+        if [ "$animations" = on ] && [ "$splash" = off ]; then default_handoff=on; fi ;;
+esac
 handoff=${HARMATTAN_UI_HANDOFF:-$default_handoff}
 case "$handoff" in on|off) ;; *) echo 'HARMATTAN_UI_HANDOFF must be on or off' >&2; exit 2 ;; esac
 clock=${HARMATTAN_UI_CLOCK:-}
 if [ -z "$clock" ]; then
     case "$mode" in
+        --startup-headless-diagnostic) clock=host ;;
         interactive|--usability-diagnostic|--usability-headless-diagnostic|--gpu-diagnostic|--gpu-headless-diagnostic|--animation-diagnostic|--animation-headless-diagnostic|--splash-diagnostic|--splash-headless-diagnostic|--handoff-diagnostic|--handoff-headless-diagnostic|--startup-input-diagnostic|--startup-input-headless-diagnostic) clock=host ;;
         *) clock=off ;;
     esac
@@ -133,6 +146,7 @@ case "$runtime:$mode" in
 esac
 display=cocoa,zoom-to-fit=on
 case "$mode" in
+    --startup-headless-diagnostic) display=none ;;
     --audio-diagnostic|--install-packages) display=none ;;
     # The touch-only guest has no pointer to replace Cocoa's hidden host cursor.
     interactive) display="$display,show-cursor=on" ;;
@@ -281,6 +295,8 @@ if [ -n "$trace_options" ]; then
     set -- "$@" -trace "$trace_options"
 fi
 case "$mode" in
+    --startup-headless-diagnostic)
+        set -- --interactive --exit-on-ready --compositor-animations "$animations" --splash "$splash" --display-handoff "$handoff" -- "$@" ;;
     --audio-diagnostic)
         exec "$python_bin" -B "$repo_root/scripts/harmattan-qemu/smoke-arm64-audio.py" \
             --output "$run_root/audio" -- "$@" ;;
@@ -342,4 +358,4 @@ if [ -n "$user_profile" ]; then
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
-    --audio "$audio" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
+    --startup-waits "$startup_waits" --audio "$audio" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
