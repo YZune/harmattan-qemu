@@ -1,0 +1,120 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "4145743",
+  "scope": "Pinned original Grob software page compositing, installed through its normal Web-icon and D-Bus entries in a fresh disposable guest.",
+  "host": {
+    "system": "macOS 26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2"
+  },
+  "source_sha256": {
+    "scripts/harmattan-qemu/arm64-browser.py": "d9b98793587a00ead18dcffc9f12f822ba4673683fe2c9cf0f52e09feea37ac0",
+    "scripts/harmattan-qemu/browser-guest.c": "25f0448cf858c8840d028a88116867630cd0421145a3601a1f34ed20f48e914a",
+    "scripts/harmattan-qemu/browser-launch-guest.sh": "5192262fab5abb47fc98398a7b23298da2ce7710379dd6caa6212ac6d148ce7b",
+    "scripts/harmattan-qemu/browser-setup-guest.sh": "b55986ea07adbb4b333c46fb7a40756e6acb057b4b2f9303e7b7db96a4654b25",
+    "scripts/harmattan-qemu/build-browser-guest.sh": "80d388ca1934aee7c464c7291f1d962e240bbf7c9a2bc3d48e82be4a5a55edc9",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "63003a75ea969ac6fcd2913ad74a4efddf78cfec5ddd4c8fd9e2094dc91f0e4a",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "9673b4f82c032dab5f9e635215b6818423b043513fb6000038e11f2b263243d7",
+    "scripts/harmattan-qemu/arm64-certificates.py": "9cedb3c37d6bf327776284696546d13b8a52080bfd3fc90ceacc8ae0775710cd",
+    "scripts/harmattan-qemu/prebuilt-helpers.py": "fcac815b534db3caafe5cc04ab9c9aa730732cf20eb0bd8f9e15b31936a1c111",
+    "scripts/harmattan-qemu/tests/browser-host.c": "dc4c4fcab8ab4e36b13bbcf544aa14c763ace95549130288a6c40b855edcb3cf",
+    "scripts/harmattan-qemu/tests/test_arm64_browser.py": "8644fdd49b108057af9c37a124683858eef98f72d52e6ec72fab62708f3be6e3",
+    "scripts/release/package-macos.py": "626b251bf4437d0b0b49ee4b70cfdebc2fca62ebb36e98157e6fc1f468584589"
+  },
+  "host_suite": {
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "passed": 302,
+    "seconds": 17.498
+  },
+  "build": {
+    "fresh_qemu_build": false,
+    "fresh_browser_helper": true,
+    "reason": "Guest helper/startup change; reused the previously validated native networking/storage build.",
+    "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+    "helper_sha256": "7409c8bbd5c84959662b45b354b4a77285446d47c95273a237b59e9d56a7fecb"
+  },
+  "browser_setup": {
+    "enabled": true,
+    "helper_md5": "69fce8f643872c51812189379560f208",
+    "helper_sha256": "7409c8bbd5c84959662b45b354b4a77285446d47c95273a237b59e9d56a7fecb",
+    "source_sha256": "25f0448cf858c8840d028a88116867630cd0421145a3601a1f34ed20f48e914a",
+    "scope": "pinned Grob software compositing through original preferences APIs; per-application entry",
+    "entries": {
+      "/usr/share/applications/browser.desktop": "733e4323374b955574fdff5b71aab8fd",
+      "/usr/share/dbus-1/services/com.nokia.browser.service": "68ac7b3f9f70e19a68aeb5801ae1feb2"
+    }
+  },
+  "original_process": {
+    "binary": "/usr/bin/grob",
+    "version": "0.73.2-1+0m8",
+    "md5": "6162b4b46f28d53e93b9fcba7f4f3f7b",
+    "uid": 29999,
+    "tracer_pid": 0,
+    "same_process_after_navigation": true,
+    "arguments": "/usr/bin/grob -local-theme -graphicssystem raster -prestart",
+    "webkit_package": "libgrob-qtwebkit 0.73.0-1+0m8",
+    "webkit_md5": "d93364105cdecaf69b53571275480d04",
+    "helper_mapped": true,
+    "software_preference_verified_markers": 10,
+    "other_ui_processes_without_browser_helper": [
+      "meegotouchhome",
+      "sysuid",
+      "mcompositor"
+    ]
+  },
+  "web_workflows": {
+    "baidu_homepage": {
+      "url": "https://www.baidu.com/",
+      "passed": true,
+      "scope": "Homepage content with HTTPS lock after opening the normal Web icon and navigating through the original MApplication D-Bus API; some page width is clipped by historical rendering.",
+      "frame_sha256": "9eb24ceae81d106d648f355ff46e069c0ba806c994f8836ad75a932fe47927a7"
+    },
+    "keyboard": {
+      "passed": true,
+      "text": "nokia",
+      "scope": "Original Maliit keyboard taps into the original page input, before submitting search.",
+      "frame_sha256": "4277b5c122700e8c3a8e54ef6f8b75f3ea9f5b920322447e933c8c9383f1c5db"
+    },
+    "valid_https": {
+      "url": "https://example.com/",
+      "passed": true,
+      "frame_sha256": "3ee918c4fa8133d6679a408ac98b893780972ba2ff33d3f4dabf6392411912bf"
+    },
+    "untrusted_https": {
+      "url": "https://self-signed.badssl.com/",
+      "rejected": true,
+      "continue_anyway_selected": false,
+      "frame_sha256": "f92fec62c588adf85fc75456940db335592326f11719e110f96239abdb3cb153"
+    },
+    "search_results": {
+      "accepted": false,
+      "scope": "An earlier isolated software-preference probe submitted nokia and remained on a loading page. The maintained run verifies homepage/input, not search results."
+    }
+  },
+  "regression": {
+    "entry": "Run N9.command --usability-headless-diagnostic",
+    "network": "user",
+    "audio": "pulse",
+    "ca_certificates": "host",
+    "home_notes_keyboard_calculator_transitions_gpu": "passed",
+    "diagnostic_sha256": "8c596f49772095cb795043a34eee23c7c72cacbe15d620dbe8da934acf232b07"
+  },
+  "evidence": {
+    "scope": "Private bounded QMP action driver after the original startup gates; no manual guest configuration or diagnostic browser preload in the maintained run.",
+    "exploration": {
+      "scope": "private bounded QMP exploration of actual browser and ringtone UI",
+      "controller_sha256": "63003a75ea969ac6fcd2913ad74a4efddf78cfec5ddd4c8fd9e2094dc91f0e4a",
+      "instrumented_controller_sha256": "c68600e3df7686dce018d54cdc934896be32a1f9236e1c00c1949a53fe046b82",
+      "exploration_sha256": "eef3c13b4d17a01f6c49a77941a4d9e3f3a088482e805e35f82b63d9478b3c37"
+    },
+    "serial_sha256": "46d58c8323bb63a68bb2c348902d7dbdd3ee65dfd2a55e06009151f3ca914e42",
+    "private_controller_exit": 0
+  },
+  "limitations": [
+    "Baidu search results, arbitrary modern websites, WebGL and complete CSS/JavaScript compatibility are not accepted.",
+    "Physical Cocoa input, acoustic listening, long sessions and a new prebuilt app release were not performed for this browser change.",
+    "No browser engine, original firmware, trust bundle or private raw diagnostic artifact is redistributed.",
+    "The installed browser/entry versions are pinned; other versions fail their identity checks.",
+    "Source-only binary ABI checks are paired with actual guest use; the source DVD QtWebKit package is not treated as the source of the separate libgrob-qtwebkit binary."
+  ]
+}

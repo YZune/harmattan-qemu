@@ -41,6 +41,8 @@ Audio-enabled UI startup now includes the original OHM resource manager. The [ri
 
 Normal source startup now uses [actual readiness checks](performance.md) instead of fixed compositor/Home delays. The [performance record](performance-validation.json) covers 285 host tests, paired startup timings, early-input protection and the audio-enabled Home/Notes/keyboard/Calculator/transition regression. The change keeps the single Cortex-A8/512 MiB board and original animation timings; it does not establish a display FPS improvement.
 
+Network-enabled UI launches now select software page compositing in the pinned original browser, with optional host CA trust. The [browser record](browser-validation.json) covers 302 host tests, Web-icon startup, the Baidu HTTPS homepage, original keyboard entry, certificate rejection and the generated shortcut UI regression. Baidu search results and arbitrary modern sites remain unaccepted.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

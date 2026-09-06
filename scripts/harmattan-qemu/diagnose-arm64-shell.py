@@ -38,6 +38,9 @@ ANIMATION_SPEC.loader.exec_module(animations)
 APP_VIEWPORT_SPEC = importlib.util.spec_from_file_location("app_viewport", Path(__file__).with_name("arm64-app-viewport.py"))
 app_viewport = importlib.util.module_from_spec(APP_VIEWPORT_SPEC)
 APP_VIEWPORT_SPEC.loader.exec_module(app_viewport)
+BROWSER_SPEC = importlib.util.spec_from_file_location("browser", Path(__file__).with_name("arm64-browser.py"))
+browser = importlib.util.module_from_spec(BROWSER_SPEC)
+BROWSER_SPEC.loader.exec_module(browser)
 SPLASH_SPEC = importlib.util.spec_from_file_location("splash", Path(__file__).with_name("arm64-splash.py"))
 splash = importlib.util.module_from_spec(SPLASH_SPEC)
 SPLASH_SPEC.loader.exec_module(splash)
@@ -339,6 +342,10 @@ def main():
         animation_info.update(metadata)
     splash_info = {'enabled': splash_on}
     helper_payloads = {}
+    browser_info = {'enabled': False}
+    if args.network == 'user':
+        browser_payloads, browser_info = browser.prepare()
+        helper_payloads.update(browser_payloads)
     app_viewport_info = {'profile_helpers_prepared': bool(args.profile)}
     if args.profile:
         app_payloads, metadata = app_viewport.prepare()
@@ -506,6 +513,8 @@ def main():
                 serial.sendall(b'mkdir -m 0755 /tmp/n00-ui-helpers\n')
                 for index, (name, payload) in enumerate(helper_payloads.items()):
                     upload(payload, f'{splash.HELPER_ROOT}/{name}', f'N00_SPLASH_UPLOAD_{index}')
+            if browser_info['enabled']:
+                browser.install(serial, wait_line, upload, out, browser_info)
             if splash_on:
                 serial.sendall(b'export N00_UI_SPLASH=1\n')
             if guard_on:
@@ -554,6 +563,10 @@ def main():
                         lambda data: re.search(pattern, data) is not None, deadline)
                 serial_data = (out / "serial.log").read_bytes().replace(b"\r", b"")
                 status = int(re.findall(pattern, serial_data)[-1])
+                if phase == 'bootstrap' and browser_info['enabled']:
+                    if status != 0:
+                        raise ValueError('browser setup bootstrap failed')
+                    browser.validate_setup(serial_data, browser_info)
                 phases[phase] = {"exit": status, "wall_seconds": round(time.monotonic() - phase_started, 3)}
                 capture(phase)
                 print(f"DIAGNOSTIC: {phase} exit={status}; screenshot: {out / (phase + '.png')}", flush=True)
@@ -698,6 +711,7 @@ def main():
                     'audio': audio_output.info if audio_output else {'enabled': False},
                     'ca_certificates': ca_info,
                     'app_viewport': app_viewport_info,
+                    'browser': browser_info,
                     'compositor_animations': animation_info,
                     'splash': splash_info,
                     'startup_input': guard_info,
@@ -794,6 +808,7 @@ def main():
                 "input_method": keyboard_info,
                 "audio": audio_output.info if audio_output else {"enabled": False},
                 "ca_certificates": ca_info,
+                "browser": browser_info,
                 "compositor_animations": animation_info,
                 "splash": splash_info,
                 "startup_input": guard_info,

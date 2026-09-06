@@ -135,16 +135,16 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 
 正常交互开启 WFI、输入驱动活动声明、原版键盘与动画及显示交接；splash 保持关闭。
 
-如需 Finder 快捷入口，可为已验证的构建和工具生成被 Git 忽略的 `artifacts/local/Run N9.command`。以下示例显式启用联网和 CoreAudio 输出（先安装 PulseAudio）：
+如需 Finder 快捷入口，可为已验证的构建和工具生成被 Git 忽略的 `artifacts/local/Run N9.command`。以下示例显式启用联网、CoreAudio 输出（先安装 PulseAudio），以及所选 Python 的 HTTPS CA 信任库：
 
 ```sh
 python3 scripts/create-local-launcher.py \
   --build-root "$HARMATTAN_PORT_WORKSPACE/qemu-9.1.3-interaction/build-arm64-interaction" \
   --armel-clang "${HARMATTAN_ARMEL_CLANG:-clang}" \
-  --debugfs "${HARMATTAN_DEBUGFS:-debugfs}" --network user --audio pulse
+  --debugfs "${HARMATTAN_DEBUGFS:-debugfs}" --network user --audio pulse --ca-certificates host
 ```
 
-更新已有入口时添加 `--replace`，工具会先将旧文件的原样内容保存在私有备份中。生成器分别记录构建目录与运行目录，检查普通和 Cocoa 二进制均包含联网补丁，并保留显式环境变量覆盖。启动时会显示选中的联网、音频模式；不涉及音频的诊断保持声音关闭。已有窗口需重启才能使用新配置，单独更新源码不会更新旧快捷入口或二进制。实际结果见[入口验证记录](local-launcher-validation.json)。HTTP/PCM 诊断通过不代表现代 HTTPS 浏览器或原版铃声预览已兼容。
+更新已有入口时添加 `--replace`，工具会先将旧文件的原样内容保存在私有备份中。生成器分别记录构建目录与运行目录，检查普通和 Cocoa 二进制均包含联网补丁，并保留显式环境变量覆盖。启动时会显示选中的联网、音频模式；不涉及音频的诊断保持声音关闭。已有窗口需重启才能使用新配置，单独更新源码不会更新旧快捷入口或二进制。实际结果见[入口验证记录](local-launcher-validation.json)。独立的[浏览器记录](browser-validation.json)和[铃声记录](ringtone-validation.json)覆盖原版应用路径；HTTP/PCM 诊断本身不能证明这些结果。
 
 正常交互和联合 usability 使用[真实就绪检测](performance.zh-CN.md)替代固定等待。`--startup-headless-diagnostic` 检查相同的启动路径，通过后退出，不打开窗口。
 
@@ -156,6 +156,7 @@ python3 scripts/create-local-launcher.py \
 | --- | --- |
 | `HARMATTAN_USER_PROFILE` | 私有持久档案目录；默认不设置；仅用于交互会话 |
 | `HARMATTAN_UI_NETWORK` | `off`（默认）/ `user`；[SDK 以太网、DHCP 与用户态联网](networking.zh-CN.md) |
+| `HARMATTAN_UI_CA_CERTIFICATES` | `off`（默认）/ `host`；[所选 Python 的临时 CA 信任库](networking.zh-CN.md) |
 | `HARMATTAN_UI_AUDIO` | `off`（默认）/ `pulse`；使用 SDK 网络的[私有 CoreAudio 输出](audio.zh-CN.md) |
 | `HARMATTAN_UI_STARTUP_WAITS` | `ready`（交互/usability/启动诊断默认）/ `fixed`（历史诊断默认） |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |

@@ -37,8 +37,15 @@ The controller exports only that store's public trust anchors, validates the PEM
 
 The option defaults to `off`. Add `--ca-certificates host` when generating a local launcher to retain the selection. Certificate, hostname and validity checks remain enabled. Original OpenSSL protocol support and WebKit rendering limits still apply; an accepted TLS certificate does not establish that a modern page renders or works.
 
+The [certificate validation record](certificates-validation.json) covers the generated shortcut UI regression, a valid HTTPS page rendered by the original browser, and rejection of a self-signed site. Baidu rendering is covered separately below.
 
-The [certificate validation record](certificates-validation.json) covers the generated shortcut UI regression, a valid HTTPS page rendered by the original browser, and rejection of a self-signed site. Baidu rendering is a separate investigation.
+## Original browser rendering
+
+UI launches with `HARMATTAN_UI_NETWORK=user` now prepare a scoped software compositing adapter for the original Grob 0.73.2 / libgrob-qtwebkit 0.73.0. The browser's accelerated page compositor can enter the SDK GLES wrapper without a current context and crash while loading Baidu. The adapter uses the original WebKit preference setter and checks its getter to disable page acceleration. JavaScript settings, TLS verification and GLES error handling are preserved.
+
+Only the pinned browser's desktop and D-Bus entries receive a wrapper, through temporary memory mounts. Their original on-disk contents remain intact, including in a persistent profile. Each launch checks the executable, actual WebKit library link and helper identities. Other applications do not inherit this browser preload. Unknown versions fail explicitly instead of using the pinned ABI. The builder and release helper manifest include the new ARM helper; an already downloaded preview app is unchanged.
+
+The [browser validation record](browser-validation.json) covers Web-icon/D-Bus startup, the Baidu HTTPS homepage, original keyboard text entry, a valid HTTPS page, rejection of a self-signed certificate and the combined UI regression. Baidu search results and broad modern JavaScript/CSS compatibility are not accepted: an earlier search probe remained on a loading page. This adapter does not turn the historical WebKit engine into a current browser.
 
 ## Application boundaries
 

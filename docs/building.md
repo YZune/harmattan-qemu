@@ -135,16 +135,16 @@ By default the launcher builds helpers as needed, creates a private APFS clone p
 
 Normal interaction enables WFI, input-driven activity, the original keyboard and animations, and display handoff. Splash stays disabled.
 
-For a Finder shortcut, generate an ignored `artifacts/local/Run N9.command` with your verified build and tools. This example explicitly enables networking and CoreAudio output (install PulseAudio first):
+For a Finder shortcut, generate an ignored `artifacts/local/Run N9.command` with your verified build and tools. This example explicitly enables networking, CoreAudio output (install PulseAudio first), and the selected Python's CA trust store for HTTPS:
 
 ```sh
 python3 scripts/create-local-launcher.py \
   --build-root "$HARMATTAN_PORT_WORKSPACE/qemu-9.1.3-interaction/build-arm64-interaction" \
   --armel-clang "${HARMATTAN_ARMEL_CLANG:-clang}" \
-  --debugfs "${HARMATTAN_DEBUGFS:-debugfs}" --network user --audio pulse
+  --debugfs "${HARMATTAN_DEBUGFS:-debugfs}" --network user --audio pulse --ca-certificates host
 ```
 
-Add `--replace` to update an existing shortcut while retaining its exact previous contents in a private backup. The generator records the chosen build separately from the run workspace, checks both the plain and Cocoa binaries for the networking patch, and retains explicit environment overrides. It prints the selected network/audio modes at launch. Non-audio diagnostics keep audio off. Existing windows retain their original settings until restarted; updating source alone does not update an older shortcut or binary. See the [entry validation record](local-launcher-validation.json). HTTP/PCM diagnostic success does not establish modern HTTPS browser or original ringtone-preview support.
+Add `--replace` to update an existing shortcut while retaining its exact previous contents in a private backup. The generator records the chosen build separately from the run workspace, checks both the plain and Cocoa binaries for the networking patch, and retains explicit environment overrides. It prints the selected network/audio modes at launch. Non-audio diagnostics keep audio off. Existing windows retain their original settings until restarted; updating source alone does not update an older shortcut or binary. See the [entry validation record](local-launcher-validation.json). The separate [browser](browser-validation.json) and [ringtone](ringtone-validation.json) records cover the original application paths; HTTP/PCM diagnostics alone do not establish those results.
 
 [Startup readiness](performance.md) replaces fixed waits in normal interaction and combined usability runs. `--startup-headless-diagnostic` checks that same startup and exits without opening a window.
 
@@ -156,6 +156,7 @@ Useful overrides:
 | --- | --- |
 | `HARMATTAN_USER_PROFILE` | Private persistent profile directory; unset by default; interactive use only |
 | `HARMATTAN_UI_NETWORK` | `off` (default) / `user`; [SDK Ethernet, DHCP and user networking](networking.md) |
+| `HARMATTAN_UI_CA_CERTIFICATES` | `off` (default) / `host`; [temporary CA trust from the selected Python](networking.md) |
 | `HARMATTAN_UI_AUDIO` | `off` (default) / `pulse`; [private CoreAudio output](audio.md), with SDK networking |
 | `HARMATTAN_UI_STARTUP_WAITS` | `ready` (interactive/usability/startup diagnostic default) / `fixed` (historical diagnostic default) |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`; activity releases after 8 seconds without input |
