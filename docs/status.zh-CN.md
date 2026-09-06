@@ -33,6 +33,8 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 显式选择[用户档案](storage.zh-CN.md)现可跨启动保留客体已保存文件。[存储记录](storage-validation.json)覆盖 269 项宿主测试、全新原生构建、两次启动的系统/home 文件校验、快照隔离，以及通过原生输入保存 Notes 笔记、Cocoa 退出重启后内容仍可见。同一改动修正了关闭网络时的路径，未放宽宿主错误校验。
 
+[应用安装器](applications.zh-CN.md)现可将已审查的 ARMEL 包传入显式档案，保留依赖失败，并在包触发器执行后恢复 SDK 图形链接。[应用记录](applications-validation.json)覆盖 277 项宿主测试、全部依赖配置成功、重启及安装 ownNotes、Filebox、FBReader 后原版 Home 启动。各应用具体功能仍待原生窗口验证。
+
 ## 尚未完成
 
 原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。

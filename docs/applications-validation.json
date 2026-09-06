@@ -1,0 +1,131 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "690a62a",
+  "scope": "Reviewed package transfer/configuration, SDK graphics restoration, profile restart and original Home; individual application functions remain untested.",
+  "host": {
+    "architecture": "arm64",
+    "os": "26.6.2",
+    "python": "3.12.2"
+  },
+  "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+  "source_sha256": {
+    "scripts/harmattan-qemu/armel-packages.py": "8ac64acdbea24d260a417cf4cd47b3985ede21abe0ba0775c256bbf5a3c8b2b9",
+    "scripts/harmattan-qemu/arm64-maintenance.py": "8887192cdd0c6893b1c52a8e08357ba852c240d7cb66c2dc0945736d4308ee32",
+    "scripts/harmattan-qemu/install-armel-packages.py": "cf8e03fb0214d8b8f92fc3d28e1a2c2550d2d0f909ca1dc8c1a55c910cf2384d",
+    "scripts/harmattan-qemu/restore-sdk-graphics-guest.sh": "df8f36ab582152d7ecd94615d8b3aa6342a5cf83d1b87441adc57bed6edac2b9",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "ac9944f3a8b9884cb63a23843973dc5334c2b0660db224758c366620233bdd4b",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "0aedf80f29cc6576b336543ca09afef4736cbf15f97d6e2e246a6799c3f36fde",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "4a7d2a0842a09f384dd17250631a8f8aff3309a53c8c6b976f3525639f0e046f"
+  },
+  "packages": [
+    {
+      "filename": "libncurses5_5.7+20081213-6-maemo1+0m6_armel.deb",
+      "package": "libncurses5",
+      "version": "5.7+20081213-6-maemo1+0m6",
+      "architecture": "armel",
+      "bytes": 344980,
+      "sha256": "147aebee0a4d21cebaa011e77e0805e9232cc76058f73f047f760573a0adfb30",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "readline-common_5.2-2maemo4+0m6_all.deb",
+      "package": "readline-common",
+      "version": "5.2-2maemo4+0m6",
+      "architecture": "all",
+      "bytes": 51164,
+      "sha256": "5c7b8fe73fcd29f03bd6ea89069f5981a458ca6004169245df9f43d5606dafb8",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "libreadline5_5.2-2maemo4+0m6_armel.deb",
+      "package": "libreadline5",
+      "version": "5.2-2maemo4+0m6",
+      "architecture": "armel",
+      "bytes": 145906,
+      "sha256": "d9683d978c12c4290f900abd07de816197c54822937b0943e8e039f02bb4587b",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "python2.6-minimal_2.6.6-6maemo3+0m6_armel.deb",
+      "package": "python2.6-minimal",
+      "version": "2.6.6-6maemo3+0m6",
+      "architecture": "armel",
+      "bytes": 1595518,
+      "sha256": "1a145152d3706bd5c07a4f4287e30e32f7d2d20211d1cf982094bdfc2d4c5d37",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "python2.6_2.6.6-6maemo3+0m6_armel.deb",
+      "package": "python2.6",
+      "version": "2.6.6-6maemo3+0m6",
+      "architecture": "armel",
+      "bytes": 2404010,
+      "sha256": "7169534d3c6d7db46a131a2eaa2016969ab7c09bacd3d8409f371655d26c3376",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "libpython2.6_2.6.6-6maemo3+0m6_armel.deb",
+      "package": "libpython2.6",
+      "version": "2.6.6-6maemo3+0m6",
+      "architecture": "armel",
+      "bytes": 1177708,
+      "sha256": "346df639ed5c585f5d121cc7cdbde2f0b0a7dfad4755b5700cd173acc7aa4d2f",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "ownnotes_1.2.3_armel.deb",
+      "package": "ownnotes",
+      "version": "1.2.3",
+      "architecture": "armel",
+      "bytes": 604234,
+      "sha256": "d42dc5a82176b58f39f8f7b70ed2910730228263b04fc281217a4dded724a501",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "filebox_0.1.0_armel.deb",
+      "package": "filebox",
+      "version": "0.1.0",
+      "architecture": "armel",
+      "bytes": 713542,
+      "sha256": "a29f01ef4b7622487b4af0e1d4579e1acd5ecdf9df0788aed5e92cc80ffbe0e1",
+      "historical_signature_present": false,
+      "signature_verified": false
+    },
+    {
+      "filename": "fbreader_0.99.5_armel.deb",
+      "package": "fbreader",
+      "version": "0.99.5",
+      "architecture": "armel",
+      "bytes": 2381002,
+      "sha256": "a611517ec6a06436e7d7672e2e854f661c2305ade959f58be528d8c493f4bb61",
+      "historical_signature_present": true,
+      "signature_verified": false
+    }
+  ],
+  "checks": {
+    "host_suite": "277 tests passed",
+    "dependency_install": true,
+    "application_reinstall_with_graphics_restoration": true,
+    "package_versions_retained_after_boot": true,
+    "original_home_with_all_three_installed": true,
+    "cocoa_startup_seconds": 91.315,
+    "clean_exit": true,
+    "profile_state": "clean"
+  },
+  "failures_fixed": [
+    "Control UART lost a command prefix after WFI; keep only the control UART awake, matching the existing UI controller.",
+    "ldconfig restored unversioned retail SGX links; verify SDK library identities and restore only known overlay links before and after installation."
+  ],
+  "not_tested": [
+    "ownNotes editing, Filebox copy operations, FBReader EPUB navigation and saved state: native UI blocked by locked Mac during this milestone",
+    "cloud accounts, modern TLS, all ARMEL applications or full retail Aegis services",
+    "new prebuilt release packaging and relocation"
+  ]
+}

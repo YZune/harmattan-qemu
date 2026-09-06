@@ -9,22 +9,26 @@ kernel=${HARMATTAN_KERNEL:-"$repo_root/extracted/pr1.0-qemu-adaptation/zImage-2.
 raw=${HARMATTAN_GUEST_IMAGE:-"$repo_root/extracted/hybrid-pr1.3-qemu/arm-qemu-rm680-image-pr1.3-ui.raw"}
 mode=${1:-interactive}
 user_profile=${HARMATTAN_USER_PROFILE:-}
-if [ -n "$user_profile" ] && [ "$mode" != interactive ]; then
+if [ -n "$user_profile" ] && [ "$mode" != interactive ] && [ "$mode" != --install-packages ]; then
     echo 'User profiles are for interactive use; diagnostics create independent disks.' >&2; exit 2
 fi
 network=${HARMATTAN_UI_NETWORK:-off}
-if [ "$mode" = --network-diagnostic ]; then network=user; fi
+case "$mode" in --network-diagnostic|--install-packages) network=user ;; esac
 case "$network" in user|off) ;; *) echo 'HARMATTAN_UI_NETWORK must be user or off.' >&2; exit 2 ;; esac
 case "$mode" in
+    --install-packages)
+        test "$#" -ge 2 && test -n "$user_profile" || {
+            echo '--install-packages requires HARMATTAN_USER_PROFILE and one or more reviewed .deb paths.' >&2; exit 2;
+        } ;;
     interactive|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic|--smoke|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-diagnostic|--calculator-headless-diagnostic|--orientation-diagnostic|--orientation-headless-diagnostic|--gpu-diagnostic|--gpu-headless-diagnostic|--animation-diagnostic|--animation-headless-diagnostic|--splash-diagnostic|--splash-headless-diagnostic|--handoff-diagnostic|--handoff-headless-diagnostic|--startup-input-diagnostic|--startup-input-headless-diagnostic|--performance-diagnostic|--performance-headless-diagnostic) ;;
     *) echo "Usage: sh $0 [--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic|--smoke|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-diagnostic|--calculator-headless-diagnostic|--orientation-diagnostic|--orientation-headless-diagnostic|--gpu-diagnostic|--gpu-headless-diagnostic|--animation-diagnostic|--animation-headless-diagnostic|--splash-diagnostic|--splash-headless-diagnostic|--handoff-diagnostic|--handoff-headless-diagnostic|--startup-input-diagnostic|--startup-input-headless-diagnostic|--performance-diagnostic|--performance-headless-diagnostic]" >&2; exit 2 ;;
 esac
-test "$#" -le 1 || exit 2
+if [ "$mode" != --install-packages ]; then test "$#" -le 1 || exit 2; fi
 # Existing diagnostics retain their historical build/idle defaults. Normal use
 # and the combined regression share the verified idle/input-capable build.
 runtime=${HARMATTAN_UI_RUNTIME:-}
 if [ -z "$runtime" ]; then
-    case "$mode" in interactive|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
+    case "$mode" in interactive|--install-packages|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
 fi
 case "$runtime" in
     responsive) default_bin="$work_root/qemu-9.1.3-interaction/build-arm64-interaction"; default_idle=wfi ;;
@@ -121,6 +125,7 @@ case "$runtime:$mode" in
 esac
 display=cocoa,zoom-to-fit=on
 case "$mode" in
+    --install-packages) display=none ;;
     # The touch-only guest has no pointer to replace Cocoa's hidden host cursor.
     interactive) display="$display,show-cursor=on" ;;
     --network-diagnostic|--storage-diagnostic|--usability-headless-diagnostic|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-headless-diagnostic|--orientation-headless-diagnostic|--gpu-headless-diagnostic|--animation-headless-diagnostic|--splash-headless-diagnostic|--handoff-headless-diagnostic|--startup-input-headless-diagnostic|--performance-headless-diagnostic) display=none ;;
@@ -236,6 +241,9 @@ if [ "$raw_bytes" -le 0 ] || [ "$raw_bytes" -gt 34359738368 ]; then
     exit 1
 fi
 run_root=$(mktemp -d "$work_root/run.XXXXXX")
+if [ "$mode" = --install-packages ]; then
+    "$python_bin" -c 'import json,sys; json.dump(sys.argv[3:], open(sys.argv[1], "x"))' "$run_root/packages.json" "$@"
+fi
 if ! cp -c "$raw" "$run_root/pr13-backing.raw"; then
     echo "APFS clone required; retained $run_root for inspection." >&2
     exit 1
@@ -265,6 +273,10 @@ if [ -n "$trace_options" ]; then
     set -- "$@" -trace "$trace_options"
 fi
 case "$mode" in
+    --install-packages)
+        exec "$python_bin" -B "$repo_root/scripts/harmattan-qemu/install-armel-packages.py" \
+            --output "$run_root/packages" --profile "$user_profile" --base "$run_root/pr13-backing.raw" \
+            --image-tool "$bin_root/qemu-img" --package-list "$run_root/packages.json" -- "$@" ;;
     --storage-diagnostic)
         exec "$python_bin" -B "$repo_root/scripts/harmattan-qemu/smoke-arm64-storage.py" \
             --output "$run_root/storage" --base "$run_root/pr13-backing.raw" \
