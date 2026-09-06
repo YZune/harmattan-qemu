@@ -228,6 +228,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--network", choices=("off", "user"), default="off")
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
+    parser.add_argument('--ca-certificates', choices=('off', 'host'), default='off')
     parser.add_argument('--startup-waits', choices=('fixed', 'ready'), default='fixed')
     parser.add_argument('--profile', type=Path, help='private persistent disk directory; interactive mode only')
     parser.add_argument('--profile-base', type=Path, help='launcher-created private raw clone')
@@ -395,6 +396,15 @@ def main():
         return display.native_ppm((out / f'{name}.ppm').read_bytes(), args.rotation)
 
     try:
+        ca_info = {'enabled': False}
+        ca_payload = None
+        if args.ca_certificates == 'host':
+            if args.network != 'user':
+                raise ValueError('host CA certificates require SDK Ethernet')
+            ca_spec = importlib.util.spec_from_file_location('certificates', Path(__file__).with_name('arm64-certificates.py'))
+            certificates = importlib.util.module_from_spec(ca_spec)
+            ca_spec.loader.exec_module(certificates)
+            ca_payload, ca_info = certificates.host_store()
         if args.audio == 'pulse':
             if args.network != 'user':
                 raise ValueError('PulseAudio output requires SDK Ethernet')
@@ -475,6 +485,9 @@ def main():
 
             upload(guest, "/tmp/n00-shell-guest.sh", "N00_SHELL_SCRIPT")
             upload(inspector, "/tmp/n00-shell-x11.pl", "N00_SHELL_INSPECTOR")
+            if ca_payload:
+                certificates.install(serial, wait_line, upload, out, ca_payload, ca_info)
+                (out / 'ca-certificates.json').write_text(json.dumps(ca_info, indent=2) + '\n')
             if audio_output:
                 upload(audio_output.cookie, '/tmp/n00-audio.cookie', 'N00_AUDIO_COOKIE')
                 serial.sendall(b'chown user /tmp/n00-audio.cookie && chmod 0600 /tmp/n00-audio.cookie\n')
@@ -683,6 +696,7 @@ def main():
                     'clock': clock_info,
                     'input_method': keyboard_info,
                     'audio': audio_output.info if audio_output else {'enabled': False},
+                    'ca_certificates': ca_info,
                     'app_viewport': app_viewport_info,
                     'compositor_animations': animation_info,
                     'splash': splash_info,
@@ -779,6 +793,7 @@ def main():
                 "clock": clock_info,
                 "input_method": keyboard_info,
                 "audio": audio_output.info if audio_output else {"enabled": False},
+                "ca_certificates": ca_info,
                 "compositor_animations": animation_info,
                 "splash": splash_info,
                 "startup_input": guard_info,
