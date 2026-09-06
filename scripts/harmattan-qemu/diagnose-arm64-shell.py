@@ -35,6 +35,9 @@ CLOCK_SPEC.loader.exec_module(guest_clock)
 ANIMATION_SPEC = importlib.util.spec_from_file_location("animations", Path(__file__).with_name("arm64-animations.py"))
 animations = importlib.util.module_from_spec(ANIMATION_SPEC)
 ANIMATION_SPEC.loader.exec_module(animations)
+APP_VIEWPORT_SPEC = importlib.util.spec_from_file_location("app_viewport", Path(__file__).with_name("arm64-app-viewport.py"))
+app_viewport = importlib.util.module_from_spec(APP_VIEWPORT_SPEC)
+APP_VIEWPORT_SPEC.loader.exec_module(app_viewport)
 SPLASH_SPEC = importlib.util.spec_from_file_location("splash", Path(__file__).with_name("arm64-splash.py"))
 splash = importlib.util.module_from_spec(SPLASH_SPEC)
 SPLASH_SPEC.loader.exec_module(splash)
@@ -335,6 +338,11 @@ def main():
         animation_info.update(metadata)
     splash_info = {'enabled': splash_on}
     helper_payloads = {}
+    app_viewport_info = {'profile_helpers_prepared': bool(args.profile)}
+    if args.profile:
+        app_payloads, metadata = app_viewport.prepare()
+        helper_payloads.update(app_payloads)
+        app_viewport_info.update(metadata)
     keyboard_info = {'enabled': keyboard_on}
     if keyboard_on:
         keyboard_payloads, metadata = keyboard.prepare(exercise=args.exercise_keyboard)
@@ -673,6 +681,7 @@ def main():
                     'clock': clock_info,
                     'input_method': keyboard_info,
                     'audio': audio_output.info if audio_output else {'enabled': False},
+                    'app_viewport': app_viewport_info,
                     'compositor_animations': animation_info,
                     'splash': splash_info,
                     'startup_input': guard_info,

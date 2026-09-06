@@ -1,0 +1,221 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "618c53b",
+  "scope": "Pinned FBReader 0.99.5 local EPUB library, tap navigation and saved position; original ownNotes and Filebox functions in the same persistent profile.",
+  "host": {
+    "architecture": "arm64",
+    "os": "26.6.2",
+    "cpu": "Apple M5 Max",
+    "python": "3.12.2"
+  },
+  "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+  "qemu_build": "Reused the previously verified native build; this change has no QEMU or DGLES patch.",
+  "source_sha256": {
+    "scripts/harmattan-qemu/app-viewport-guest.c": "90a0b9741504c3fb48d1494be9d3c923ccbab050c18012ed6a6c387b36444ce0",
+    "scripts/harmattan-qemu/app-viewport-guest.sh": "ae5a7ea8ae5d1257b96f2b261b502d87b94ff2732ddcab290526a3fd0be281d1",
+    "scripts/harmattan-qemu/build-app-viewport-guest.sh": "93a80ebb6d0c2afdba582055bd88c0132bf24171fe041984e54b93a89b286d82",
+    "scripts/harmattan-qemu/arm64-app-viewport.py": "943962494b9160ef352b43cc30fa7d4bbee02fe8986d9dcd62a81fa7464b9de6",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "2c55667145ebbfe3d82379cf6b32cf222c315becba49ab74fc9fe803aa805fcc",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "bb35c130e462f48b7a3de98e8846847fc1b6ba803aa1fb286fe72fa34f5eda6e",
+    "scripts/harmattan-qemu/prebuilt-helpers.py": "2610b8fd7fecb011accc7533c2a170670ccc6cdb8136bba002db33713c47230b",
+    "scripts/release/package-macos.py": "1bc83b3dd09bdef29bbc9c0f939588a36fe2b2c0a4bd6e1efdfe02b2d576b4c6"
+  },
+  "package_identities": "applications-validation.json",
+  "previous_failure_record": "daily-applications-validation.json",
+  "application_executable_md5": {
+    "ownNotes": "1423a155ce4a0ec4028e6ab823a42759",
+    "Filebox": "a6996e72d58b48e4fc0109e09ac09152",
+    "FBReader": "a4f60e9b2da8416348101b04140950c0"
+  },
+  "adapter": {
+    "scope": "Explicit profiles only; exact executable path, executable identity and stock Qt 4.7.4 library checks before Home launch.",
+    "behavior": "Only the known reader replaces a QGLWidget viewport through the original QAbstractScrollArea::setViewport(NULL) API; Qt deleteLater releases the unused widget.",
+    "unknown_app_or_ordinary_widget": "Original API call unchanged",
+    "unknown_reader_version": "Adapter skipped",
+    "known_reader_with_wrong_qt_or_helper_identity": "Home startup fails",
+    "missing_required_qt_api": "Process exits 122 with an explicit ABI marker",
+    "fresh_arm_elf32_shared_helper_sha256": "ff2e8b845dbf0870067e3e5ba028b4b9ff05c4ed9dc77fddb32e57cfbde56f9c",
+    "fresh_release_helper_build_and_manifest_verification": {
+      "matrices": "037e67cd3e93f8a8d4639014a8293b481c3e6131e2ff20f325b7ccd4e9355257",
+      "handoff": "0aaa1ae211f86c7ac39b0f5b278ee6a179d8f12872665af2d6f762665fca4ba0",
+      "orientation": "c9f6f7736e147029c49806304afa93deb51cb951af8bf34f783e29df15dff1c1",
+      "keyboard": "185262d929bfea5dd57e01aee16866dd5c10e5e77d10415f5ef780e565c6b8ea",
+      "app-viewport": "ff2e8b845dbf0870067e3e5ba028b4b9ff05c4ed9dc77fddb32e57cfbde56f9c"
+    },
+    "full_new_app_packaging_or_relocation": "NOT TESTED"
+  },
+  "interaction": {
+    "display": "none",
+    "input": "QEMU QMP pointer/button events, including original Maliit keys; no macOS input automation",
+    "driver": "Private bounded instrumented controller; not a shipped automated application diagnostic",
+    "application_binaries_desktop_entries_qml_and_assets_changed": false,
+    "network": "off",
+    "audio": "off"
+  },
+  "checks": {
+    "host_suite": "290 tests passed in 19.297 seconds",
+    "base_home_gpu_validator": "Unchanged; still rejects an extra reader context by itself",
+    "reader_gpu_validator": "Requires the independently verified launch count and exact complete slot 4 lifecycles, then applies the original core gate; unexpected calls, warnings, missing disconnects and faults fail.",
+    "runs": {
+      "first": {
+        "original_executable_identities": "PASS",
+        "verified_reader_launches": 2,
+        "guest_script_checks": 12,
+        "guest_script_checks_all_exit_zero": true,
+        "qemu_exit": 0,
+        "gpu": {
+          "clean": true,
+          "warnings": [],
+          "known_guest_api_defects": [
+            "client 2: original eglTerminate repeats with NULL, correctly rejected"
+          ],
+          "compiles": 9,
+          "links": 6,
+          "uploads": 299,
+          "draws": 861,
+          "calls": 23071,
+          "swaps": 247,
+          "rejects": 0,
+          "faults": 0,
+          "workers_joined": true,
+          "base_ui_gpu_contexts": 3,
+          "peak_gpu_contexts": 4,
+          "reader_lifecycles": 2,
+          "reader_context_slot": 4,
+          "reader_slot_released_before_reuse": true,
+          "reader_guest_api_defect": "original Qt EGL double termination; NULL display correctly rejected"
+        },
+        "instrumentation": {
+          "scope": "private instrumented controller with bounded QEMU-only actions; not a maintained diagnostic acceptance",
+          "controller_sha256": "bb35c130e462f48b7a3de98e8846847fc1b6ba803aa1fb286fe72fa34f5eda6e",
+          "instrumented_controller_sha256": "727bf2380778004e47d339083d2ddfd303532eb1c4c6033352101e234bfe87bd",
+          "exploration_sha256": "0aaad19231d92eac8cebf5c62ae26d24ac39070828f73b20e7b7d15687397948"
+        }
+      },
+      "reboot": {
+        "original_executable_identities": "PASS",
+        "verified_reader_launches": 1,
+        "guest_script_checks": 4,
+        "guest_script_checks_all_exit_zero": true,
+        "qemu_exit": 0,
+        "gpu": {
+          "clean": true,
+          "warnings": [],
+          "known_guest_api_defects": [
+            "client 2: original eglTerminate repeats with NULL, correctly rejected"
+          ],
+          "compiles": 9,
+          "links": 6,
+          "uploads": 255,
+          "draws": 653,
+          "calls": 17784,
+          "swaps": 187,
+          "rejects": 0,
+          "faults": 0,
+          "workers_joined": true,
+          "base_ui_gpu_contexts": 3,
+          "peak_gpu_contexts": 4,
+          "reader_lifecycles": 1,
+          "reader_context_slot": 4,
+          "reader_slot_released_before_reuse": true,
+          "reader_guest_api_defect": "original Qt EGL double termination; NULL display correctly rejected"
+        },
+        "instrumentation": {
+          "scope": "private instrumented controller with bounded QEMU-only actions; not a maintained diagnostic acceptance",
+          "controller_sha256": "bb35c130e462f48b7a3de98e8846847fc1b6ba803aa1fb286fe72fa34f5eda6e",
+          "instrumented_controller_sha256": "727bf2380778004e47d339083d2ddfd303532eb1c4c6033352101e234bfe87bd",
+          "exploration_sha256": "0aaad19231d92eac8cebf5c62ae26d24ac39070828f73b20e7b7d15687397948"
+        }
+      }
+    },
+    "same_profile_clean_exit": true,
+    "profile_sessions_after_reboot": 9
+  },
+  "applications": {
+    "FBReader": {
+      "status": "PASS for the recorded local workflow",
+      "version": "0.99.5",
+      "fixture": "Original self-authored 20-paragraph EPUB, placed in Books before reader launch as explicit test setup",
+      "epub_md5": "ebd0ec9492d7900aa5453f54c36506d1",
+      "workflow": [
+        "Home icon launch",
+        "Library: By Author, QEMU Test, Harmattan Native Reading Test, menu Read book",
+        "Tap right to advance, left to return, right to advance again",
+        "Close and reopen from Home",
+        "Cold guest restart and Home icon launch"
+      ],
+      "original_database": {
+        "book_id": 2,
+        "title": "Harmattan Native Reading Test",
+        "BookStateStack": [
+          [
+            2,
+            0,
+            5,
+            0,
+            0
+          ]
+        ]
+      },
+      "saved_position": "paragraph 5; unchanged after app and guest restarts",
+      "page_body_comparison": "Raw P6 RGB, 480 x 864; rows [45, 819), full width, excluding the top/bottom bars; exact equality, not FPS",
+      "page_body_sha256": {
+        "fbreader-first-page": "01821fe180a24132be44df0767680278d93f3ffc54bc1263d78002aac46c64af",
+        "fbreader-next-page": "988e105dcdf9dadb7804515d571daa7d9bb6d86d3980a25a176831db21022296",
+        "fbreader-reopened-page": "988e105dcdf9dadb7804515d571daa7d9bb6d86d3980a25a176831db21022296",
+        "fbreader-previous-page": "01821fe180a24132be44df0767680278d93f3ffc54bc1263d78002aac46c64af",
+        "fbreader-position-restored": "988e105dcdf9dadb7804515d571daa7d9bb6d86d3980a25a176831db21022296",
+        "fbreader-page-after-guest-reboot": "988e105dcdf9dadb7804515d571daa7d9bb6d86d3980a25a176831db21022296"
+      }
+    },
+    "ownNotes": {
+      "status": "PASS",
+      "version": "1.2.3",
+      "workflow": "Home icon, original toolbar and Maliit, type Qemu, dismiss keyboard, Back save, guest restart and reopen editor",
+      "saved_body_hex": "51656d750a",
+      "saved_body_md5": "7e7fe23610141622ceb3ed6a23de2978"
+    },
+    "Filebox": {
+      "status": "PASS",
+      "version": "0.1.0",
+      "workflow": "Home icon, double-tap Books, original long-press Copy and Clipboard UI, return to MyDocs and copy, guest restart",
+      "source": "/home/user/MyDocs/Books/native-reading.epub",
+      "destination": "/home/user/MyDocs/native-reading.epub",
+      "destination_absent_before_ui_copy": true,
+      "source_and_destination_equal_before_and_after_reboot": true,
+      "md5": "ebd0ec9492d7900aa5453f54c36506d1"
+    }
+  },
+  "known_failures": [
+    "Horizontal reader swipe page navigation did not advance in the tested slow and fast QMP gestures; use the validated left/right taps.",
+    "The Add Book picker showed inconsistent directory row/navigation behavior; use the validated prepopulated Books library. The root cause is not assigned to the app or adapter.",
+    "Original guest Qt/X11 BadDamage and SDK stub diagnostics remain; clean host GLES teardown does not mean all guest logs are error-free.",
+    "The unconfigured ownNotes WebDAV worker reports original nonfatal errors; local notes were verified without cloud accounts."
+  ],
+  "not_tested": [
+    "Cocoa window and physical pointer input for these third-party functions; Mac was locked",
+    "DRM, network libraries, arbitrary document formats, cloud synchronization or broad ARMEL compatibility",
+    "Combined audio output during this three-app reader check; prior audio-enabled core UI evidence is recorded separately",
+    "Display FPS, acoustic latency or long-session stability",
+    "Full new prebuilt app release, relocation or publication; existing downloaded previews are unchanged"
+  ],
+  "evidence_sha256": {
+    "first_serial.log": "f001457a6d1fad5d2437b62be69f6414d494d65835d772b85fb425a5edda38b4",
+    "first_qemu-stderr.log": "006797ec3184b2d204e8ebb163ae50db5337926d5280d6aac3a8a88e0df1489b",
+    "first_interactive-exit.json": "fdd657dc97f0d7d4defd246504f4788de3ed7afc6cb2eff175e8af597b7c63d8",
+    "first_ordered_actions": "86b31d410bfe113e49d8f8d826bd2d65d0f08f393a5224141397d305b67bf6e9",
+    "reboot_serial.log": "ff1d2b3128fb8a479944bbf160615931dfb854dc98bf3a6e4bcf61e8191e8004",
+    "reboot_qemu-stderr.log": "e83662d8b8ed1923ab52626e28234a51df766e640a4169210b3c4ada8a599be3",
+    "reboot_interactive-exit.json": "a19bce97bc4ad46992cfb62708ff61add3adbbd310bd2ef3688c249ed648baed",
+    "reboot_ordered_actions": "6503dab82881e47835b9b1ce6027970da17dd59c81f52a01501b4b2d7ac7ab51",
+    "host_suite": "a981d4bf75890d071ed6c225eba4716ac07bf1300057d9ea37ad270e4bc15bb4",
+    "fbreader-first-page.png": "267e81716fd5e9d4993dfca7aef3399e8820d2c16ee9bb8f68f3a2c6f59751bc",
+    "fbreader-next-page.png": "f475e912d1e193cf48a107b579712cf84571e3e8a57d93dedbc9ad9305ed4015",
+    "fbreader-reopened-page.png": "4812fe659386a055cd467d45548aebcfba633b9265077d6389eaee1da6d9d9de",
+    "fbreader-previous-page.png": "4641b28ba40d10eba4d047c8e23dfceb3f311b09c326dc1364d513b75477b142",
+    "fbreader-position-restored.png": "2e72eb804fd1820970e69e3b2a6e4b699f2c0a9b725afcc40285fd5b44f0a4aa",
+    "fbreader-page-after-guest-reboot.png": "cca0ab9888603cbec3c84b3aa135b2c5c95c1e386b5c86438d4b96cd1856963a",
+    "ownnotes-body-after-guest-reboot.png": "aaf5bec15512dd193787b8170f3cec40816b3721fb1a46c785afc2a7fe308abf",
+    "filebox-copy-after-guest-reboot.png": "2442806720b87efa6d37f255b12244cab49983555e5cf2e402f4f0587f622c0d"
+  }
+}

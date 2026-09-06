@@ -44,16 +44,22 @@ Home 现在向子进程传入 `QT_GRAPHICSSYSTEM=raster` 和 `M_FORCE_LOCAL_THEM
 
 原版 Qt Components 图像提供器（`qt-components` 源码中的 `src/meego/mdeclarativeimageprovider.cpp`）已支持 `M_FORCE_LOCAL_THEME`。其本地提供器读取 `/usr/share/themes/blanco/meegotouch` 内的原版 Blanco 资源。选择此路径可恢复远程 pixmap 传输失败时缺失的工具栏图标和控件。应用二进制、桌面入口、QML 和主题素材均保持原样；显式请求 OpenGL 的应用仍需要独立的 GLES 兼容工作。
 
+显式用户档案还会对记录中的 **FBReader 0.99.5** 启用限定适配。启用前，Home 会核对原程序、原版 Qt 4.7.4 库和辅助库摘要。适配仅在该程序中请求 Qt 提供普通 `QWidget` 视口，并销毁未使用的 `QGLWidget`；文字排版、页面和控件仍由原应用负责。其他进程和普通控件直接沿用原调用。未知 FBReader 版本跳过适配，Qt 或辅助库身份异常则中止启动。源码构建器和后续预构建辅助库清单已包含此适配，已下载的预览应用不会自动更新。
+
 ## 本地功能验证
 
-[安装记录](applications-validation.json)覆盖包配置和原版桌面。后续[日常应用记录](daily-applications-validation.json)增加了以下功能检查：
+[安装记录](applications-validation.json)覆盖包配置和原版桌面。后续[日常应用记录](daily-applications-validation.json)和[阅读器记录](reader-validation.json)覆盖以下功能检查：
 
 | 应用 | 结果 | 已验证行为 |
 | --- | --- | --- |
 | ownNotes 1.2.3 | PASS | 从 Home 启动；原版控件和 Maliit；创建、保存、重开笔记；客体重启后正文内容保持一致 |
 | Filebox 0.1.0 | PASS | 从 Home 启动；浏览 Documents；通过原版剪贴板界面将文本复制到 MyDocs；客体重启后源文件与副本字节一致 |
-| FBReader 0.99.5 | FAIL | 原版程序及窗口已启动，但显式 `QGLWidget` 视口仍黑屏并触发不支持的 GLES 调用；EPUB 翻页未通过验收 |
+| FBReader 0.99.5 | 记录中的本地流程 PASS | 发现 Books 内的本地 EPUB；通过原版书库打开；点击前后翻页；应用和客体重启后恢复同一页 |
 
-这些检查使用无窗口客体中的 QMP 指针事件、原版应用身份、界面截图和已保存文件摘要。第二次启动验证了同一档案及干净的 GPU 退出。285 项宿主测试和开启音频的 Home/Notes/Maliit/Calculator/切换动画联合回归也通过。由于 Mac 锁屏，这些三方应用功能尚未验证 Cocoa 窗口中的物理鼠标操作。使用的私有有界探索驱动并非已发布的自动应用诊断器。
+这些检查使用无窗口客体中的 QMP 指针事件、原版应用身份、界面截图和已保存文件摘要。第二次启动验证了同一档案及干净的 GPU 退出。此前 ownNotes/Filebox 改动通过了 285 项宿主测试，以及开启音频的 Home/Notes/Maliit/Calculator/切换动画联合回归。由于 Mac 锁屏，这些三方应用功能尚未验证 Cocoa 窗口中的物理鼠标操作。使用的私有有界探索驱动并非已发布的自动应用诊断器。
+
+后续[阅读器验证](reader-validation.json)覆盖限定视口适配、290 项宿主测试、全新构建及打包的辅助库，以及同一档案中的三个应用。前后翻页、重开应用和客体重启后的阅读页面正文像素一致，原版数据库记录了对应段落位置。原有三个客户端的 Home GPU 检查保持独立；新增检查要求阅读器的额外上下文每次完整终止、断开后才可复用，未知调用、警告或不完整退出仍判失败。
 
 ownNotes 中点击 **+** 创建笔记，输入文字，从键盘内部快速下滑收起键盘，再点击编辑器返回按钮保存。未配置的 WebDAV 工作线程会报告原应用错误，但已测试的本地笔记操作正常；本次未使用云账户。Filebox 默认通过**双击**打开目录。长按文件，选择 **Copy**，等待菜单关闭后进入目标目录，再打开 **Clipboard**、选中项目并点击复制图标。每次目录或菜单切换结束后再继续操作。
+
+已验证的阅读流程要求先将 EPUB 放入客体 `/home/user/MyDocs/Books`，再启动 FBReader。在书库依次选择 **By Author**、作者、图书，再从菜单选择 **Read book**。点击页面右侧或左侧翻页。水平滑动翻页和 **Add Book** 文件选择器的目录行为未通过本次有界检查，不能由阅读结果推导其可用。DRM、在线书库及其他文档格式仍不在验收范围内。

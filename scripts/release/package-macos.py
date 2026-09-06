@@ -22,7 +22,7 @@ SPEC.loader.exec_module(prebuilt)
 EXTENSIONS = set('array binascii fcntl grp math select resource unicodedata zlib '
                  '_bisect _blake2 _bz2 _datetime _heapq _json _md5 _opcode _pickle '
                  '_posixsubprocess _random _sha1 _sha2 _sha3 _socket _struct _ctypes'.split())
-RELEASE_HELPERS = ('matrices', 'handoff', 'orientation', 'keyboard')
+RELEASE_HELPERS = ('matrices', 'handoff', 'orientation', 'keyboard', 'app-viewport')
 LICENSE_NAMES = re.compile(r'^(COPYING|LICENSE|LICENCE|NOTICE|COPYRIGHT|BSD|GPL|LGPL|MIT)([._-].*)?$', re.I)
 
 
@@ -160,7 +160,9 @@ def helpers(destination, work):
             command = ['sh', str(SCRIPTS / 'build-compositor-guest.sh')]
             if name != 'matrices': command.append('--' + name)
         else:
-            script = 'build-orientation-guest.sh' if name == 'orientation' else 'build-keyboard-probe.sh'
+            script = {'orientation': 'build-orientation-guest.sh',
+                      'keyboard': 'build-keyboard-probe.sh',
+                      'app-viewport': 'build-app-viewport-guest.sh'}[name]
             command = ['sh', str(SCRIPTS / script)]
         subprocess.run(command, env=env, check=True, stdout=subprocess.DEVNULL)
         target = destination / relative
