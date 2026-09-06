@@ -1,0 +1,55 @@
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -46,6 +46,8 @@
+ 
+ void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base);
+ void n00_twl5031_init(I2CBus *bus, qemu_irq irq);
++void n00_sdk_power_init(I2CBus *bus);
++bool n00_sdk_power_enabled(void);
+ void n00_mxt_init(I2CBus *bus, DeviceState *gpio);
+ #ifdef CONFIG_N00_GLES
+ void n00_gles_init(ARMCPU *cpu);
+@@ -120,6 +122,9 @@
+         sysbus_connect_irq(bus, i * 3, qdev_get_gpio_in(intc, i2c_irq[i]));
+         sysbus_connect_irq(bus, i * 3 + 1, drq[i2c_tx[i] + 1]);
+         sysbus_connect_irq(bus, i * 3 + 2, drq[i2c_tx[i]]);
++    }
++    if (n00_sdk_power_enabled()) {
++        n00_sdk_power_init(I2C_BUS(qdev_get_child_bus(i2c, "n00-i2c2")));
+     }
+     n00_twl5031_init(I2C_BUS(qdev_get_child_bus(i2c, "n00-i2c1")),
+                      qdev_get_gpio_in(intc, 7));
+--- a/hw/arm/n00_twl4030_port.c
++++ b/hw/arm/n00_twl4030_port.c
+@@ -473,6 +473,9 @@
+     }
+ }
+ 
++bool n00_sdk_power_enabled(void);
++int n00_sdk_power_adc(unsigned address);
++
+ static uint8_t twl4030_4a_read(TWL4030NodeState *s, uint8_t addr)
+ {
+     static const uint8_t twl5031_aciid_data[] = {
+@@ -488,6 +491,12 @@
+         case 0x17 ... 0x36: /* RT conversion result */
+             return s->reg_data[addr];
+         case 0x37 ... 0x56: /* GP conversion result */
++            if (n00_sdk_power_enabled()) {
++                int value = n00_sdk_power_adc(addr);
++                if (value >= 0) {
++                    return value;
++                }
++            }
+             return s->reg_data[addr];
+         case 0x57 ... 0x60: /* BCI conversion result */
+             return s->reg_data[addr];
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -1,5 +1,6 @@
+ arm_ss = ss.source_set()
+ arm_ss.add(files('boot.c'))
++arm_ss.add(files('n00-sdk-power.c'))
+ arm_ss.add(files('n00_port_spike.c', 'n00_sdrc_port.c', 'n00_mmc_port.c'))
+ arm_ss.add(files('n00_i2c_port.c', 'n00_twl4030_port.c', 'n00_dss_port.c'))
+ arm_ss.add(files('n00_mxt_port.c'))

@@ -25,6 +25,7 @@ Representative recovered Git/SWH blob identifiers:
 | `hw/omap3_mmc.c` | `4f16c008e9c061fbf5e0f59cea3e1043c4f18a44` |
 | `hw/omap_sdrc.c` | `82da88c486f25a772edfbfe0b3a2cc20ca75dc57` |
 | `hw/omap_i2c.c` | `f128530ec0b34ed5c05fa126a124b7ed14d81487` |
+| `hw/nseries.c` | `429bfda407fdc2c8aa0562a1cbc3ddb8a2a99e13` |
 | `hw/twl4030.c` | `a86855e3463dc64a86547102675e143391c696dc` |
 | `hw/omap_dss.c` | `c1228df70d053bcd0711f7b5fc81b93777867ac5` |
 | `hw/omap_dss_drawfn.h` | `37ba1369505293d83ffa0da4c32387a4be983a82` |

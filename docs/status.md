@@ -43,6 +43,8 @@ Normal source startup now uses [actual readiness checks](performance.md) instead
 
 Network-enabled UI launches now select software page compositing in the pinned original browser, with optional host CA trust. The earlier [browser record](browser-validation.json) covers 302 host tests, Web-icon startup, the Baidu HTTPS homepage, original keyboard entry, certificate rejection and the generated shortcut UI regression. The optional [basic web mode](networking.md#optional-basic-web-mode) adds a separate shortcut that disables webpage JavaScript; the original entry and default remain unchanged. The [basic mode record](browser-basic-validation.json) covers 306 host tests and Baidu's basic search results in a fresh guest. Search with JavaScript enabled and arbitrary modern sites remain unaccepted.
 
+The new [original device-service experiment](device-services.md) restores SDK power devices and volatile CAL storage, disabled by default. Original BME hardware/IPC diagnostics are separate from complete power and cellular acceptance; Aegis/BB5, DSME validator notifications and SSI modem transport remain incomplete.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

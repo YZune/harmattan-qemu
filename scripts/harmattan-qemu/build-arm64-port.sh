@@ -85,6 +85,14 @@ fi
     boot_patch="$port_root/qemu-9.1.3-n00-boot-animation.patch"
     network_patch="$port_root/qemu-9.1.3-n00-network.patch"
     storage_patch="$port_root/qemu-9.1.3-n00-storage-shutdown.patch"
+    power_patch="$port_root/qemu-9.1.3-n00-sdk-power.patch"
+    cal_patch="$port_root/qemu-9.1.3-n00-sdk-cal-storage.patch"
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$cal_patch" >/dev/null 2>&1; then
+        git apply --reverse "$cal_patch"
+    fi
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$power_patch" >/dev/null 2>&1; then
+        git apply --reverse "$power_patch"
+    fi
 
     if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$storage_patch" >/dev/null 2>&1; then
         git apply --reverse "$storage_patch"
@@ -276,6 +284,14 @@ fi
         git apply --check "$storage_patch"
         git apply "$storage_patch"
         cp "$port_root/n00-storage-shutdown.h" ui/n00-storage-shutdown.h
+    fi
+    if [ "$mode" = --cocoa-interaction ]; then
+        git apply --check "$power_patch"
+        git apply "$power_patch"
+        cp "$port_root/n00-sdk-power.c" hw/arm/n00-sdk-power.c
+        cp "$port_root/n00-sdk-power-registers.h" hw/arm/n00-sdk-power-registers.h
+        git apply --check "$cal_patch"
+        git apply "$cal_patch"
     fi
 )
 

@@ -182,3 +182,5 @@ Some historical diagnostic modes intentionally use older defaults. A passing com
 - **Blank startup:** wait for `READY`, inspect the new run directory, and report the exact command plus a short sanitized failure excerpt.
 
 Optional [sound output](audio.md) uses a separate host PulseAudio installation: `brew install pulseaudio`, then `HARMATTAN_UI_AUDIO=pulse`. The audio diagnostic also uses the existing guest linking prerequisites.
+
+See the [device-service experiment](device-services.md) for original BME hardware prerequisites and the standalone diagnostic. It is disabled by default and does not make complete cellular and power services ready.

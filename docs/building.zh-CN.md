@@ -182,3 +182,5 @@ python3 scripts/create-local-launcher.py \
 - **启动黑屏**：等待 `READY`，查看新运行目录；报告准确命令及简短脱敏失败片段。
 
 可选[声音输出](audio.zh-CN.md)需要额外安装宿主 PulseAudio：`brew install pulseaudio`，然后设置 `HARMATTAN_UI_AUDIO=pulse`。声音诊断还使用既有客体链接环境。
+
+原版 BME 的硬件前置条件及独立诊断见[设备服务实验](device-services.zh-CN.md)。该实验默认关闭，不代表完整蜂窝与电源服务已就绪。
