@@ -66,6 +66,8 @@ LIBRARIES = {
     "/usr/bin/meegotouchhome": "f1baf59a510e9896e74ee4e5b7cde63c",
     "/usr/lib/libEGL.so.1": "2d33b733564f1adf8d2978f6e74efde2",
     "/usr/lib/libGLESv2.so.1": "061a075a2191fd79abd43640851c60b2",
+    "/usr/lib/libEGL.so": "2d33b733564f1adf8d2978f6e74efde2",
+    "/usr/lib/libGLESv2.so": "061a075a2191fd79abd43640851c60b2",
 }
 
 

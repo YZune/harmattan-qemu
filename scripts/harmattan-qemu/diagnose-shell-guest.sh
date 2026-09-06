@@ -239,7 +239,7 @@ case ${1:-} in
             done
             grep '^N00_STARTUP_INPUT_HELD pid=' /tmp/n00-startup-input/guard.log
         fi
-        md5sum /usr/bin/mcompositor /usr/bin/meegotouchhome /usr/lib/libEGL.so.1 /usr/lib/libGLESv2.so.1
+        md5sum /usr/bin/mcompositor /usr/bin/meegotouchhome /usr/lib/libEGL.so.1 /usr/lib/libGLESv2.so.1 /usr/lib/libEGL.so /usr/lib/libGLESv2.so
         report_processes
         ;;
     theme)

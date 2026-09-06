@@ -33,6 +33,8 @@ The source now supports [original boot presentation](boot-animation.md) over unc
 
 Explicit [user profiles](storage.md) now preserve saved guest files across launches. The [storage record](storage-validation.json) covers 269 host tests, a clean native build, system/home file checks across two boots, snapshot isolation and an original Notes note saved through native input and still visible after Cocoa quit/restart. The same change fixes the disabled-network path without relaxing host-error validators.
 
+The [package installer](applications.md) now transfers reviewed ARMEL packages into an explicit profile, preserves dependency failures and restores SDK graphics links after package triggers. The [application record](applications-validation.json) covers 277 host tests, all dependencies configured, restart and original Home with ownNotes, Filebox and FBReader installed. Individual application functions await native window validation.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

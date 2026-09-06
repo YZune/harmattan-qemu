@@ -79,7 +79,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh
 ## 本地数据与贡献边界
 
 - `downloads/`、`extracted/` 已忽略，但可能含有不可替代的输入和活动运行。避免整体清理、重写历史、广泛终止进程或暂存无关文件；只跟踪并清理本任务创建的进程与产物。
-- 原生启动器默认使用一次性快照。显式指定 `HARMATTAN_USER_PROFILE` 可使用带排他锁、正常退出前执行客体写盘的私有持久磁盘，见[存储说明](docs/storage.zh-CN.md)。诊断继续使用独立磁盘。不要改用历史上持久写盘的 x86/Rosetta 启动器 `run-pr13-ui.sh`。
+- 原生启动器默认使用一次性快照。显式指定 `HARMATTAN_USER_PROFILE` 可使用带排他锁、正常退出前执行客体写盘的私有持久磁盘，见[存储说明](docs/storage.zh-CN.md)。诊断继续使用独立磁盘。不要改用历史上持久写盘的 x86/Rosetta 启动器 `run-pr13-ui.sh`。 显式[应用安装器](docs/applications.zh-CN.md)使用已关闭的用户档案，在客体内安装包并验证退出。
 - 客体 overlay 应用脚本会写入客体系统目录，不能在宿主或真机上执行。克隆基础输入前应确保没有进程写入它们。
 - 固件、SDK 安装器、镜像、字体、独立素材、凭据、个人数据库、内存转储及私人路径不能进入提交。精选运行截图在发布检查器中有明确路径和摘要，并有[采集说明](docs/screenshots/README.zh-CN.md)。
 - 保留继承的许可声明及 [NOTICE](NOTICE)。明确暂存文件，贡献时使用[本地开发管理](docs/development.zh-CN.md)中的功能分支及 PR 流程。尊重当前任务已有授权，不额外增加常规审批步骤。
