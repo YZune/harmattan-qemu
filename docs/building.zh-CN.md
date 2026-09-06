@@ -135,6 +135,17 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 
 正常交互开启 WFI、输入驱动活动声明、原版键盘与动画及显示交接；splash 保持关闭。
 
+如需 Finder 快捷入口，可为已验证的构建和工具生成被 Git 忽略的 `artifacts/local/Run N9.command`。以下示例显式启用联网和 CoreAudio 输出（先安装 PulseAudio）：
+
+```sh
+python3 scripts/create-local-launcher.py \
+  --build-root "$HARMATTAN_PORT_WORKSPACE/qemu-9.1.3-interaction/build-arm64-interaction" \
+  --armel-clang "${HARMATTAN_ARMEL_CLANG:-clang}" \
+  --debugfs "${HARMATTAN_DEBUGFS:-debugfs}" --network user --audio pulse
+```
+
+更新已有入口时添加 `--replace`，工具会先将旧文件的原样内容保存在私有备份中。生成器分别记录构建目录与运行目录，检查普通和 Cocoa 二进制均包含联网补丁，并保留显式环境变量覆盖。启动时会显示选中的联网、音频模式；不涉及音频的诊断保持声音关闭。已有窗口需重启才能使用新配置，单独更新源码不会更新旧快捷入口或二进制。实际结果见[入口验证记录](local-launcher-validation.json)。HTTP/PCM 诊断通过不代表现代 HTTPS 浏览器或原版铃声预览已兼容。
+
 正常交互和联合 usability 使用[真实就绪检测](performance.zh-CN.md)替代固定等待。`--startup-headless-diagnostic` 检查相同的启动路径，通过后退出，不打开窗口。
 
 重新构建的 Cocoa interaction 默认以[原版开机视频](boot-animation.zh-CN.md)覆盖启动检查过程。素材来自已准备的系统磁盘，源码与应用不包含开机图片或视频。诊断模式继续显示真实 framebuffer。这项显示改动不会缩短现有客体等待。
