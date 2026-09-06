@@ -4,6 +4,14 @@
 set -eu
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 user_env='HOME=/home/user USER=user LOGNAME=user DISPLAY=:9 DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/n00-shell-session-bus'
+if [ -n "${N00_UI_AUDIO_SERVER:-}" ]; then
+    case "$N00_UI_AUDIO_SERVER" in tcp:10.0.2.2:*) ;; *) echo 'Invalid private audio address' >&2; exit 2 ;; esac
+    audio_port=${N00_UI_AUDIO_SERVER#tcp:10.0.2.2:}
+    case "$audio_port" in ''|*[!0-9]*) echo 'Invalid private audio server' >&2; exit 2 ;; esac
+    test "$audio_port" -ge 1 && test "$audio_port" -le 65535
+    test -r /tmp/n00-audio.cookie
+    user_env="$user_env PULSE_SERVER=$N00_UI_AUDIO_SERVER PULSE_COOKIE=/tmp/n00-audio.cookie"
+fi
 compositor_env=
 case ${N00_UI_CLOCK_SYNC:-0} in
     0) ;;

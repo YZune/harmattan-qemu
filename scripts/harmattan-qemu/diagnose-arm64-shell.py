@@ -60,6 +60,9 @@ NETWORK_SPEC.loader.exec_module(network)
 STORAGE_SPEC = importlib.util.spec_from_file_location('storage', Path(__file__).with_name('arm64-storage.py'))
 storage = importlib.util.module_from_spec(STORAGE_SPEC)
 STORAGE_SPEC.loader.exec_module(storage)
+AUDIO_SPEC = importlib.util.spec_from_file_location('audio', Path(__file__).with_name('arm64-audio.py'))
+audio = importlib.util.module_from_spec(AUDIO_SPEC)
+AUDIO_SPEC.loader.exec_module(audio)
 PHASES = ("bootstrap", "theme", "compositor", "home", "settled", "final")
 LIBRARIES = {
     "/usr/bin/mcompositor": "52d29f7f90d03277ded463ebc3c5f33d",
@@ -218,6 +221,7 @@ def desktop_frame(data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--network", choices=("off", "user"), default="off")
+    parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
     parser.add_argument('--profile', type=Path, help='private persistent disk directory; interactive mode only')
     parser.add_argument('--profile-base', type=Path, help='launcher-created private raw clone')
     parser.add_argument('--profile-image-tool', type=Path, help='matching qemu-img executable')
@@ -359,6 +363,7 @@ def main():
     process = None
     profile_session = None
     profile_synced = False
+    audio_output = None
     shutdown_request = out / 'storage-shutdown.request'
     phases = {}
     control = []
@@ -372,6 +377,10 @@ def main():
         return display.native_ppm((out / f'{name}.ppm').read_bytes(), args.rotation)
 
     try:
+        if args.audio == 'pulse':
+            if args.network != 'user':
+                raise ValueError('PulseAudio output requires SDK Ethernet')
+            audio_output = audio.Output(out / 'audio')
         if args.profile:
             profile_session = storage.Profile(args.profile, args.profile_base, args.profile_image_tool)
             command = storage.persistent_command(command, profile_session.disk)
@@ -448,6 +457,10 @@ def main():
 
             upload(guest, "/tmp/n00-shell-guest.sh", "N00_SHELL_SCRIPT")
             upload(inspector, "/tmp/n00-shell-x11.pl", "N00_SHELL_INSPECTOR")
+            if audio_output:
+                upload(audio_output.cookie, '/tmp/n00-audio.cookie', 'N00_AUDIO_COOKIE')
+                serial.sendall(b'chown user /tmp/n00-audio.cookie && chmod 0600 /tmp/n00-audio.cookie\n')
+                serial.sendall(f'export N00_UI_AUDIO_SERVER={audio_output.guest_server}\n'.encode())
             clock_snapshot = None
             if clock_on:
                 upload(timezone_payload, guest_clock.GUEST_TIMEZONE, "N00_CLOCK_TIMEZONE")
@@ -634,6 +647,7 @@ def main():
                     'system_ui': ui_service,
                     'clock': clock_info,
                     'input_method': keyboard_info,
+                    'audio': audio_output.info if audio_output else {'enabled': False},
                     'compositor_animations': animation_info,
                     'splash': splash_info,
                     'startup_input': guard_info,
@@ -663,6 +677,8 @@ def main():
                     process.wait(timeout=10)
                 try:
                     while process.poll() is None:
+                        if audio_output:
+                            audio_output.check()
                         if profile_session and storage.shutdown_requested(shutdown_request):
                             quit_guest()
                             break
@@ -839,6 +855,8 @@ def main():
             process.stdin.close(); process.stdout.close()
         if profile_session:
             profile_session.close()
+        if audio_output:
+            audio_output.close()
 
 
 if __name__ == "__main__":

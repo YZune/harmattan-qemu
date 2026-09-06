@@ -13,9 +13,17 @@ if [ -n "$user_profile" ] && [ "$mode" != interactive ] && [ "$mode" != --instal
     echo 'User profiles are for interactive use; diagnostics create independent disks.' >&2; exit 2
 fi
 network=${HARMATTAN_UI_NETWORK:-off}
+audio=${HARMATTAN_UI_AUDIO:-off}
+if [ "$mode" = --audio-diagnostic ]; then audio=pulse; fi
+case "$audio:$mode" in
+    off:*) ;;
+    pulse:interactive|pulse:--audio-diagnostic|pulse:--usability-diagnostic|pulse:--usability-headless-diagnostic) network=user ;;
+    *) echo 'HARMATTAN_UI_AUDIO supports off or pulse for interactive/usability/audio runs.' >&2; exit 2 ;;
+esac
 case "$mode" in --network-diagnostic|--install-packages) network=user ;; esac
 case "$network" in user|off) ;; *) echo 'HARMATTAN_UI_NETWORK must be user or off.' >&2; exit 2 ;; esac
 case "$mode" in
+    --audio-diagnostic) ;;
     --install-packages)
         test "$#" -ge 2 && test -n "$user_profile" || {
             echo '--install-packages requires HARMATTAN_USER_PROFILE and one or more reviewed .deb paths.' >&2; exit 2;
@@ -28,7 +36,7 @@ if [ "$mode" != --install-packages ]; then test "$#" -le 1 || exit 2; fi
 # and the combined regression share the verified idle/input-capable build.
 runtime=${HARMATTAN_UI_RUNTIME:-}
 if [ -z "$runtime" ]; then
-    case "$mode" in interactive|--install-packages|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
+    case "$mode" in interactive|--audio-diagnostic|--install-packages|--network-diagnostic|--storage-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) runtime=responsive ;; *) runtime=legacy ;; esac
 fi
 case "$runtime" in
     responsive) default_bin="$work_root/qemu-9.1.3-interaction/build-arm64-interaction"; default_idle=wfi ;;
@@ -125,7 +133,7 @@ case "$runtime:$mode" in
 esac
 display=cocoa,zoom-to-fit=on
 case "$mode" in
-    --install-packages) display=none ;;
+    --audio-diagnostic|--install-packages) display=none ;;
     # The touch-only guest has no pointer to replace Cocoa's hidden host cursor.
     interactive) display="$display,show-cursor=on" ;;
     --network-diagnostic|--storage-diagnostic|--usability-headless-diagnostic|--serial-smoke|--headless-smoke|--display-smoke|--input-smoke|--landscape-smoke|--calculator-headless-diagnostic|--orientation-headless-diagnostic|--gpu-headless-diagnostic|--animation-headless-diagnostic|--splash-headless-diagnostic|--handoff-headless-diagnostic|--startup-input-headless-diagnostic|--performance-headless-diagnostic) display=none ;;
@@ -273,6 +281,9 @@ if [ -n "$trace_options" ]; then
     set -- "$@" -trace "$trace_options"
 fi
 case "$mode" in
+    --audio-diagnostic)
+        exec "$python_bin" -B "$repo_root/scripts/harmattan-qemu/smoke-arm64-audio.py" \
+            --output "$run_root/audio" -- "$@" ;;
     --install-packages)
         exec "$python_bin" -B "$repo_root/scripts/harmattan-qemu/install-armel-packages.py" \
             --output "$run_root/packages" --profile "$user_profile" --base "$run_root/pr13-backing.raw" \
@@ -331,4 +342,4 @@ if [ -n "$user_profile" ]; then
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
-    --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
+    --audio "$audio" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"

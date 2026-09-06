@@ -83,6 +83,7 @@ Keep original guest UI semantics and source attribution. Do not invent device te
 - Guest overlay apply scripts write guest system directories. Never run them against the host or a physical phone. Base inputs must be quiescent before cloning.
 - Keep firmware, SDK installers, disk images, fonts, standalone artwork, credentials, personal databases, memory dumps and private paths out of commits. Reviewed runtime screenshots have explicit paths/hashes in the publication checker and [capture provenance](docs/screenshots/README.md).
 - Preserve inherited license notices and [NOTICE](NOTICE). Stage exact files; use the feature-branch/PR workflow in [local development](docs/development.md) when contributing. Respect authorization already given in the task without adding a separate routine approval step.
+- Optional [audio output](docs/audio.md) uses a private host PulseAudio process. Its diagnostic requires the matching guest libraries and ARM helper build; keep host output monitoring separate from acoustic or Music UI acceptance.
 
 ## Completion report
 
