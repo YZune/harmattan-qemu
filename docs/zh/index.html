@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#080f18">
+  <meta name="theme-color" content="#000000">
   <title>Nokia N9 / MeeGo Harmattan 模拟器，运行于 Apple Silicon Mac</title>
   <meta name="description" content="Harmattan QEMU 是面向 Apple Silicon Mac 的实验性 Nokia N9 / MeeGo Harmattan 模拟器。查看实机软件运行画面，下载 macOS 预编译预览版，按中英文指南准备镜像与内核，参与开源共建。">
   <link rel="canonical" href="https://yzune.github.io/harmattan-qemu/zh/">
@@ -21,11 +21,12 @@
   <meta property="og:image:alt" content="Harmattan QEMU 英文宣传片封面">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="../assets/site.css">
+  <script src="../assets/cobble.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">跳至内容</a>
 <header class="site-header wrap">
-  <a class="brand" href="../zh/" aria-label="Harmattan QEMU 首页"><span class="brand-mark" aria-hidden="true">H</span>Harmattan QEMU</a>
+  <a class="brand" href="../zh/" aria-label="Harmattan QEMU 首页"><span class="brand-mark cobble" aria-hidden="true">H</span>Harmattan QEMU</a>
   <nav aria-label="主导航">
     <a href="../zh/" aria-current="page">项目介绍</a>
     <a href="../zh/watch/" >视频演示</a>
@@ -40,10 +41,11 @@
     <h1 id="hero-title">让熟悉的滑动，<br><span>再次发生。</span></h1>
     <p class="intro">在 Apple Silicon Mac 上，重新体验原版 Nokia N9 的 MeeGo Harmattan。</p>
     <p class="hero-detail">Harmattan QEMU 将原版 ARM 软件带回今天的电脑。从 Home 桌面到 Maliit 键盘，一起保存这段移动计算的历史。</p>
-    <div class="actions"><a class="button primary" href="https://github.com/YZune/harmattan-qemu/releases">下载 macOS 预览版 <span aria-hidden="true">↗</span></a><a class="button secondary" href="../zh/watch/">观看 60 秒演示 <span aria-hidden="true">→</span></a></div>
+    <div class="actions"><a class="button primary cobble" href="https://github.com/YZune/harmattan-qemu/releases">下载 macOS 预览版 <span aria-hidden="true">↗</span></a><a class="button secondary cobble" href="../zh/watch/">观看 60 秒演示 <span aria-hidden="true">→</span></a></div>
     <p class="requirements">Apple Silicon · macOS 26+ · APFS<br>实验性预览；镜像与内核需单独准备。</p>
   </div>
   <figure class="hero-device">
+    <div class="swipe-tile cobble" aria-hidden="true"></div>
     <div class="phone"><div class="speaker" aria-hidden="true"></div><img src="../screenshots/home.png" width="480" height="864" alt="QEMU 中原版 Harmattan Home 桌面，显示经典应用图标" fetchpriority="high"></div>
     <figcaption>原版 Home · 未修改的客体截图</figcaption>
   </figure>
@@ -51,17 +53,17 @@
 <section class="section wrap" aria-labelledby="experience-title">
   <div class="section-heading"><p class="eyebrow">原版体验</p><h2 id="experience-title">细节，依然熟悉。</h2><p>滚动桌面、边缘返回、计算器运算与键盘输入均来自原版软件。</p></div>
   <div class="capture-grid">
-    <figure class="capture"><img src="../screenshots/notes-keyboard.png" width="480" height="864" loading="lazy" alt="原版 Notes 与 Maliit 屏幕键盘，含诊断输入 Qemu"><figcaption><h3>Notes + Maliit</h3><p>原版便签与屏幕键盘。</p></figcaption></figure>
-    <figure class="capture"><img src="../screenshots/calculator.png" width="480" height="864" loading="lazy" alt="原版 Calculator 显示 2 加 3 的结果 5"><figcaption><h3>Calculator</h3><p>2 + 3 = 5，和记忆里一样。</p></figcaption></figure>
+    <figure class="capture cobble" data-cobble-corner="40"><img src="../screenshots/notes-keyboard.png" width="480" height="864" loading="lazy" alt="原版 Notes 与 Maliit 屏幕键盘，含诊断输入 Qemu"><figcaption><h3>Notes + Maliit</h3><p>原版便签与屏幕键盘。</p></figcaption></figure>
+    <figure class="capture cobble" data-cobble-corner="40"><img src="../screenshots/calculator.png" width="480" height="864" loading="lazy" alt="原版 Calculator 显示 2 加 3 的结果 5"><figcaption><h3>Calculator</h3><p>2 + 3 = 5，和记忆里一样。</p></figcaption></figure>
   </div>
   <p class="caption-note">截图不代表动画帧率。 <a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/screenshots/README.zh-CN.md">查看采集说明与署名</a></p>
 </section>
 <section class="section getting-started" aria-labelledby="start-title"><div class="wrap">
   <div class="section-heading"><p class="eyebrow">开始探索</p><h2 id="start-title">把 Harmattan 带回桌面。</h2></div>
   <ol class="steps">
-    <li><span class="step-number" aria-hidden="true">01</span><h3>下载应用</h3><p>预编译预览版打包运行依赖，并附对应源码包。请先查看使用条件与校验值。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/releases.zh-CN.md">预览版使用说明 →</a></li>
-    <li><span class="step-number" aria-hidden="true">02</span><h3>准备镜像与内核</h3><p>指南提供指定原始材料的下载链接、SHA-256 与准备脚本。应用不包含客体系统和内核。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/guest-inputs.zh-CN.md">资源获取与准备指南 →</a></li>
-    <li><span class="step-number" aria-hidden="true">03</span><h3>启动与体验</h3><p>打开应用并选择准备好的磁盘和内核。客体使用临时快照，退出后不会保留 Notes 等修改。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/status.zh-CN.md">了解当前兼容性 →</a></li>
+    <li><span class="step-number cobble" aria-hidden="true">01</span><h3>下载应用</h3><p>预编译预览版打包运行依赖，并附对应源码包。请先查看使用条件与校验值。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/releases.zh-CN.md">预览版使用说明 →</a></li>
+    <li><span class="step-number cobble" aria-hidden="true">02</span><h3>准备镜像与内核</h3><p>指南提供指定原始材料的下载链接、SHA-256 与准备脚本。应用不包含客体系统和内核。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/guest-inputs.zh-CN.md">资源获取与准备指南 →</a></li>
+    <li><span class="step-number cobble" aria-hidden="true">03</span><h3>启动与体验</h3><p>打开应用并选择准备好的磁盘和内核。客体使用临时快照，退出后不会保留 Notes 等修改。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/status.zh-CN.md">了解当前兼容性 →</a></li>
   </ol>
 </div></section>
 <section class="section wrap faq" aria-labelledby="faq-title"><div class="section-heading"><p class="eyebrow">使用之前</p><h2 id="faq-title">现在能做到什么？</h2></div>
@@ -70,7 +72,7 @@
 <details><summary>下载后可以直接启动吗？</summary><p>还需要按指南准备指定的 PR1.3 磁盘及匹配的模拟器内核。仓库与预览包不附带固件、客体内核、字体或第三方机身素材。</p></details>
 <details><summary>没有系统镜像也能参与吗？</summary><p>可以。阅读补丁、改进文档和运行无需固件的宿主测试即可开始。仓库提供中英文贡献指南与 AGENTS.md，方便使用 coding agent 协作。</p></details>
 </section>
-<section class="section wrap contribute" aria-labelledby="contribute-title"><p class="eyebrow">一起保存，一起完善</p><h2 id="contribute-title">让这次滑动，继续下去。</h2><p>在另一台 Mac 上测试、复现一个问题、改进兼容性，或完善中英文指南。每一项具体的贡献，都能帮助它走得更远。</p><div class="actions"><a class="button primary" href="https://github.com/YZune/harmattan-qemu/blob/main/CONTRIBUTING.zh-CN.md">参与开源共建 →</a><a class="button secondary" href="https://github.com/YZune/harmattan-qemu/blob/main/AGENTS.zh-CN.md">使用 coding agent →</a></div></section>
+<section class="section wrap contribute" aria-labelledby="contribute-title"><p class="eyebrow">一起保存，一起完善</p><h2 id="contribute-title">让这次滑动，继续下去。</h2><p>在另一台 Mac 上测试、复现一个问题、改进兼容性，或完善中英文指南。每一项具体的贡献，都能帮助它走得更远。</p><div class="actions"><a class="button primary cobble" href="https://github.com/YZune/harmattan-qemu/blob/main/CONTRIBUTING.zh-CN.md">参与开源共建 →</a><a class="button secondary cobble" href="https://github.com/YZune/harmattan-qemu/blob/main/AGENTS.zh-CN.md">使用 coding agent →</a></div></section>
 </main>
 <footer class="site-footer wrap"><div><a class="footer-brand" href="../zh/">Harmattan QEMU</a><p>独立的开源系统保存项目，与 Nokia 无官方关联。原界面素材及名称保留原有归属。</p></div><nav aria-label="页脚导航"><a href="https://github.com/YZune/harmattan-qemu">GitHub</a><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/sources.zh-CN.md">来源与许可</a><a href="https://github.com/YZune/harmattan-qemu/issues">报告问题</a></nav></footer>
 </body>

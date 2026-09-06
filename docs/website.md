@@ -6,7 +6,9 @@ The public website is [Harmattan QEMU](https://yzune.github.io/harmattan-qemu/),
 
 ## Edit and preview
 
-The four pages are plain HTML: [English home](index.html), [Chinese home](zh/index.html), [English video](watch/index.html) and [Chinese video](zh/watch/index.html). They share [site.css](assets/site.css). There is no package installation or JavaScript build. Font names use the visitor's installed fonts; no font files or standalone N9 artwork are distributed. The home pages use the existing reviewed screenshots and a CSS-drawn frame.
+The four pages are plain HTML: [English home](index.html), [Chinese home](zh/index.html), [English video](watch/index.html) and [Chinese video](zh/watch/index.html). They share [site.css](assets/site.css) and the small, deferred [cobble.js](assets/cobble.js) geometry enhancement. There is no package installation or JavaScript build. Font names use the visitor's installed fonts; no font files or standalone N9 artwork are distributed. The home pages use the existing reviewed screenshots and a CSS-drawn frame.
+
+### Local preview
 
 From the repository root, serve the site at its production path:
 

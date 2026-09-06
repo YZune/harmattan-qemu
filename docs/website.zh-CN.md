@@ -6,7 +6,9 @@
 
 ## 修改与预览
 
-四个页面均为静态 HTML：[英文首页](index.html)、[中文首页](zh/index.html)、[英文视频页](watch/index.html)、[中文视频页](zh/watch/index.html)，共用 [site.css](assets/site.css)。无需安装依赖或运行 JavaScript 构建。字体名称调用访客本机已有字体，不分发字体文件或独立 N9 机身素材。首页使用已有的审核截图与 CSS 绘制的外框。
+四个页面均为静态 HTML：[英文首页](index.html)、[中文首页](zh/index.html)、[英文视频页](watch/index.html)、[中文视频页](zh/watch/index.html)，共用 [site.css](assets/site.css) 与延迟加载的轻量几何增强脚本 [cobble.js](assets/cobble.js)。无需安装依赖或运行 JavaScript 构建。字体名称调用访客本机已有字体，不分发字体文件或独立 N9 机身素材。首页使用已有的审核截图与 CSS 绘制的外框。
+
+### 本地预览
 
 在仓库根目录运行，以生产环境的项目路径预览：
 
