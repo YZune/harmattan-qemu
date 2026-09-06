@@ -328,7 +328,11 @@ case ${1:-} in
         # Same no-weather/raster choices as the established hybrid UI path.
         weather=/usr/share/meegotouch/applicationextensions/events-weather.desktop
         if [ -f "$weather" ]; then mv "$weather" /tmp/n00-shell-weather.desktop; fi
-        su user -c "$user_env meegotouchhome -local-theme -graphicssystem raster >/tmp/n00-shell-home.log 2>&1 &"
+        # Direct-exec/single-instance entries inherit Qt raster and the stock
+        # Qt Components local theme provider (mdeclarativeimageprovider.cpp).
+        # It reads the original Blanco files without remote pixmap transport.
+        # Explicitly OpenGL applications still need separate GLES support.
+        su user -c "$user_env QT_GRAPHICSSYSTEM=raster M_FORCE_LOCAL_THEME=1 meegotouchhome -local-theme -graphicssystem raster >/tmp/n00-shell-home.log 2>&1 &"
         if [ "${N00_UI_READY_WAITS:-0}" = 1 ]; then
             perl /tmp/n00-ui-helpers/wait-shell-ready-guest.pl home
         else

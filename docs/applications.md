@@ -38,4 +38,22 @@ For ownNotes, the validated dependency order is `libncurses5`, `readline-common`
 
 Installing a package is separate from launching it, editing content, reopening saved work, and using online services. Compatibility results apply to the recorded versions and functions. Cloud accounts, modern TLS, unavailable Nokia services, DRM, hardware-dependent programs and broad application compatibility require separate work.
 
-Current evidence confirms installation and the original desktop after a profile restart. Editing, file operations and EPUB navigation have **not yet been validated**: the Mac was locked during this milestone.
+## Desktop rendering
+
+Home now passes `QT_GRAPHICSSYSTEM=raster` and `M_FORCE_LOCAL_THEME=1` to its children. This also covers desktop entries using the generic `invoker --type=e` or `single-instance` launch paths, which do not receive the Qt-specific arguments used by other invoker types. The Qt raster setting prevents these ordinary Qt applications from selecting the incomplete GLES path by default.
+
+The stock Qt Components image provider (`qt-components` source, `src/meego/mdeclarativeimageprovider.cpp`) already supports `M_FORCE_LOCAL_THEME`. Its local provider reads the original Blanco resources under `/usr/share/themes/blanco/meegotouch`. Selecting it restores toolbar icons and controls that failed through remote pixmap transport. Application binaries, desktop entries, QML and theme assets are unchanged. Applications explicitly requesting OpenGL still need separate GLES compatibility work.
+
+## Local function validation
+
+The [installation record](applications-validation.json) covers package configuration and the original desktop. The later [daily application record](daily-applications-validation.json) adds these function checks:
+
+| Application | Result | Tested behavior |
+| --- | --- | --- |
+| ownNotes 1.2.3 | PASS | Launch from Home; original controls and Maliit; create, save and reopen a note; retain its exact body after a guest restart |
+| Filebox 0.1.0 | PASS | Launch from Home; browse Documents; copy a text file into MyDocs through the original clipboard UI; retain identical source/copy bytes after a guest restart |
+| FBReader 0.99.5 | FAIL | Launches its original executable and window, but its explicit `QGLWidget` viewport still produces black output and unsupported GLES calls; EPUB navigation is not accepted |
+
+These checks used QMP pointer events in a headless guest, original application identities, captured UI states and saved-file hashes. A second boot verified the same profile and clean GPU teardown. The 285-test host suite and the audio-enabled Home/Notes/Maliit/Calculator/transition regression also passed. Physical mouse input in a Cocoa window remains untested for these third-party functions because the Mac was locked. The private bounded exploration driver is not a shipped automated application diagnostic.
+
+For ownNotes, create a note with **+**, enter text, flick down from inside the keyboard to dismiss it, then use the editor's back button to save. Its unconfigured WebDAV worker reports original application errors; the tested local note operations still work. No cloud account was used. Filebox defaults to **double-tap** to open a directory. Long-press a file, choose **Copy**, wait for the menu to close, navigate to the destination, open **Clipboard**, select the item and tap its copy icon. Wait for each directory/menu transition before the next action.

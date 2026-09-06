@@ -38,4 +38,22 @@ ownNotes 的已验证依赖顺序为 `libncurses5`、`readline-common`、`librea
 
 包安装、应用启动、编辑内容、重开已保存内容和在线服务分别验证。兼容结论仅适用于记录中的版本和功能。云账户、现代 TLS、已经停用的 Nokia 服务、DRM、依赖硬件的程序和广泛应用兼容仍需单独推进。
 
-当前证据确认安装成功及档案重启后的原版桌面。编辑、文件操作和 EPUB 翻页**尚未验证**：本阶段 Mac 锁屏，原生窗口检查暂不可用。
+## 桌面绘图
+
+Home 现在向子进程传入 `QT_GRAPHICSSYSTEM=raster` 和 `M_FORCE_LOCAL_THEME=1`。这也覆盖使用通用 `invoker --type=e` 或 `single-instance` 的桌面入口，它们不会收到其他 invoker 类型附加的 Qt 参数。Qt raster 设置可防止普通 Qt 应用默认选择尚不完整的 GLES 路径。
+
+原版 Qt Components 图像提供器（`qt-components` 源码中的 `src/meego/mdeclarativeimageprovider.cpp`）已支持 `M_FORCE_LOCAL_THEME`。其本地提供器读取 `/usr/share/themes/blanco/meegotouch` 内的原版 Blanco 资源。选择此路径可恢复远程 pixmap 传输失败时缺失的工具栏图标和控件。应用二进制、桌面入口、QML 和主题素材均保持原样；显式请求 OpenGL 的应用仍需要独立的 GLES 兼容工作。
+
+## 本地功能验证
+
+[安装记录](applications-validation.json)覆盖包配置和原版桌面。后续[日常应用记录](daily-applications-validation.json)增加了以下功能检查：
+
+| 应用 | 结果 | 已验证行为 |
+| --- | --- | --- |
+| ownNotes 1.2.3 | PASS | 从 Home 启动；原版控件和 Maliit；创建、保存、重开笔记；客体重启后正文内容保持一致 |
+| Filebox 0.1.0 | PASS | 从 Home 启动；浏览 Documents；通过原版剪贴板界面将文本复制到 MyDocs；客体重启后源文件与副本字节一致 |
+| FBReader 0.99.5 | FAIL | 原版程序及窗口已启动，但显式 `QGLWidget` 视口仍黑屏并触发不支持的 GLES 调用；EPUB 翻页未通过验收 |
+
+这些检查使用无窗口客体中的 QMP 指针事件、原版应用身份、界面截图和已保存文件摘要。第二次启动验证了同一档案及干净的 GPU 退出。285 项宿主测试和开启音频的 Home/Notes/Maliit/Calculator/切换动画联合回归也通过。由于 Mac 锁屏，这些三方应用功能尚未验证 Cocoa 窗口中的物理鼠标操作。使用的私有有界探索驱动并非已发布的自动应用诊断器。
+
+ownNotes 中点击 **+** 创建笔记，输入文字，从键盘内部快速下滑收起键盘，再点击编辑器返回按钮保存。未配置的 WebDAV 工作线程会报告原应用错误，但已测试的本地笔记操作正常；本次未使用云账户。Filebox 默认通过**双击**打开目录。长按文件，选择 **Copy**，等待菜单关闭后进入目标目录，再打开 **Clipboard**、选中项目并点击复制图标。每次目录或菜单切换结束后再继续操作。
