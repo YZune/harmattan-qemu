@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#080f18">
+  <meta name="theme-color" content="#000000">
   <title>Nokia N9 模拟器演示：MeeGo Harmattan 在 Mac 上运行</title>
   <meta name="description" content="观看 60 秒 4K 视频：原版 Nokia N9 MeeGo Harmattan 的桌面滚动、边缘手势、Notes、Maliit 键盘和计算器，在 Apple Silicon Mac 的 QEMU 中运行。">
   <link rel="canonical" href="https://yzune.github.io/harmattan-qemu/zh/watch/">
@@ -21,12 +21,13 @@
   <meta property="og:image:alt" content="Harmattan QEMU 英文宣传片封面">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="../../assets/site.css">
+  <script src="../../assets/cobble.js" defer></script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "VideoObject", "name": "Nokia N9 Emulator on Mac | MeeGo Harmattan QEMU Preview", "description": "观看 60 秒 4K 视频：原版 Nokia N9 MeeGo Harmattan 的桌面滚动、边缘手势、Notes、Maliit 键盘和计算器，在 Apple Silicon Mac 的 QEMU 中运行。", "thumbnailUrl": ["https://i.ytimg.com/vi/GArapJ3rOIo/maxresdefault.jpg"], "uploadDate": "2026-09-05", "duration": "PT1M", "embedUrl": "https://www.youtube.com/embed/GArapJ3rOIo", "url": "https://www.youtube.com/watch?v=GArapJ3rOIo", "inLanguage": "en", "isFamilyFriendly": true}</script>
 </head>
 <body>
 <a class="skip" href="#main">跳至内容</a>
 <header class="site-header wrap">
-  <a class="brand" href="../../zh/" aria-label="Harmattan QEMU 首页"><span class="brand-mark" aria-hidden="true">H</span>Harmattan QEMU</a>
+  <a class="brand" href="../../zh/" aria-label="Harmattan QEMU 首页"><span class="brand-mark cobble" aria-hidden="true">H</span>Harmattan QEMU</a>
   <nav aria-label="主导航">
     <a href="../../zh/" >项目介绍</a>
     <a href="../../zh/watch/" aria-current="page">视频演示</a>
@@ -40,7 +41,7 @@
   <p class="watch-intro">观看 60 秒 4K 视频：原版 Nokia N9 MeeGo Harmattan 的桌面滚动、边缘手势、Notes、Maliit 键盘和计算器，在 Apple Silicon Mac 的 QEMU 中运行。</p>
   <div class="video-player"><iframe src="https://www.youtube.com/embed/GArapJ3rOIo" title="Nokia N9 Emulator on Mac | MeeGo Harmattan QEMU Preview" width="1280" height="720" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
   <p class="video-caption">发布于 2026 年 9 月 5 日 · 英文宣传片 · <a href="https://www.youtube.com/watch?v=GArapJ3rOIo">在 YouTube 上观看 ↗</a></p>
-  <div class="actions"><a class="button primary" href="https://github.com/YZune/harmattan-qemu/releases">下载 macOS 预览版 ↗</a><a class="button secondary" href="https://github.com/YZune/harmattan-qemu/blob/main/docs/guest-inputs.zh-CN.md">准备镜像与内核 →</a></div>
+  <div class="actions"><a class="button primary cobble" href="https://github.com/YZune/harmattan-qemu/releases">下载 macOS 预览版 ↗</a><a class="button secondary cobble" href="https://github.com/YZune/harmattan-qemu/blob/main/docs/guest-inputs.zh-CN.md">准备镜像与内核 →</a></div>
   <section class="section transcript" aria-labelledby="transcript-title"><p class="eyebrow">视频内容</p><h2 id="transcript-title">逐段了解演示。</h2><p>以下为英文画面文案的中文译文。</p><ol>
 <li><a class="timecode" href="https://www.youtube.com/watch?v=GArapJ3rOIo&amp;t=0s" aria-label="从 00:00">00:00</a><div><h3>还记得那次滑动吗？</h3><p>一个手势，一种难以忘记的体验。</p></div></li>
 <li><a class="timecode" href="https://www.youtube.com/watch?v=GArapJ3rOIo&amp;t=5s" aria-label="从 00:05">00:05</a><div><h3>Harmattan，再次运行。</h3><p>原版 ARM 软件，在 QEMU 中运行。</p></div></li>
@@ -50,7 +51,7 @@
 <li><a class="timecode" href="https://www.youtube.com/watch?v=GArapJ3rOIo&amp;t=40s" aria-label="从 00:40">00:40</a><div><h3>macOS 预览版，等你体验。</h3><p>预编译应用与对应源码包。需要 Apple Silicon / macOS 26+；镜像和内核需单独准备。</p></div></li>
 <li><a class="timecode" href="https://www.youtube.com/watch?v=GArapJ3rOIo&amp;t=50s" aria-label="从 00:50">00:50</a><div><h3>让滑动继续。</h3><p>一起保存这段计算历史。github.com/YZune/harmattan-qemu</p></div></li>
 </ol></section>
-  <section class="production" aria-labelledby="scope-title"><h2 id="scope-title">演示范围与制作说明</h2><p>视频展示实验性 N00/QEMU 移植的真实客体画面。它不代表完整 N9 硬件模拟或所有应用兼容性；当前使用 PR1.0 时期内核与适配层、PR1.3 量产用户态。</p><p>成片为 3840 × 2160 / 60 fps，将原始 480 × 864 客体画面合成到固定 N9 外框中。视频制作规格不等于客体或原机的实测显示帧率。配乐由 GPT 与 Codex 辅助，以代码创作并合成，没有采样歌曲或旁白。</p><p>视频中的 N9 素材来自 Liwen Guo / Livven，使用创作者的本地版本并隐藏 logo 与玻璃反光。感谢 QEMU、Nokia N00/DGLES 与 Harmattan 开发者、保存社区、GPT 和 Codex。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/status.zh-CN.md">查看兼容性与验证边界 →</a></section>
+  <section class="production cobble" data-cobble-corner="40" aria-labelledby="scope-title"><h2 id="scope-title">演示范围与制作说明</h2><p>视频展示实验性 N00/QEMU 移植的真实客体画面。它不代表完整 N9 硬件模拟或所有应用兼容性；当前使用 PR1.0 时期内核与适配层、PR1.3 量产用户态。</p><p>成片为 3840 × 2160 / 60 fps，将原始 480 × 864 客体画面合成到固定 N9 外框中。视频制作规格不等于客体或原机的实测显示帧率。配乐由 GPT 与 Codex 辅助，以代码创作并合成，没有采样歌曲或旁白。</p><p>视频中的 N9 素材来自 Liwen Guo / Livven，使用创作者的本地版本并隐藏 logo 与玻璃反光。感谢 QEMU、Nokia N00/DGLES 与 Harmattan 开发者、保存社区、GPT 和 Codex。</p><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/status.zh-CN.md">查看兼容性与验证边界 →</a></section>
 </main>
 <footer class="site-footer wrap"><div><a class="footer-brand" href="../../zh/">Harmattan QEMU</a><p>独立的开源系统保存项目，与 Nokia 无官方关联。原界面素材及名称保留原有归属。</p></div><nav aria-label="页脚导航"><a href="https://github.com/YZune/harmattan-qemu">GitHub</a><a href="https://github.com/YZune/harmattan-qemu/blob/main/docs/sources.zh-CN.md">来源与许可</a><a href="https://github.com/YZune/harmattan-qemu/issues">报告问题</a></nav></footer>
 </body>

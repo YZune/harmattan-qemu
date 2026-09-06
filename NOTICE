@@ -16,6 +16,10 @@ The DGLES Cocoa addition and n00-n9-skin.h have explicit MIT notices.
 MIT text is provided in LICENSES/MIT.txt. The DGLES archive contains other
 components under their own terms; it is not uniformly MIT-licensed.
 
+The website's docs/assets/cobble.js is Copyright (C) 2026 YZune and
+contributors, Apache-2.0. Its web adaptation uses equal-corner cubic paths,
+inset surfaces and resize handling. License text is in LICENSES/Apache-2.0.txt.
+
 Nokia source provenance: Software Heritage revision
 swh:1:rev:32530f6ab08f80a53bf56843ab793eefde75a67f
 and the Harmattan PR1.3 gles-libs_1.4.2-3+0m6.tar.gz source package.
@@ -39,3 +43,7 @@ GPL-2.0-or-later；继承文件及 MIT 标记代码保留原声明。外部固�
 docs/screenshots/ 下的运行截图用于说明模拟器实际行为，画面中的原界面、
 图标、字体和商标仍归 Nokia 及各自权利人，不因项目 GPL 声明而重新许可。
 详细来源与许可边界见 docs/sources.zh-CN.md。
+
+网站 docs/assets/cobble.js 的版权归 YZune 及贡献者所有，采用 Apache-2.0。
+网页适配包含等尺寸转角的三次曲线路径、内层表面及尺寸监听。
+许可全文见 LICENSES/Apache-2.0.txt。
