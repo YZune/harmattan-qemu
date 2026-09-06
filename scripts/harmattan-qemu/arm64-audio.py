@@ -6,11 +6,43 @@ import math
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import socket
 import subprocess
 import tempfile
 import time
+
+
+def validate_policy(data):
+    data = data.replace(b'\r', b'')
+    begin, end = b'N00_AUDIO_POLICY_BEGIN', b'N00_AUDIO_POLICY_END'
+    lines = data.split(b'\n')
+    if lines.count(begin) != 1 or lines.count(end) != 1:
+        raise ValueError('missing unique original audio policy report')
+    records = re.findall(rb'^' + begin + rb'\n(.*?)^' + end + rb'$', data, re.M | re.S)
+    if len(records) != 1:
+        raise ValueError('invalid audio policy boundaries')
+    block = records[0]
+    pids = re.findall(rb'^N00_AUDIO_POLICY_PID ([1-9][0-9]*)$', block, re.M)
+    if len(pids) != 1:
+        raise ValueError('missing audio policy process')
+    pid = pids[0]
+    process = re.findall(rb'^Name:\s*ohmd\nState:\s*([RS])[^\n]*\nTgid:\s*(\d+)\n'
+        rb'Pid:\s*(\d+)\nPPid:[^\n]*\nTracerPid:\s*0\nUid:\s*0\s+0\s+0\s+0\n', block, re.M)
+    if len(process) != 1 or process[0][1:] != (pid, pid) or block.splitlines().count(b'/usr/sbin/ohmd') != 1:
+        raise ValueError('audio policy process stopped, traced or identity mismatch')
+    digest = b'96dc1f6be9c836dc5b2c51b54f4d74b4'
+    for path in (b'/usr/sbin/ohmd', b'/proc/' + pid + b'/exe'):
+        if re.findall(rb'^([0-9a-f]{32})  ' + re.escape(path) + rb'$', block, re.M) != [digest]:
+            raise ValueError('original OHM executable identity mismatch')
+    owners = re.findall(rb'^N00_AUDIO_POLICY_OWNER ([^\n]+)\nmethod return[^\n]*\n\s+uint32 (\d+)\n', block, re.M)
+    services = (b'org.freedesktop.ohm', b'org.maemo.resource.manager')
+    if owners != [(service, pid) for service in services]:
+        raise ValueError('original OHM does not own both audio policy services')
+    return {'pid': int(pid), 'executable_md5': digest.decode(),
+            'services': [service.decode() for service in services],
+            'scope': 'original guest OHM resource grants; unchanged rules, no hardware routing claim'}
 
 
 def default_output():
@@ -121,7 +153,7 @@ class Output:
                 subprocess.check_output([str(self.binary), '--version'], env=self.env,
                     stderr=self.log, text=True, timeout=10).strip(),
                 'guest_server': self.guest_server, 'recording': False,
-                'scope': 'PulseAudio clients through SDK Ethernet; no DAC33/McBSP emulation or Nokia audio policy'}
+                'scope': 'PulseAudio clients through SDK Ethernet; no DAC33/McBSP or full Nokia PulseAudio policy emulation'}
             (self.output / 'audio.json').write_text(json.dumps(self.info, indent=2) + '\n')
         except BaseException:
             self.close()

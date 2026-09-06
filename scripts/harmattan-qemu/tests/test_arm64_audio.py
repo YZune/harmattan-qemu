@@ -23,6 +23,39 @@ def pcm(seconds=3, frequency=440, level=400, stereo=True):
 
 
 class AudioTests(unittest.TestCase):
+    def test_policy_requires_original_live_process_and_both_bus_owners(self):
+        report = b'''N00_AUDIO_POLICY_BEGIN
+N00_AUDIO_POLICY_PID 716
+Name:\tohmd
+State:\tS (sleeping)
+Tgid:\t716
+Pid:\t716
+PPid:\t1
+TracerPid:\t0
+Uid:\t0\t0\t0\t0
+Gid:\t0\t0\t0\t0
+/usr/sbin/ohmd
+96dc1f6be9c836dc5b2c51b54f4d74b4  /usr/sbin/ohmd
+96dc1f6be9c836dc5b2c51b54f4d74b4  /proc/716/exe
+N00_AUDIO_POLICY_OWNER org.freedesktop.ohm
+method return sender=org.freedesktop.DBus -> dest=:1.27 reply_serial=2
+   uint32 716
+N00_AUDIO_POLICY_OWNER org.maemo.resource.manager
+method return sender=org.freedesktop.DBus -> dest=:1.28 reply_serial=2
+   uint32 716
+N00_AUDIO_POLICY_END
+'''
+        self.assertEqual(AUDIO.validate_policy(report)['pid'], 716)
+        for bad in (b'', report + report, report.replace(b'S (sleeping)', b'T (stopped)'),
+                    report.replace(b'TracerPid:\t0', b'TracerPid:\t50'),
+                    report.replace(b'Uid:\t0', b'Uid:\t29999'),
+                    report.replace(b'uint32 716', b'uint32 717', 1),
+                    report.replace(b'org.maemo.resource.manager', b'org.example.other'),
+                    report.replace(b'96dc1f6be9c836dc5b2c51b54f4d74b4', b'0' * 32, 1),
+                    report.replace(b'/usr/sbin/ohmd\n', b'/usr/bin/substitute\n', 1)):
+            with self.subTest(report=bad), self.assertRaises(ValueError):
+                AUDIO.validate_policy(bad)
+
     def test_real_signal_has_duration_frequency_and_equal_channels(self):
         result = AUDIO.validate_pcm(b'\0' * 4000 + pcm() + b'\0' * 4000)
         self.assertAlmostEqual(result['active_seconds'], 3, delta=.01)

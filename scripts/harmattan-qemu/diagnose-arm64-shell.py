@@ -567,6 +567,8 @@ def main():
                         print(f"DIAGNOSTIC: input scroll {step}; screenshot: {out / f'scroll-{step}.png'}", flush=True)
                 if phase == "bootstrap" and status:
                     break
+                if phase == 'bootstrap' and audio_output:
+                    audio_output.info['guest_policy'] = audio.validate_policy(serial_data)
                 if phase == 'bootstrap' and edge is not None:
                     orientation.command(serial, wait_line, 'start', edge, 'startup')
                     pose['startup'] = orientation.validate_provider(
@@ -776,6 +778,7 @@ def main():
                 "system_ui": ui_service,
                 "clock": clock_info,
                 "input_method": keyboard_info,
+                "audio": audio_output.info if audio_output else {"enabled": False},
                 "compositor_animations": animation_info,
                 "splash": splash_info,
                 "startup_input": guard_info,

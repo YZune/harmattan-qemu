@@ -37,6 +37,8 @@ The [package installer](applications.md) transfers reviewed ARMEL packages into 
 
 Source launches now offer optional [sound output](audio.md) through a private PulseAudio server and Mac CoreAudio. The [audio record](audio-validation.json) covers 281 host tests, original guest libpulse PCM, GStreamer WAV, mute and the combined UI regression with audio enabled. This is separate from full Nokia audio hardware and policy emulation.
 
+Audio-enabled UI startup now includes the original OHM resource manager. The [ringtone record](ringtone-validation.json) covers 294 host tests, original Settings Nokia tune playback/stop through the private CoreAudio output, and the combined headless UI regression. Other tones and physical audio quality remain untested.
+
 Normal source startup now uses [actual readiness checks](performance.md) instead of fixed compositor/Home delays. The [performance record](performance-validation.json) covers 285 host tests, paired startup timings, early-input protection and the audio-enabled Home/Notes/keyboard/Calculator/transition regression. The change keeps the single Cortex-A8/512 MiB board and original animation timings; it does not establish a display FPS improvement.
 
 ## Open limitations
