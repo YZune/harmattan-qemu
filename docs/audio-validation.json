@@ -1,0 +1,81 @@
+{
+  "date": "2026-09-06",
+  "base_commit": "17ad7c0",
+  "host": {
+    "architecture": "arm64",
+    "os": "26.6.2",
+    "python": "3.12.2",
+    "pulseaudio": "17.0"
+  },
+  "scope": "Source audio service and bounded guest playback; no new prebuilt release or acoustic acceptance",
+  "source_sha256": {
+    "scripts/harmattan-qemu/arm64-audio.py": "54ee5eb96dbb2e64586f368c5480f9028c683a2ff8a6d1c94f0c934d0edf9b79",
+    "scripts/harmattan-qemu/audio-probe-guest.c": "4fae7ccad77575d1fda08d8c840a1b5f87ab87abafa4646540a54cc4ea19d0a5",
+    "scripts/harmattan-qemu/build-audio-guest.sh": "65bee64fa9600ecb7e2013495744c0e6a8f08136c08881ff7ac481e377230740",
+    "scripts/harmattan-qemu/smoke-arm64-audio.py": "5e4099fbf42fd942c94e9eb65b7fa9bb864fde0983deb0109541846baabdd52b",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "14ed9ad58c574aedc29e4c36d927d3ab634b3d6ea2c07ea79e63858e3b58128c",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "eebb4308b87687a353a50c6547877a7882375200f15c4caa6cccee7f8ca5d404",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "350f61c3badf0e4cddf348d451972960328ab89747ccf6f3e8d41cfc98ed63a3"
+  },
+  "checks": {
+    "host_suite": "281 tests passed",
+    "audio_diagnostic": {
+      "passed": true,
+      "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+      "probe_sha256": "19a52bde481add0c582f22a9b51059ca00ef31a09d73a97430bfd5e5f1293b5c",
+      "playback": {
+        "pulse": {
+          "format": "s16le",
+          "rate": 44100,
+          "channels": 2,
+          "active_seconds": 2.9998,
+          "rms": 288.8,
+          "frequency_hz": 440.02,
+          "peak": 503,
+          "scope": "monitor of this private CoreAudio output stream; not a microphone or acoustic measurement"
+        },
+        "gstreamer": {
+          "format": "s16le",
+          "rate": 44100,
+          "channels": 2,
+          "active_seconds": 3.0,
+          "rms": 288.81,
+          "frequency_hz": 440.0,
+          "peak": 532,
+          "scope": "monitor of this private CoreAudio output stream; not a microphone or acoustic measurement"
+        },
+        "muted": {
+          "silent": true,
+          "seconds": 3.0184
+        }
+      },
+      "scope": "original guest libpulse and GStreamer WAV pipeline, private CoreAudio output monitor; not Nokia Music UI or acoustic acceptance",
+      "audio": {
+        "enabled": true,
+        "backend": "PulseAudio/CoreAudio",
+        "host_version": "pulseaudio 17.0",
+        "recording": false,
+        "scope": "PulseAudio clients through SDK Ethernet; no DAC33/McBSP emulation or Nokia audio policy"
+      }
+    },
+    "network_and_ui_regression": {
+      "passed": true,
+      "display": "headless",
+      "home": true,
+      "original_notes_and_maliit": true,
+      "calculator": true,
+      "transitions": true,
+      "gpu_calls": 18407,
+      "gpu_swaps": 189,
+      "gpu_faults": 0,
+      "workers": "joined"
+    },
+    "private_server_cleanup": "normal diagnostic exit and failed initialization both terminated the owned server"
+  },
+  "not_tested": [
+    "Native Music UI and individual third-party app audio",
+    "Acoustic quality, physical output latency or user listening confirmation",
+    "Long playback, output device switching, Bluetooth, microphone and telephony",
+    "New prebuilt dependency packaging/relocation and arbitrary codecs"
+  ]
+}

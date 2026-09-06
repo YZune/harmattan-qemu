@@ -161,3 +161,5 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-diagnostic
 - **没有图形会话**：在已登录的 macOS 桌面会话运行原生图形测试。
 - **移动过产物**：按目标动态库位置重新构建 `.app`。
 - **启动黑屏**：等待 `READY`，查看新运行目录；报告准确命令及简短脱敏失败片段。
+
+可选[声音输出](audio.zh-CN.md)需要额外安装宿主 PulseAudio：`brew install pulseaudio`，然后设置 `HARMATTAN_UI_AUDIO=pulse`。声音诊断还使用既有客体链接环境。

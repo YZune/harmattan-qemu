@@ -35,6 +35,8 @@ Explicit [user profiles](storage.md) now preserve saved guest files across launc
 
 The [package installer](applications.md) now transfers reviewed ARMEL packages into an explicit profile, preserves dependency failures and restores SDK graphics links after package triggers. The [application record](applications-validation.json) covers 277 host tests, all dependencies configured, restart and original Home with ownNotes, Filebox and FBReader installed. Individual application functions await native window validation.
 
+Source launches now offer optional [sound output](audio.md) through a private PulseAudio server and Mac CoreAudio. The [audio record](audio-validation.json) covers 281 host tests, original guest libpulse PCM, GStreamer WAV, mute and the combined UI regression with audio enabled. This is separate from full Nokia audio hardware and policy emulation.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.
@@ -42,7 +44,7 @@ Native source builds now provide opt-in [SDK Ethernet networking](networking.md)
 - Linux/Windows runtime ports, independent second-Mac validation and Developer ID signing/notarization. See the [prebuilt preview](releases.md) for the packaged runtime and its remaining guest-input requirement.
 - Independent reproduction of the new original-media preparation route, support for additional media versions, and a redistributable guest baseline.
 - Complete EGL/GLES coverage, SGX emulation, and arbitrary ARMEL packages.
-- Full Upstart/Aegis/device services, cellular, camera, audio, Wi-Fi/connection-manager integration, and accurate physical sensors.
+- Full Upstart/Aegis/device services, cellular, camera, hardware audio routing, Wi-Fi/connection-manager integration, and accurate physical sensors.
 - General save/restore, machine reset and suspend/resume compatibility.
 - All applications, keyboard languages, rotations, accessibility, and long-running sessions.
 - Splash composition with all handoff modes; splash remains disabled in the normal path.

@@ -83,6 +83,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh
 - 客体 overlay 应用脚本会写入客体系统目录，不能在宿主或真机上执行。克隆基础输入前应确保没有进程写入它们。
 - 固件、SDK 安装器、镜像、字体、独立素材、凭据、个人数据库、内存转储及私人路径不能进入提交。精选运行截图在发布检查器中有明确路径和摘要，并有[采集说明](docs/screenshots/README.zh-CN.md)。
 - 保留继承的许可声明及 [NOTICE](NOTICE)。明确暂存文件，贡献时使用[本地开发管理](docs/development.zh-CN.md)中的功能分支及 PR 流程。尊重当前任务已有授权，不额外增加常规审批步骤。
+- 可选[声音输出](docs/audio.zh-CN.md)使用私有宿主 PulseAudio 进程。其诊断需要匹配的客体库和 ARM 辅助程序构建；区分宿主输出监测与声学效果、Music 界面验收。
 
 ## 完成报告
 

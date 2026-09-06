@@ -161,3 +161,5 @@ Some historical diagnostic modes intentionally use older defaults. A passing com
 - **No graphics session:** run the native graphics test in a logged-in macOS desktop session.
 - **Artifact moved:** rebuild the `.app` with the desired library locations.
 - **Blank startup:** wait for `READY`, inspect the new run directory, and report the exact command plus a short sanitized failure excerpt.
+
+Optional [sound output](audio.md) uses a separate host PulseAudio installation: `brew install pulseaudio`, then `HARMATTAN_UI_AUDIO=pulse`. The audio diagnostic also uses the existing guest linking prerequisites.
