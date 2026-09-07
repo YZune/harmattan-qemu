@@ -1,0 +1,47 @@
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -13,6 +13,8 @@
+ #include "exec/address-spaces.h"
+ #include "exec/cpu-common.h"
+ #include "hw/arm/boot.h"
++#include "hw/loader.h"
++#include "n00-gp-cache-monitor.h"
+ #include "hw/arm/omap.h"
+ #include "hw/arm/soc_dma.h"
+ #include "hw/boards.h"
+@@ -531,6 +533,27 @@
+         || n00_sdk_flash_dma_address_valid(addr);
+ }
+ 
++/* Explicit cache-only GP experiment. Unsupported SMC calls stop at ROM + 0x80. */
++static void n00_gp_cache_monitor_init(void)
++{
++    const char *mode = g_getenv("HARMATTAN_N00_GP_CACHE_MONITOR");
++    MemoryRegion *rom;
++
++    if (!mode || !strcmp(mode, "off")) {
++        return;
++    }
++    if (strcmp(mode, "on")) {
++        error_report("HARMATTAN_N00_GP_CACHE_MONITOR must be on or off");
++        exit(EXIT_FAILURE);
++    }
++    rom = g_new0(MemoryRegion, 1);
++    memory_region_init_rom(rom, NULL, "n00.gp-cache-monitor", 0x1000,
++                           &error_fatal);
++    memory_region_add_subregion(get_system_memory(), 0, rom);
++    rom_add_blob_fixed("n00.gp-cache-monitor", n00_gp_cache_monitor,
++                       sizeof(n00_gp_cache_monitor), 0);
++}
++
+ static void n00_port_spike_init(MachineState *machine)
+ {
+     ARMCPU *cpu;
+@@ -560,6 +583,7 @@
+     }
+ 
+     cpu = ARM_CPU(cpu_create(machine->cpu_type));
++    n00_gp_cache_monitor_init();
+     memory_region_add_subregion(get_system_memory(), N00_SDRAM_BASE,
+                                 machine->ram);
+     sram = g_new0(MemoryRegion, 1);

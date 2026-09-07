@@ -7,3 +7,5 @@
 机型为 `n00-port-spike`：实验性的 OMAP3/N00 直启、存储、DPI 显示、受限 GLES 及 MXT 输入。兼容范围见[状态](../../docs/status.zh-CN.md)，Nokia/QEMU 来源和许可选择见[来源](../../docs/sources.zh-CN.md)。
 
 [DGLES 补丁](../dgles2/README.zh-CN.md)应用于独立源码归档。[机身素材](skins/README.zh-CN.md)为可选、用户自行提供，本次发布不包含素材。
+
+原版 BME 的硬件前置条件及独立诊断见[设备服务实验](../../docs/device-services.zh-CN.md)。该实验默认关闭，不代表完整蜂窝与电源服务已就绪。

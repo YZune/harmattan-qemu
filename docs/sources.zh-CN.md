@@ -25,6 +25,7 @@ Nokia 快照为 [swh:1:snp:1642de2ac147a906f0ffd726121b0e15fcdef01e](https://arc
 | `hw/omap3_mmc.c` | `4f16c008e9c061fbf5e0f59cea3e1043c4f18a44` |
 | `hw/omap_sdrc.c` | `82da88c486f25a772edfbfe0b3a2cc20ca75dc57` |
 | `hw/omap_i2c.c` | `f128530ec0b34ed5c05fa126a124b7ed14d81487` |
+| `hw/nseries.c` | `429bfda407fdc2c8aa0562a1cbc3ddb8a2a99e13` |
 | `hw/twl4030.c` | `a86855e3463dc64a86547102675e143391c696dc` |
 | `hw/omap_dss.c` | `c1228df70d053bcd0711f7b5fc81b93777867ac5` |
 | `hw/omap_dss_drawfn.h` | `37ba1369505293d83ffa0da4c32387a4be983a82` |
@@ -62,6 +63,10 @@ SDK/固件的准确下载链接、完整文件 SHA-256 和本地提取命令见[
 可选外壳集成引用的 Nokia N9 PSD 由 Livven / Liwen Guo 创作。研究记录描述了个人使用及商业捐赠建议，并未确认其采用开源素材许可。用户应自行确认使用及再分发权限。正常构建和几何测试无需该素材，参见[可选外壳说明](../ports/qemu-n00/skins/README.zh-CN.md)。
 
 ## 许可适用方式
+
+[实验性 PR1.3 内核](kernel.zh-CN.md)使用原版 DVD 的 `kernel_2.6.32-20121301+0m8`、`kernel-qemu_2.6.32.20112701+0m6`，以及现有 DGLES 包内的 `kfgles2`；内核指南列出完整输入摘要。构建兼容补丁归属 `ports/guest-kernel/`，完整原始源码、内核二进制和模块归档仍是外部或私有输入、产物。
+
+实验性 SSI 控制器依据 Nokia DVD 中仅允许 GPLv2 的 `kernel_2.6.32-20121301+0m8` 包内接口实现，具体为 `arch/arm/plat-omap/include/plat/ssi.h` 与 `drivers/hsi/controllers/omap_ssi.c`，保留这一更窄的许可选择。包摘要和运行边界见[设备服务](device-services.zh-CN.md)。
 
 [QEMU 官方许可说明](https://www.qemu.org/docs/master/about/license.html)明确 GPLv2 及文件级条款。这里的 Nokia 原文件同时存在“GPL 第 2 或第 3 版”与“GPL 第 2 或后续版本”等声明，应保留区别。明确标记 MIT 的新增实现仍采用 MIT。不要将组合后的 QEMU 代码整体改为宽松许可，也不要将整个 DGLES 归档视作 MIT。
 

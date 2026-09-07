@@ -1,0 +1,130 @@
+{
+  "date": "2026-09-07",
+  "base_commit": "326664b",
+  "scope": "Experimental SSI controller; no modem, SIM, network registration or secure-boot acceptance",
+  "defaults": {
+    "HARMATTAN_N00_SSI": "off",
+    "loopback": false
+  },
+  "host": "Apple Silicon macOS, Python 3.12.2",
+  "guest": "Original PR1.0 SDK kernel 2.6.32.26 and PR1.3 original-media prepared userspace",
+  "checks": [
+    {
+      "name": "host suite",
+      "status": "PASS",
+      "tests": 330,
+      "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+      "detail": "Includes nine SSI C cases with AddressSanitizer/UndefinedBehaviorSanitizer, eight-channel isolation and invalid/modified DMA transfer rejection."
+    },
+    {
+      "name": "fresh pinned QEMU source build",
+      "status": "PASS",
+      "command": "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction",
+      "qemu_sha256": "9ae2b3885f2571feead91c5aab636a3e8a868b042a1e5a8766fd5a6745008667",
+      "detail": "Fresh extraction, maintained patch order, native ARM64 compilation; exact maintained SSI C/header compared with compiled-source inputs. Reuses unchanged previously built DGLES."
+    },
+    {
+      "name": "final SSI MMIO and transport diagnostic",
+      "status": "PASS",
+      "entrypoint": "scripts/harmattan-qemu/diagnose-ssi.py",
+      "qemu_sha256": "9ae2b3885f2571feead91c5aab636a3e8a868b042a1e5a8766fd5a6745008667",
+      "cases": {
+        "disabled": "PASS",
+        "disconnected": "PASS",
+        "loopback": "PASS"
+      },
+      "checks": [
+        "disabled device stays absent",
+        "disconnected TX stalls and RX stays empty",
+        "PIO backpressure",
+        "32-word bidirectional GDD RAM transfer",
+        "actual INTC IRQ67/68/71 assertion and clearing",
+        "MMIO DMA target rejection",
+        "reset cleanup"
+      ],
+      "fixture": "Explicit loopback only; four-byte locally generated ARM branch input; qtest accelerator executes no product firmware",
+      "host_diagnostics": "clean, workers joined"
+    },
+    {
+      "name": "final original-kernel prerequisite diagnostic",
+      "diagnostic_status": "PASS",
+      "service_readiness": "BLOCKED",
+      "entrypoint": "scripts/harmattan-qemu/diagnose-device-prerequisites.py",
+      "qemu_sha256": "9ae2b3885f2571feead91c5aab636a3e8a868b042a1e5a8766fd5a6745008667",
+      "hardware": {
+        "sdk_power": "on",
+        "ssi": "on"
+      },
+      "facts": {
+        "kernel": "2.6.32.26",
+        "soc": "OMAP3430/3530 ES1.0-test",
+        "kci": "0",
+        "kci_firmware": "missing",
+        "omap_sec": "errno_2",
+        "validator_netlink": "bind_errno_2",
+        "ssi_modprobe": "0",
+        "ssi_bound": "yes"
+      },
+      "exit_code": 2
+    },
+    {
+      "name": "original SSI protocol exploration",
+      "status": "PASS",
+      "scope": "Module load and administrative interface control only, before final DMA-only boundary hardening",
+      "modules_exit_zero": [
+        "omap_ssi",
+        "cmt",
+        "phonet",
+        "ssi_protocol",
+        "cmt_speech"
+      ],
+      "phonet0_initial": "DOWN",
+      "administrative_up_exit": 0,
+      "after_up": "UP flag / UNKNOWN state; kernel reports link is not ready",
+      "administrative_down_exit": 0,
+      "modem_link": "UNVERIFIED; no peer implemented"
+    },
+    {
+      "name": "BME and headless UI regression",
+      "status": "PASS",
+      "qemu_sha256": "76fbe08c97a7b86c95fa09003d7ec13e4d4f23d7db883b2e342262a301d73f14",
+      "commands": [
+        "python3 -B scripts/harmattan-qemu/diagnose-sdk-power.py",
+        "sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic"
+      ],
+      "hardware": {
+        "bme": {
+          "sdk_power": "on",
+          "ssi": "on"
+        },
+        "ui": {
+          "ssi": "on",
+          "sdk_power": "off"
+        }
+      },
+      "checks": [
+        "original BME identity, absent-server rejection, IPC statistics, liveness and clean exit",
+        "Home startup",
+        "original Notes and Maliit input/save",
+        "Calculator 2+3=5, edge return and same-instance resume",
+        "sampled keyboard/application motion and existing GPU gates"
+      ],
+      "battery": {
+        "max. level": 8,
+        "cur. level": 8,
+        "pct. level": 100
+      },
+      "scope_note": "These passed immediately before the final active-DMA-count guard. That isolated guard was then checked with sanitizer tests, a fresh build, final MMIO/GDD diagnostic and original-driver probe; graphics and BME code are unchanged."
+    },
+    {
+      "name": "complete cellular and power services",
+      "status": "BLOCKED",
+      "reason": "No modem/ISI peer or initialized BB5/Aegis backend; KCI remains unset, omap_sec open and validator netlink bind fail."
+    },
+    {
+      "name": "Cocoa/physical input, long sessions, clock/power timing, migration",
+      "status": "SKIP"
+    }
+  ],
+  "full_services": false
+}

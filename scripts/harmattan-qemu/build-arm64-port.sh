@@ -85,6 +85,30 @@ fi
     boot_patch="$port_root/qemu-9.1.3-n00-boot-animation.patch"
     network_patch="$port_root/qemu-9.1.3-n00-network.patch"
     storage_patch="$port_root/qemu-9.1.3-n00-storage-shutdown.patch"
+    power_patch="$port_root/qemu-9.1.3-n00-sdk-power.patch"
+    cal_patch="$port_root/qemu-9.1.3-n00-sdk-cal-storage.patch"
+    ssi_patch="$port_root/qemu-9.1.3-n00-ssi.patch"
+    control_patch="$port_root/qemu-9.1.3-n00-control-status.patch"
+    gp_monitor_patch="$port_root/qemu-9.1.3-n00-gp-cache-monitor.patch"
+    uart_patch="$port_root/qemu-9.1.3-n00-uart-offset.patch"
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$uart_patch" >/dev/null 2>&1; then
+        git apply --reverse "$uart_patch"
+    fi
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$gp_monitor_patch" >/dev/null 2>&1; then
+        git apply --reverse "$gp_monitor_patch"
+    fi
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$control_patch" >/dev/null 2>&1; then
+        git apply --reverse "$control_patch"
+    fi
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$ssi_patch" >/dev/null 2>&1; then
+        git apply --reverse "$ssi_patch"
+    fi
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$cal_patch" >/dev/null 2>&1; then
+        git apply --reverse "$cal_patch"
+    fi
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$power_patch" >/dev/null 2>&1; then
+        git apply --reverse "$power_patch"
+    fi
 
     if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$storage_patch" >/dev/null 2>&1; then
         git apply --reverse "$storage_patch"
@@ -276,6 +300,25 @@ fi
         git apply --check "$storage_patch"
         git apply "$storage_patch"
         cp "$port_root/n00-storage-shutdown.h" ui/n00-storage-shutdown.h
+    fi
+    if [ "$mode" = --cocoa-interaction ]; then
+        git apply --check "$power_patch"
+        git apply "$power_patch"
+        cp "$port_root/n00-sdk-power.c" hw/arm/n00-sdk-power.c
+        cp "$port_root/n00-sdk-power-registers.h" hw/arm/n00-sdk-power-registers.h
+        git apply --check "$cal_patch"
+        git apply "$cal_patch"
+        git apply --check "$ssi_patch"
+        git apply "$ssi_patch"
+        cp "$port_root/n00-ssi.c" hw/arm/n00-ssi.c
+        cp "$port_root/n00-ssi-core.h" hw/arm/n00-ssi-core.h
+        git apply --check "$control_patch"
+        git apply "$control_patch"
+        git apply --check "$gp_monitor_patch"
+        git apply "$gp_monitor_patch"
+        cp "$port_root/n00-gp-cache-monitor.h" hw/arm/n00-gp-cache-monitor.h
+        git apply --check "$uart_patch"
+        git apply "$uart_patch"
     fi
 )
 

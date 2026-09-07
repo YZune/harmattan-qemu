@@ -9,6 +9,7 @@
 | Host emulator | QEMU 9.1.3 plus forward-ported Nokia N00 devices | `ports/qemu-n00/` |
 | Host graphics | Nokia DGLES source with Cocoa offscreen FBO adaptation | `ports/dgles2/` |
 | Guest kernel and adaptation | User-supplied PR1.0 emulator kernel and graphics ABI | External inputs |
+| Experimental PR1.3 kernel | Original DVD kernel plus QEMU adaptation and build compatibility | `ports/guest-kernel/`, `build-pr13-kernel.sh`; see [kernel](kernel.md) |
 | Guest product software | User-supplied PR1.3 original libraries and applications | External inputs |
 | Guest compatibility | Small, scoped helpers loaded into disposable runs | `scripts/harmattan-qemu/*-guest.c` and guest scripts |
 | Validation | Host unit tests, QMP input, guest identity and pixel checks | `scripts/harmattan-qemu/tests/` and diagnostic scripts |
@@ -40,6 +41,12 @@ The prefix below is `qemu-9.1.3-n00`. The builder selects only the appropriate o
 | 17 | `-boot-animation.patch` | Host presentation of the user's original boot movie |
 | 18 | `-network.patch` | SDK SMC91C111 Ethernet on GPMC CS1/GPIO54, with SLIRP |
 | 19 | `-storage-shutdown.patch` | Defer Cocoa profile exit until the controller flushes guest files |
+| 20 | `-sdk-power.patch` | Experimental SDK chargers, gauge and TWL battery ADC |
+| 21 | `-sdk-cal-storage.patch` | Experimental volatile OneNAND, mapped DMA access and diagnostic output |
+| 22 | `-ssi.patch` | Opt-in one-port SSI, PIO/IRQ and basic unlinked GDD; no modem peer |
+| 23 | `-control-status.patch` | Original GP CONTROL_STATUS strap and byte lanes; no ROM/monitor |
+| 24 | `-gp-cache-monitor.patch` | Opt-in GP cache API 1 monitor; unsupported SMC calls stop |
+| 25 | `-uart-offset.patch` | OMAP UART extended offsets and physical byte fallback |
 
 The normal `--cocoa-interaction` build includes the idle/input activity path and the host view/shutdown code. It does not require artwork. The DGLES patch applies to a different source archive; never apply it to the QEMU tree.
 

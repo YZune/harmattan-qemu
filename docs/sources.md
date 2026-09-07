@@ -25,6 +25,7 @@ Representative recovered Git/SWH blob identifiers:
 | `hw/omap3_mmc.c` | `4f16c008e9c061fbf5e0f59cea3e1043c4f18a44` |
 | `hw/omap_sdrc.c` | `82da88c486f25a772edfbfe0b3a2cc20ca75dc57` |
 | `hw/omap_i2c.c` | `f128530ec0b34ed5c05fa126a124b7ed14d81487` |
+| `hw/nseries.c` | `429bfda407fdc2c8aa0562a1cbc3ddb8a2a99e13` |
 | `hw/twl4030.c` | `a86855e3463dc64a86547102675e143391c696dc` |
 | `hw/omap_dss.c` | `c1228df70d053bcd0711f7b5fc81b93777867ac5` |
 | `hw/omap_dss_drawfn.h` | `37ba1369505293d83ffa0da4c32387a4be983a82` |
@@ -62,6 +63,10 @@ No SDK installer, firmware container, kernel binary, QCOW/raw/ext4 image, propri
 Livven / Liwen Guo authored the Nokia N9 PSD referenced by the optional skin integration. The research record describes personal-use terms and a commercial donation suggestion, not an established open-source artwork license. Users must establish permission for their own use and any redistribution. The normal build and geometry test do not need that artwork. See [optional skin information](../ports/qemu-n00/skins/README.md).
 
 ## Applying licenses
+
+The [experimental PR1.3 kernel](kernel.md) uses the original DVD `kernel_2.6.32-20121301+0m8` and `kernel-qemu_2.6.32.20112701+0m6` packages, plus the existing DGLES package's `kfgles2`. The kernel guide records all input hashes. `ports/guest-kernel/` owns build compatibility patches; the full original sources, kernel binaries and module bundles remain external/private inputs and outputs.
+
+The experimental SSI controller uses register/driver contracts from the GPLv2-only Nokia DVD kernel package `kernel_2.6.32-20121301+0m8`, specifically `arch/arm/plat-omap/include/plat/ssi.h` and `drivers/hsi/controllers/omap_ssi.c`. The controller retains this narrower license. Package checksum and runtime boundaries are recorded in [device services](device-services.md).
 
 The [QEMU license documentation](https://www.qemu.org/docs/master/about/license.html) describes GPLv2 with file-specific terms. Original Nokia files here include both `GPL version 2 or version 3` and `GPL version 2 or later` declarations. Preserve those distinctions. Explicit MIT additions retain MIT. Do not apply a blanket permissive license to the combined QEMU code or treat the whole DGLES archive as MIT.
 

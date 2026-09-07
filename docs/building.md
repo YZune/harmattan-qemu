@@ -2,9 +2,13 @@
 
 [简体中文](building.zh-CN.md) · [Input provenance](sources.md) · [Status](status.md)
 
+Original retail boot/modem payload preparation is a separate [boot-chain input step](boot-chain.md); it does not replace the documented direct-kernel launcher.
+
 ## Supported starting point
 
 The complete build/run path currently targets native **Apple Silicon macOS on APFS**. Linux can run portable host tests; Linux guest execution is an open porting task. QEMU 9.1.3 is pinned because its OMAP foundations match this port, not because it is the newest QEMU release.
+
+The separate [experimental PR1.3 kernel build](kernel.md) uses a Linux build environment and preserves the original Aegis implementation. It does not change the default SDK kernel or establish full device-service readiness.
 
 There are two independent entry points:
 
@@ -182,3 +186,7 @@ Some historical diagnostic modes intentionally use older defaults. A passing com
 - **Blank startup:** wait for `READY`, inspect the new run directory, and report the exact command plus a short sanitized failure excerpt.
 
 Optional [sound output](audio.md) uses a separate host PulseAudio installation: `brew install pulseaudio`, then `HARMATTAN_UI_AUDIO=pulse`. The audio diagnostic also uses the existing guest linking prerequisites.
+
+See the [device-service experiment](device-services.md) for original BME hardware prerequisites and the standalone diagnostic. It is disabled by default and does not make complete cellular and power services ready.
+
+The same page documents the independently opt-in SSI controller (`HARMATTAN_N00_SSI=on`) and its firmware-free MMIO/GDD diagnostic. SSI defaults to off and has no modem peer.

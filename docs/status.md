@@ -2,6 +2,8 @@
 
 [简体中文](status.zh-CN.md)
 
+The [boot-chain input and GP register work](boot-chain.md) restores CONTROL_STATUS and preserves 109 original non-rootfs payloads in a private preparation path. An opt-in GP cache monitor and UART offset repair now advance the original cold loader to its absent ROM function table; full ROM/BB5 execution and secure boot remain blocked.
+
 ## Experimental compatibility
 
 The research baseline was `621c7f7` (2026-09-05). These are recorded results from that workspace, not a promise for a different guest image or host toolchain.
@@ -42,6 +44,14 @@ Audio-enabled UI startup now includes the original OHM resource manager. The [ri
 Normal source startup now uses [actual readiness checks](performance.md) instead of fixed compositor/Home delays. The [performance record](performance-validation.json) covers 285 host tests, paired startup timings, early-input protection and the audio-enabled Home/Notes/keyboard/Calculator/transition regression. The change keeps the single Cortex-A8/512 MiB board and original animation timings; it does not establish a display FPS improvement.
 
 Network-enabled UI launches now select software page compositing in the pinned original browser, with optional host CA trust. The earlier [browser record](browser-validation.json) covers 302 host tests, Web-icon startup, the Baidu HTTPS homepage, original keyboard entry, certificate rejection and the generated shortcut UI regression. The optional [basic web mode](networking.md#optional-basic-web-mode) adds a separate shortcut that disables webpage JavaScript; the original entry and default remain unchanged. The [basic mode record](browser-basic-validation.json) covers 306 host tests and Baidu's basic search results in a fresh guest. Search with JavaScript enabled and arbitrary modern sites remain unaccepted.
+
+The new [original device-service experiment](device-services.md) restores SDK power devices and volatile CAL storage, disabled by default. Original BME hardware/IPC diagnostics are separate from complete power and cellular acceptance; Aegis/BB5 and SSI modem transport remain incomplete. The default SDK kernel also lacks DSME validator notifications.
+
+The opt-in SSI controller now passes MMIO/PIO/GDD/IRQ tests and lets the original SSI/CMT/Phonet modules load. `phonet0` can be administratively enabled, but reports no ready link. See the [SSI validation record](ssi-validation.json) for the clean source build, BME and headless UI regression; there is no modem or security-chain acceptance.
+
+The optional [PR1.3 kernel](kernel.md) now boots with 101 matching modules and the original Aegis implementation. Its [validation record](kernel-validation.json) covers 338 host tests, a clean Linux kernel build, validator netlink binding and original DSME reaching USER. BME integration is rejected for missing credentials, and MCE/CSD bus ownership fails. Full security and cellular services remain BLOCKED; new-kernel UI behavior is untested.
+
+The optional [SDK battery desktop mode](device-services.md#optional-original-battery-in-the-desktop) now starts original BME before ContextKit subscription and preserves original NoNetwork semantics. It remains disabled by default and rejects persistent profiles. See the [UI validation record](ui-power-validation.json). The [bounded security audit](security-feasibility.md) found no verified matching GP backend in the inspected material; ROM and modem-peer expansion is paused.
 
 ## Open limitations
 

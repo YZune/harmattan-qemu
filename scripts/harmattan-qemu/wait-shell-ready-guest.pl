@@ -8,7 +8,8 @@ use N00X11;
 use Time::HiRes qw(time sleep);
 
 my $role = shift || '';
-($role eq 'compositor' || $role eq 'home') && !@ARGV or die "role must be compositor or home\n";
+($role eq 'compositor' || $role eq 'compositor-owner' || $role eq 'home') && !@ARGV
+    or die "role must be compositor, compositor-owner or home\n";
 my $started = time;
 my $attempts = 0;
 my $last_error = '';

@@ -1,0 +1,89 @@
+{
+  "date": "2026-09-07",
+  "host": "Darwin arm64",
+  "scope": "Experimental SDK power hardware; complete cellular and power services are not ready",
+  "default": "off",
+  "checks": [
+    {
+      "name": "host_suite",
+      "status": "PASS",
+      "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+      "tests": 316
+    },
+    {
+      "name": "fresh_dgles_build_and_native_gles1_gles2_smoke",
+      "status": "PASS",
+      "commands": [
+        "sh scripts/harmattan-qemu/build-dgles2-host.sh",
+        "python3 -B scripts/harmattan-qemu/smoke-dgles-host.py --workspace <selected-dgles-workspace>"
+      ]
+    },
+    {
+      "name": "fresh_qemu_source_build",
+      "status": "PASS",
+      "command": "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction"
+    },
+    {
+      "name": "default_headless_home_startup",
+      "status": "PASS",
+      "command": "sh scripts/harmattan-qemu/run-arm64-ui.sh --startup-headless-diagnostic",
+      "experimental_hardware": false
+    },
+    {
+      "name": "original_bme_hardware_ipc",
+      "status": "PASS",
+      "command": "python3 -B scripts/harmattan-qemu/diagnose-sdk-power.py --qemu <new-qemu> --kernel <sdk-kernel> --image <quiescent-prepared-raw> --output <new-output>",
+      "network": "off",
+      "original_media_prepared_image": true,
+      "bmestat_exit": 128,
+      "absent_server_exit": 2,
+      "battery_bars": [
+        8,
+        8
+      ],
+      "percentage": 100,
+      "bme_normal_exit": true,
+      "qemu_normal_exit": true,
+      "full_services": false
+    },
+    {
+      "name": "early_bme_before_sysuid_and_compositor",
+      "status": "FAIL",
+      "reason": "Compositor startup did not observe ROOT_CONFIGURE_IGNORED before its deadline; clock phase validation rejected the incomplete startup. Validators unchanged."
+    },
+    {
+      "name": "bme_consumption_after_home_ready",
+      "status": "PASS",
+      "method": "Private bounded QMP/serial experiment with SDK power enabled: verify Home READY, start original BME with -n, restart original sysuid and compare actual statusbar pixels to original assets. This is not default launcher integration.",
+      "pixel_check": {
+        "size": [
+          31,
+          20
+        ],
+        "position": [
+          4,
+          5
+        ],
+        "before": "icon-s-status-battery-verylow.png",
+        "after": "icon-s-status-battery8.png",
+        "match": "exact RGBA source asset composited on black"
+      },
+      "full_services": false
+    },
+    {
+      "name": "full_dsme_mce_bme_csd_startup",
+      "status": "FAIL",
+      "reason": "Original DSME libstartup.so enters SECURITY MALF after validator socket bind failure. MCE and CSD cannot acquire original bus names. BME with DSME enabled is only observed alive, not fully initialized."
+    },
+    {
+      "name": "fresh_original_media_aegis_comparison",
+      "status": "FAIL",
+      "reason": "securityfs mounts and original restok.conf exists, but validator-init exits 1 at BB5 open failed -1; /dev/omap_sec absent."
+    },
+    {
+      "name": "cocoa_window_physical_input_and_long_sessions",
+      "status": "SKIP",
+      "reason": "This device-service change was checked with headless guests and native offscreen graphics only."
+    }
+  ]
+}

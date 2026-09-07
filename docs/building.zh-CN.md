@@ -2,9 +2,13 @@
 
 [English](building.md) · [输入来源](sources.zh-CN.md) · [状态](status.zh-CN.md)
 
+原版零售启动/基带载荷有独立的[启动链输入准备步骤](boot-chain.zh-CN.md)，不替代本文的内核直启路径。
+
 ## 支持的起点
 
 完整构建和运行路径目前面向 **Apple Silicon 原生 macOS 与 APFS**。Linux 可运行可移植主机测试；Linux 客体运行属于后续移植工作。固定 QEMU 9.1.3 是因为其 OMAP 基础与当前移植匹配，不表示它是最新版本。
+
+独立的[实验性 PR1.3 内核构建](kernel.zh-CN.md)使用 Linux 构建环境，并保留原版 Aegis 实现；不改变默认 SDK 内核，也不代表完整设备服务已就绪。
 
 可以从两条独立路径参与：
 
@@ -182,3 +186,7 @@ python3 scripts/create-local-launcher.py \
 - **启动黑屏**：等待 `READY`，查看新运行目录；报告准确命令及简短脱敏失败片段。
 
 可选[声音输出](audio.zh-CN.md)需要额外安装宿主 PulseAudio：`brew install pulseaudio`，然后设置 `HARMATTAN_UI_AUDIO=pulse`。声音诊断还使用既有客体链接环境。
+
+原版 BME 的硬件前置条件及独立诊断见[设备服务实验](device-services.zh-CN.md)。该实验默认关闭，不代表完整蜂窝与电源服务已就绪。
+
+同页记录独立启用的 SSI 控制器（`HARMATTAN_N00_SSI=on`）及不需要固件的 MMIO/GDD 诊断。SSI 默认关闭，尚无基带对端。

@@ -9,6 +9,7 @@
 | 宿主模拟器 | QEMU 9.1.3 与前向移植的 Nokia N00 设备 | `ports/qemu-n00/` |
 | 宿主图形 | Nokia DGLES 与 Cocoa 离屏 FBO 适配 | `ports/dgles2/` |
 | 客体内核及适配层 | 自行提供的 PR1.0 模拟器内核和图形 ABI | 外部输入 |
+| 实验性 PR1.3 内核 | 原版 DVD 内核、QEMU 适配和构建兼容 | `ports/guest-kernel/`、`build-pr13-kernel.sh`，见[内核](kernel.zh-CN.md) |
 | 客体产品软件 | 自行提供的 PR1.3 原版库及应用 | 外部输入 |
 | 客体兼容 | 装入独立运行的小范围辅助代码 | `scripts/harmattan-qemu/*-guest.c` 及客体脚本 |
 | 验证 | 主机单元测试、QMP 输入、客体身份和像素检查 | `scripts/harmattan-qemu/tests/` 及诊断脚本 |
@@ -40,6 +41,12 @@
 | 17 | `-boot-animation.patch` | 在宿主显示用户镜像内的原版开机视频 |
 | 18 | `-network.patch` | 通过 GPMC CS1/GPIO54 接入 SDK SMC91C111 以太网和 SLIRP |
 | 19 | `-storage-shutdown.patch` | Cocoa 用户档案退出时，等待控制器完成客体写盘 |
+| 20 | `-sdk-power.patch` | 实验性 SDK 充电器、电量计及 TWL 电池 ADC |
+| 21 | `-sdk-cal-storage.patch` | 实验性易失 OneNAND、实际 DMA 映射及诊断输出通道 |
+| 22 | `-ssi.patch` | 可选单端口 SSI、PIO/IRQ 及基本非链式 GDD；无基带对端 |
+| 23 | `-control-status.patch` | 原版 GP CONTROL_STATUS 引脚值及字节访问；无 ROM/监控器 |
+| 24 | `-gp-cache-monitor.patch` | 可选 GP 缓存服务 1 监控器；不支持的 SMC 停止执行 |
+| 25 | `-uart-offset.patch` | OMAP UART 扩展地址及物理字节回退 |
 
 正常 `--cocoa-interaction` 构建包含 idle、输入活动及宿主视图和退出代码，无需素材文件。DGLES 补丁属于另一份源码归档，不应应用到 QEMU 树中。
 

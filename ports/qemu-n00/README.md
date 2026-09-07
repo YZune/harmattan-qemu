@@ -7,3 +7,5 @@ This directory contains the maintained patch series and optional Cocoa view code
 The machine is `n00-port-spike`: experimental OMAP3/N00 direct boot, storage, DPI display, limited GLES, and MXT input. Read [status](../../docs/status.md) for compatibility boundaries and [sources](../../docs/sources.md) for Nokia/QEMU provenance and license choices.
 
 The [DGLES patch](../dgles2/README.md) applies to its own source archive. [Device artwork](skins/README.md) is optional, user-supplied, and excluded from this release.
+
+See the [device-service experiment](../../docs/device-services.md) for original BME hardware prerequisites and the standalone diagnostic. It is disabled by default and does not make complete cellular and power services ready.
