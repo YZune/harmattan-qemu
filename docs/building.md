@@ -2,6 +2,8 @@
 
 [简体中文](building.zh-CN.md) · [Input provenance](sources.md) · [Status](status.md)
 
+Original retail boot/modem payload preparation is a separate [boot-chain input step](boot-chain.md); it does not replace the documented direct-kernel launcher.
+
 ## Supported starting point
 
 The complete build/run path currently targets native **Apple Silicon macOS on APFS**. Linux can run portable host tests; Linux guest execution is an open porting task. QEMU 9.1.3 is pinned because its OMAP foundations match this port, not because it is the newest QEMU release.

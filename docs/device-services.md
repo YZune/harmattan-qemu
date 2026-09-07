@@ -4,6 +4,8 @@
 
 The complete cellular and power service graph is **not running yet**. The default launcher still uses the minimal rescue startup. `HARMATTAN_N00_SDK_POWER=on` explicitly enables recovered SDK power hardware in a new `--cocoa-interaction` build; the default is `off`. Existing prebuilt applications do not contain this change.
 
+The [boot-chain work](boot-chain.md) now prepares all original boot/modem variants and restores the GP CONTROL_STATUS mapping. The kernel reports ES1.0-gp; first-stage execution still stops at the missing monitor vector. See its [validation record](boot-chain-validation.json).
+
 ## Implemented scope
 
 - Nokia's BQ24153/BQ24156 charger models at I²C2 addresses `0x6b`/`0x6a`, BQ27521 gauge at `0x55`, and the original TWL GP ADC channels for battery voltage, size and temperature.
@@ -62,7 +64,7 @@ The current diagnostic identifies these dependencies, in implementation order:
 2. **Secure platform and boot handoff:** `arch/arm/plat-omap/sec.c` rejects an unset `omap_sec.kci` before registering its misc device. KCI selects `omap3_pafmt_<kci>.bin` and `omap3_pa_<kci>.bin`; it is not a value to guess. Opening the device also requires the backend registered by `arch/arm/mach-omap2/hs.c`, which requires HS/EMU type, secure RAM and working secure RPC. PAFMT is verified through the ROM interface. Merely creating a node, changing the SoC type or supplying any existing KCI does not provide that backend.
 3. **Compatible kernel and credentials:** the default SDK kernel lacks the validator notification initializer present in the later PR1.3 source. The optional [PR1.3 build](kernel.md) now boots with that original implementation and matching modules. BB5, certificates, resource tokens and credential policy still need initialization through their original interfaces before the complete service graph can work.
 
-The fresh guest reports `OMAP3430/3530 ES1.0-test`, zero identification registers and KCI 0. Original-media PA variants are present, but no matching secure-monitor execution, verified KCI handoff or initialized device credentials have been established. The prepared SD image and the erased experimental OneNAND are not a boot-ROM or provisioned security-storage image. These dependencies remain **unimplemented/unverified**, not a missing service-start switch.
+Snapshots before the CONTROL_STATUS restoration reported `OMAP3430/3530 ES1.0-test`, zero identification registers and KCI 0. Original-media PA variants are present, but no matching secure-monitor execution, verified KCI handoff or initialized device credentials have been established. The prepared SD image and the erased experimental OneNAND are not a boot-ROM or provisioned security-storage image. These dependencies remain **unimplemented/unverified**, not a missing service-start switch.
 
 The reusable diagnostic below adds no hardware emulation or security bypass. With the same prerequisites and input variables as the BME command, it opens the security device, attempts DSME's actual netlink protocol 25/group 1 bind, and loads the matching kernel's SSI module in an independent snapshot. It does not start full services or modify the base disk:
 
@@ -109,7 +111,7 @@ The register code is recovered from [Nokia revision 32530f6a](https://archive.so
 | `hw/n00.c` | `bd7cee59df517c424da543a5a2975532c331fa62` | `95b35044e44e5b1c9a43f9f4da941a79b59e0d4e6a51161e97bd04560f9427de` |
 | `hw/nseries.c` | `429bfda407fdc2c8aa0562a1cbc3ddb8a2a99e13` | `6518f2ca11fc88a9f9d1964e03656f427afc70d0d72dc4054aa3bdc4aca33130` |
 | `hw/twl4030.c` | `a86855e3463dc64a86547102675e143391c696dc` | `7a8453bd0bca904891137386f184535ca6a37f0acc02e0a0146d990fb5f693bf` |
-| `hw/omap3.c` (security prerequisite research) | `e9149fc88f7aa7c7593dd93a086e02f6f0bee3d9` | `679ceb26e17a5f058efef5d082a392bb7507b929450f89ad301b02b0e6d9ca7e` |
+| `hw/omap3.c` (CONTROL_STATUS and security prerequisites) | `e9149fc88f7aa7c7593dd93a086e02f6f0bee3d9` | `679ceb26e17a5f058efef5d082a392bb7507b929450f89ad301b02b0e6d9ca7e` |
 
 PR1.3 service contracts were checked against the DVD packages `contextkit-maemo_0.7.30+0m7`, `dsme_0.63.0+0m8`, and `aegis-enabler_0.0.32+0m8`, alongside the original guest binaries. Firmware, CAL data and runtime screenshots are not added to the public source tree.
 

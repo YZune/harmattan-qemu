@@ -1,0 +1,136 @@
+{
+  "date": "2026-09-07",
+  "scope": "Original boot payload preparation and GP CONTROL_STATUS restoration",
+  "secure_boot": "BLOCKED",
+  "full_services": false,
+  "firmware_sha256": "9614f29594f77f50dbd34d0f921c69a4e3511fc1373dfb7467d1b0e073ea3d51",
+  "preparation": {
+    "status": "PASS",
+    "command": "python3 -B scripts/harmattan-qemu/prepare-boot-inputs.py --firmware \"$HARMATTAN_ORIGINAL_FIRMWARE\" --output \"$NEW_PRIVATE_DIRECTORY\"",
+    "container_records": 110,
+    "payloads_extracted": 109,
+    "payload_bytes": 49755648,
+    "counts": {
+      "cert-sw": 22,
+      "kernel": 1,
+      "rootfs": 1,
+      "cmt-2nd": 5,
+      "cmt-algo": 5,
+      "cmt-mcusw": 5,
+      "2nd": 22,
+      "xloader": 22,
+      "secondary": 22,
+      "1st": 4,
+      "ape-algo": 1
+    },
+    "all_output_sha256_rechecked": true,
+    "same_type_and_repeated_target_fields_preserved": true,
+    "hardware_variant_selected": false,
+    "kci_selected": false,
+    "signature_verification": "UNVERIFIED"
+  },
+  "build": {
+    "status": "PASS",
+    "command": "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction",
+    "fresh_pinned_qemu_source": true,
+    "qemu_sha256": "5bc96823c71290df26828bf140853f45b0e5c5b3df81ef876a03be43f38354f8",
+    "dgles": "previously built matching runtime reused; no DGLES source change"
+  },
+  "host_tests": {
+    "status": "PASS",
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "count": 345,
+    "seconds": 21.399,
+    "host": "Darwin arm64",
+    "python": "3.12.2"
+  },
+  "control_and_ssi": {
+    "status": "PASS",
+    "command": "python3 -B scripts/harmattan-qemu/diagnose-ssi.py --qemu \"$QEMU\" --output \"$NEW_OUTPUT\"",
+    "register": "0x480022f0",
+    "word": "0x0000030f",
+    "bytes": [
+      "0x0f",
+      "0x03",
+      "0x00",
+      "0x00"
+    ],
+    "ssi_modes": [
+      "disabled",
+      "disconnected",
+      "loopback"
+    ],
+    "existing_mmio_pio_irq_gdd_checks": "PASS"
+  },
+  "pr13_prerequisites": {
+    "diagnostic_status": "PASS",
+    "service_readiness": "BLOCKED",
+    "exit": 2,
+    "soc": "OMAP3430/3530 ES1.0-gp",
+    "kci": 0,
+    "omap_sec_open_errno": 2,
+    "validator_netlink": "bound",
+    "original_ssi_driver": "bound",
+    "command": "HARMATTAN_N00_SSI=on python3 -B scripts/harmattan-qemu/diagnose-device-prerequisites.py --qemu \"$QEMU\" --kernel \"$PR13_KERNEL\" --image \"$PRIVATE_PROBE_DISK\" --output \"$NEW_OUTPUT\""
+  },
+  "first_stage_trial": {
+    "status": "BLOCKED",
+    "method": "Private bounded QMP trace; original RX-71 revision 000 payload via generic loader at its own relocation base; no disk or network",
+    "payload_sha256": "58f28e5e7754d804f52b4c258170c9fcb6b0b8b453e1b0bd446a9ff3896d9dd7",
+    "entry": "0x40200000",
+    "initial_rom_arguments": "not supplied; CPU reset registers retained",
+    "before": {
+      "control_status_read": "unmapped",
+      "smc_address": "0x402001cc",
+      "smc_immediate": 1
+    },
+    "after": {
+      "control_status_read": "mapped GP",
+      "branch": "0x402001d4",
+      "smc_address": "0x402001d8",
+      "smc_immediate": 0
+    },
+    "remaining_failure": "unmapped monitor vector at 0x8",
+    "qemu_exit_and_host_teardown": "PASS",
+    "complete_rom_handoff": false,
+    "secure_monitor_emulated": false
+  },
+  "default_sdk_ui": {
+    "status": "PASS",
+    "command": "sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic",
+    "display": "none",
+    "kernel": "original SDK 2.6.32.26",
+    "disk": "independent disposable snapshot",
+    "checks": [
+      "Home readiness",
+      "original Notes keyboard input, delete, symbols, save and reopen",
+      "Calculator result and same-instance transitions",
+      "intermediate animation frames without black frames",
+      "clean GPU and host teardown"
+    ]
+  },
+  "not_tested": [
+    "Cocoa window and physical input",
+    "long sessions",
+    "full BB5 credential initialization",
+    "PA signature verification",
+    "modem payload execution or network registration",
+    "complete SCM or fuse emulation"
+  ],
+  "sources": {
+    "control_status": "Nokia qemu-maemo revision 32530f6ab08f80a53bf56843ab793eefde75a67f hw/omap3.c, SCM general[0x20]",
+    "fiasco_format": "https://github.com/pali/0xFFFF/blob/master/src/fiasco.c",
+    "original_validator_order": "aegis-enabler_0.0.32+0m8 main: platsec_open before non-HS fallback and resource-token policy"
+  },
+  "bme_regression": {
+    "status": "PASS",
+    "command": "HARMATTAN_N00_SSI=on python3 -B scripts/harmattan-qemu/diagnose-sdk-power.py --qemu \"$QEMU\" --kernel \"$SDK_KERNEL\" --image \"$BASE_DISK\" --output \"$NEW_OUTPUT\"",
+    "mode": "original BME -n hardware/IPC isolation",
+    "battery": {
+      "max_level": 8,
+      "current_level": 8,
+      "percent": 100
+    },
+    "full_services": false
+  }
+}

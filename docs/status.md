@@ -2,6 +2,8 @@
 
 [简体中文](status.zh-CN.md)
 
+The [boot-chain input and GP register work](boot-chain.md) restores CONTROL_STATUS and preserves 109 original non-rootfs payloads in a private preparation path. Full ROM/monitor execution remains blocked; extraction is not secure-boot acceptance.
+
 ## Experimental compatibility
 
 The research baseline was `621c7f7` (2026-09-05). These are recorded results from that workspace, not a promise for a different guest image or host toolchain.

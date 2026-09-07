@@ -1,0 +1,54 @@
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -288,6 +288,30 @@
+ static const MemoryRegionOps n00_register_bank_ops = {
+     .read = n00_register_bank_read,
+     .write = n00_register_bank_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 1,
++    .valid.max_access_size = 4,
++};
++
++/* Nokia OMAP3 SCM reset value: GP device, original SDK boot straps.
++ * This supplies only CONTROL_STATUS, not a secure monitor or silicon fuses.
++ * The original source stores this at SCM general[0x20] (base + 0x2f0).
++ */
++static uint64_t n00_control_status_read(void *opaque, hwaddr offset,
++                                        unsigned size)
++{
++    return (0x30fu >> (offset * 8)) & MAKE_64BIT_MASK(0, size * 8);
++}
++
++static void n00_control_status_write(void *opaque, hwaddr offset,
++                                     uint64_t value, unsigned size)
++{
++    qemu_log_mask(LOG_GUEST_ERROR, "N00 CONTROL_STATUS write is unsupported\n");
++}
++
++static const MemoryRegionOps n00_control_status_ops = {
++    .read = n00_control_status_read,
++    .write = n00_control_status_write,
+     .endianness = DEVICE_LITTLE_ENDIAN,
+     .valid.min_access_size = 1,
+     .valid.max_access_size = 4,
+@@ -513,6 +537,7 @@
+     DeviceState *intc;
+     SysBusDevice *busdev;
+     MemoryRegion *sram;
++    MemoryRegion *control_status;
+     N00RegisterBank *cm;
+     N00RegisterBank *prm;
+     N00RegisterBank *usb_otg;
+@@ -541,6 +566,12 @@
+     memory_region_init_ram(sram, NULL, "omap3.sram", N00_SRAM_SIZE,
+                            &error_fatal);
+     memory_region_add_subregion(get_system_memory(), N00_SRAM_BASE, sram);
++
++    control_status = g_new0(MemoryRegion, 1);
++    memory_region_init_io(control_status, NULL, &n00_control_status_ops, NULL,
++                          "omap3.control-status", 4);
++    memory_region_add_subregion(get_system_memory(), 0x480022f0,
++                                control_status);
+ 
+     cm = g_new0(N00RegisterBank, 1);
+     cm->clock_manager = true;

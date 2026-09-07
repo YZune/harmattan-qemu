@@ -51,6 +51,15 @@ def exercise(command, mode, output):
                             raise RuntimeError(f"qtest command failed: {request}: {reply}")
                         return reply[2:].strip()
 
+                    # Original cold loaders read the SCM strap before choosing
+                    # GP or HS monitor calls. Check byte lanes, not only a word.
+                    if int(call("readl 0x480022f0"), 0) != 0x30f:
+                        raise ValueError("Nokia GP CONTROL_STATUS is missing")
+                    for address, value in ((0x480022f0, 0x0f), (0x480022f1, 3),
+                                           (0x480022f2, 0), (0x480022f3, 0)):
+                        if int(call(f"readb {address:#x}"), 0) != value:
+                            raise ValueError("CONTROL_STATUS byte order mismatch")
+
                     def put(offset, value, size=4):
                         call(f"write{'l' if size == 4 else 'w'} {BASE + offset:#x} {value:#x}")
 

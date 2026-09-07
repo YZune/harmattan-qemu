@@ -2,6 +2,8 @@
 
 [English](building.md) · [输入来源](sources.zh-CN.md) · [状态](status.zh-CN.md)
 
+原版零售启动/基带载荷有独立的[启动链输入准备步骤](boot-chain.zh-CN.md)，不替代本文的内核直启路径。
+
 ## 支持的起点
 
 完整构建和运行路径目前面向 **Apple Silicon 原生 macOS 与 APFS**。Linux 可运行可移植主机测试；Linux 客体运行属于后续移植工作。固定 QEMU 9.1.3 是因为其 OMAP 基础与当前移植匹配，不表示它是最新版本。

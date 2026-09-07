@@ -4,6 +4,8 @@
 
 完整蜂窝与电源服务图**尚未跑通**。默认启动器仍使用最小救援启动。新构建的 `--cocoa-interaction` 版本可通过 `HARMATTAN_N00_SDK_POWER=on` 显式启用恢复的 SDK 电源硬件；默认值为 `off`。已有预编译应用不包含这项修改。
 
+[启动链工作](boot-chain.zh-CN.md)现已准备全部原版启动/基带变体，并恢复 GP CONTROL_STATUS 映射。内核报告 ES1.0-gp，首级执行仍受缺失的监控器向量阻塞，详见[验证记录](boot-chain-validation.json)。
+
 ## 已实现范围
 
 - Nokia 原版 BQ24153/BQ24156 充电器模型，位于 I²C2 的 `0x6b`/`0x6a`；BQ27521 电量计位于 `0x55`；恢复 TWL GP ADC 的电池电压、容量识别和温度通道。
@@ -62,7 +64,7 @@ mtdparts=omap2-onenand:128k(bootloader),384k@128k(config),3072k@512k(kernel),102
 2. **安全平台与启动交接：**`arch/arm/plat-omap/sec.c` 在 `omap_sec.kci` 未设置时，会在注册设备前退出。KCI 选择 `omap3_pafmt_<kci>.bin` 和 `omap3_pa_<kci>.bin`，不能猜值。打开设备还依赖 `arch/arm/mach-omap2/hs.c` 注册的后端，后者要求 HS/EMU 类型、安全 RAM 和有效的安全 RPC；PAFMT 通过 ROM 接口验签。创建设备节点、修改 SoC 类型或随意选择已有 KCI，都不能提供这个后端。
 3. **兼容内核与凭据：**默认 SDK 内核缺少后续 PR1.3 源码中的 validator 通知初始化器。可选 [PR1.3 构建](kernel.zh-CN.md)现已携带原版实现及匹配模块启动。仍需通过原接口完成 BB5、证书、资源令牌和凭据策略初始化，完整服务图才能运行。
 
-新快照报告 `OMAP3430/3530 ES1.0-test`、全零身份寄存器及 KCI 0。原始媒体内存在多组 PA 固件，但尚未建立匹配的安全监控器执行、经过验证的 KCI 交接和已初始化设备凭据。已制备 SD 镜像及已擦除的实验 OneNAND 不等于 boot-ROM 或已配置的安全存储镜像。这些依赖仍属**未实现/未验证**，不是少开几个服务开关。
+恢复 CONTROL_STATUS 之前的快照报告 `OMAP3430/3530 ES1.0-test`、全零身份寄存器及 KCI 0。原始媒体内存在多组 PA 固件，但尚未建立匹配的安全监控器执行、经过验证的 KCI 交接和已初始化设备凭据。已制备 SD 镜像及已擦除的实验 OneNAND 不等于 boot-ROM 或已配置的安全存储镜像。这些依赖仍属**未实现/未验证**，不是少开几个服务开关。
 
 下面的可重复诊断不增加硬件模拟或安全绕过。沿用 BME 命令的前置条件及输入变量，在独立快照中尝试打开安全设备、绑定 DSME 实际使用的 netlink 协议 25/组 1，并加载当前内核对应的 SSI 模块；不启动完整服务，也不修改底盘：
 
@@ -109,7 +111,7 @@ python3 -B scripts/harmattan-qemu/diagnose-ssi.py \
 | `hw/n00.c` | `bd7cee59df517c424da543a5a2975532c331fa62` | `95b35044e44e5b1c9a43f9f4da941a79b59e0d4e6a51161e97bd04560f9427de` |
 | `hw/nseries.c` | `429bfda407fdc2c8aa0562a1cbc3ddb8a2a99e13` | `6518f2ca11fc88a9f9d1964e03656f427afc70d0d72dc4054aa3bdc4aca33130` |
 | `hw/twl4030.c` | `a86855e3463dc64a86547102675e143391c696dc` | `7a8453bd0bca904891137386f184535ca6a37f0acc02e0a0146d990fb5f693bf` |
-| `hw/omap3.c`（安全前置条件研究） | `e9149fc88f7aa7c7593dd93a086e02f6f0bee3d9` | `679ceb26e17a5f058efef5d082a392bb7507b929450f89ad301b02b0e6d9ca7e` |
+| `hw/omap3.c`（CONTROL_STATUS 及安全前置条件） | `e9149fc88f7aa7c7593dd93a086e02f6f0bee3d9` | `679ceb26e17a5f058efef5d082a392bb7507b929450f89ad301b02b0e6d9ca7e` |
 
 PR1.3 服务契约依据 DVD 中的 `contextkit-maemo_0.7.30+0m7`、`dsme_0.63.0+0m8`、`aegis-enabler_0.0.32+0m8` 及原版客体二进制核对。公开源码树不添加固件、CAL 数据或运行截图。
 
