@@ -4,7 +4,7 @@
 
 完整蜂窝与电源服务图**尚未跑通**。默认启动器仍使用最小救援启动。新构建的 `--cocoa-interaction` 版本可通过 `HARMATTAN_N00_SDK_POWER=on` 显式启用恢复的 SDK 电源硬件；默认值为 `off`。已有预编译应用不包含这项修改。
 
-[启动链工作](boot-chain.zh-CN.md)现已准备全部原版启动/基带变体，并恢复 GP CONTROL_STATUS 映射。内核报告 ES1.0-gp，首级执行仍受缺失的监控器向量阻塞，详见[验证记录](boot-chain-validation.json)。
+[启动链工作](boot-chain.zh-CN.md)现已准备全部原版启动/基带变体，并恢复 GP CONTROL_STATUS 映射。内核报告 ES1.0-gp，可选 GP 缓存服务和 UART 修复使首级执行推进到缺失的 ROM 函数表，详见[验证记录](boot-chain-validation.json)。
 
 ## 已实现范围
 

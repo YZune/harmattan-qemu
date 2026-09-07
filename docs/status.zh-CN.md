@@ -2,7 +2,7 @@
 
 [English](status.md)
 
-[启动链输入与 GP 寄存器工作](boot-chain.zh-CN.md)恢复 CONTROL_STATUS，并在私有准备路径中保留 109 个原版非 rootfs 载荷。完整 ROM/监控器执行仍受阻，提取完成不代表安全启动通过。
+[启动链输入与 GP 寄存器工作](boot-chain.zh-CN.md)恢复 CONTROL_STATUS，并在私有准备路径中保留 109 个原版非 rootfs 载荷。可选 GP 缓存监控器及 UART 地址修复已使原版冷加载器推进到缺失的 ROM 函数表；完整 ROM/BB5 执行与安全启动仍受阻。
 
 ## 实验性兼容范围
 

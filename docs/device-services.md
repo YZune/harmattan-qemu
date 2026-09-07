@@ -4,7 +4,7 @@
 
 The complete cellular and power service graph is **not running yet**. The default launcher still uses the minimal rescue startup. `HARMATTAN_N00_SDK_POWER=on` explicitly enables recovered SDK power hardware in a new `--cocoa-interaction` build; the default is `off`. Existing prebuilt applications do not contain this change.
 
-The [boot-chain work](boot-chain.md) now prepares all original boot/modem variants and restores the GP CONTROL_STATUS mapping. The kernel reports ES1.0-gp; first-stage execution still stops at the missing monitor vector. See its [validation record](boot-chain-validation.json).
+The [boot-chain work](boot-chain.md) now prepares all original boot/modem variants and restores the GP CONTROL_STATUS mapping. The kernel reports ES1.0-gp; the opt-in GP cache service and UART repair advance first-stage execution to the missing ROM function table. See its [validation record](boot-chain-validation.json).
 
 ## Implemented scope
 

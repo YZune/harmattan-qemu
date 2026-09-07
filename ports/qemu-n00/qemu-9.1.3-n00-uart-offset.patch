@@ -1,0 +1,26 @@
+--- a/hw/char/omap_uart.c
++++ b/hw/char/omap_uart.c
+@@ -71,8 +71,10 @@
+ {
+     struct omap_uart_s *s = opaque;
+ 
++    /* The extended region starts at UART base + 0x20. */
++    addr += 0x20;
+     if (size == 4) {
+-        return omap_badwidth_read8(opaque, addr);
++        return omap_badwidth_read8(opaque, s->base + addr);
+     }
+ 
+     switch (addr) {
+@@ -109,8 +111,10 @@
+ {
+     struct omap_uart_s *s = opaque;
+ 
++    /* The extended region starts at UART base + 0x20. */
++    addr += 0x20;
+     if (size == 4) {
+-        omap_badwidth_write8(opaque, addr, value);
++        omap_badwidth_write8(opaque, s->base + addr, value);
+         return;
+     }
+ 

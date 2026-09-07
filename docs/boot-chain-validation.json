@@ -1,6 +1,6 @@
 {
   "date": "2026-09-07",
-  "scope": "Original boot payload preparation and GP CONTROL_STATUS restoration",
+  "scope": "Original boot input and CONTROL_STATUS baseline; latest GP cache/UART results in gp_cache_uart_phase",
   "secure_boot": "BLOCKED",
   "full_services": false,
   "firmware_sha256": "9614f29594f77f50dbd34d0f921c69a4e3511fc1373dfb7467d1b0e073ea3d51",
@@ -132,5 +132,120 @@
       "percent": 100
     },
     "full_services": false
+  },
+  "gp_cache_uart_phase": {
+    "date": "2026-09-07",
+    "secure_boot": "BLOCKED",
+    "full_services": false,
+    "build": {
+      "status": "PASS",
+      "fresh_pinned_source": true,
+      "command": "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction",
+      "qemu_sha256": "ece3c574965f22c46a339b6ae17e7f3817eefb39e2c2681629997f4906526e58",
+      "dgles": "unchanged previously built matching runtime",
+      "patch_reverse_reapply": "PASS: exact source preserved for CONTROL_STATUS, GP monitor and UART"
+    },
+    "host_tests": {
+      "status": "PASS",
+      "count": 348,
+      "seconds": 20.905,
+      "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+      "later_targeted_validator_tests": "3 PASS after adding runtime flag/repeat cases"
+    },
+    "smc_contracts": {
+      "status": "PASS",
+      "scope": "GP cache API 1 only; no secure-boot acceptance",
+      "rom_sha256": "b37ec2a3ff353ffa51afa0f19f4fa81d012fc7f0b19896278d61862c8a408ad5",
+      "cases": {
+        "cache-invalidate": "PASS",
+        "conditional-cache-invalidate": "PASS",
+        "cache-other-flags": "PASS",
+        "repeated-cache-invalidate": "PASS",
+        "hs-smc": "PASS",
+        "unsupported-zero": "PASS",
+        "unsupported-l2acr": "PASS",
+        "unsupported-hs-cache": "PASS",
+        "system-mode": "PASS",
+        "big-endian": "PASS",
+        "thumb": "PASS"
+      }
+    },
+    "boot_registers": {
+      "status": "PASS",
+      "monitor_modes": [
+        "default",
+        "off",
+        "on",
+        "invalid"
+      ],
+      "uart": "extended offsets, byte/halfword, RO state, soft reset and 16550 TX",
+      "word_fallback": "PASS: full physical UART address; width warning retained"
+    },
+    "commands": [
+      "python3 -B scripts/harmattan-qemu/diagnose-gp-cache-monitor.py --qemu \"$QEMU\" --output \"$NEW_SMC_OUTPUT\"",
+      "python3 -B scripts/harmattan-qemu/diagnose-boot-registers.py --qemu \"$QEMU\" --output \"$NEW_REGISTER_OUTPUT\""
+    ],
+    "first_stage": {
+      "status": "BLOCKED",
+      "payload_sha256": "58f28e5e7754d804f52b4c258170c9fcb6b0b8b453e1b0bd446a9ff3896d9dd7",
+      "payload_modified": false,
+      "method": "Bounded headless QMP trace; generic loader at original relocation base 0x40200000; no disk or network; reset registers retained",
+      "monitor_mode": "explicit on",
+      "smc_call": "0x402001d8",
+      "observed_return": "0x402001dc",
+      "uart_reset_before_fix": "polling SYSS 0x49020058 misdecoded as extended offset 0x38",
+      "uart_reset_after_fix": "continued beyond reset loop",
+      "serial_first_character": "[",
+      "next_instruction": "0x40200608",
+      "next_unmapped_read": "0x0001432c",
+      "rom_table_base": "0x00014000",
+      "rom_table_offset": "0x32c",
+      "outcome": "null ROM function pointer branches to zero; stop at 0x80 in SVC, not Monitor mode",
+      "qemu_exit": 0,
+      "rom_api_contract": "UNVERIFIED",
+      "earlier_pad_control_writes": "still unmapped"
+    },
+    "default_sdk_ui": {
+      "status": "PASS_ON_RECHECK_WITH_PRIOR_FAILURE",
+      "command": "sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic",
+      "monitor": "default off",
+      "kernel": "original SDK 2.6.32.26",
+      "initial_final_build_run": {
+        "status": "FAIL",
+        "exit": 2,
+        "home_notes_keyboard_calculator": "PASS",
+        "host_graphics": "PASS",
+        "animation_intermediate_frames": true,
+        "black_samples": 1,
+        "stage": "Calculator restore",
+        "scope": "sampled guest RAM; source of black sample not established"
+      },
+      "recheck": {
+        "status": "PASS",
+        "exit": 0,
+        "same_binary_sha256": "ece3c574965f22c46a339b6ae17e7f3817eefb39e2c2681629997f4906526e58",
+        "validators_changed": false,
+        "independent_disposable_disk": true,
+        "notes_keyboard_and_calculator": "PASS",
+        "host_graphics": "PASS",
+        "animation_intermediate_frames": true,
+        "black_samples": 0,
+        "limit": "first failed run retained; no long-session or all-run black-frame guarantee"
+      }
+    },
+    "not_tested": [
+      "Cocoa window or physical input",
+      "long sessions",
+      "complete ROM/transport handoff",
+      "KCI or identity provisioning",
+      "PA signature verification and BB5 credential initialization",
+      "original full service graph on this revision",
+      "modem firmware execution or registration"
+    ],
+    "source_basis": {
+      "gp_api": "Pinned QEMU archive roms/u-boot/arch/arm/include/asm/arch-omap3/omap.h: OMAP3_GP_ROMCODE_API_L2_INVAL=1; mach-omap2/omap3/board.c and lowlevel_init.S",
+      "cache_model": "QEMU 9.1.3 target/arm/helper.c CACHEMAINT ARM_CP_NOP",
+      "uart_mapping": "QEMU 9.1.3 hw/char/omap_uart.c extended region at base+0x20; callback offsets and byte-fallback physical addressing"
+    }
   }
 }

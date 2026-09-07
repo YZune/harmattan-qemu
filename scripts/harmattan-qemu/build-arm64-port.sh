@@ -89,6 +89,14 @@ fi
     cal_patch="$port_root/qemu-9.1.3-n00-sdk-cal-storage.patch"
     ssi_patch="$port_root/qemu-9.1.3-n00-ssi.patch"
     control_patch="$port_root/qemu-9.1.3-n00-control-status.patch"
+    gp_monitor_patch="$port_root/qemu-9.1.3-n00-gp-cache-monitor.patch"
+    uart_patch="$port_root/qemu-9.1.3-n00-uart-offset.patch"
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$uart_patch" >/dev/null 2>&1; then
+        git apply --reverse "$uart_patch"
+    fi
+    if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$gp_monitor_patch" >/dev/null 2>&1; then
+        git apply --reverse "$gp_monitor_patch"
+    fi
     if [ "$mode" = --cocoa-interaction ] && git apply --reverse --check "$control_patch" >/dev/null 2>&1; then
         git apply --reverse "$control_patch"
     fi
@@ -306,6 +314,11 @@ fi
         cp "$port_root/n00-ssi-core.h" hw/arm/n00-ssi-core.h
         git apply --check "$control_patch"
         git apply "$control_patch"
+        git apply --check "$gp_monitor_patch"
+        git apply "$gp_monitor_patch"
+        cp "$port_root/n00-gp-cache-monitor.h" hw/arm/n00-gp-cache-monitor.h
+        git apply --check "$uart_patch"
+        git apply "$uart_patch"
     fi
 )
 

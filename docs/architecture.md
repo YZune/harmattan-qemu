@@ -45,6 +45,8 @@ The prefix below is `qemu-9.1.3-n00`. The builder selects only the appropriate o
 | 21 | `-sdk-cal-storage.patch` | Experimental volatile OneNAND, mapped DMA access and diagnostic output |
 | 22 | `-ssi.patch` | Opt-in one-port SSI, PIO/IRQ and basic unlinked GDD; no modem peer |
 | 23 | `-control-status.patch` | Original GP CONTROL_STATUS strap and byte lanes; no ROM/monitor |
+| 24 | `-gp-cache-monitor.patch` | Opt-in GP cache API 1 monitor; unsupported SMC calls stop |
+| 25 | `-uart-offset.patch` | OMAP UART extended offsets and physical byte fallback |
 
 The normal `--cocoa-interaction` build includes the idle/input activity path and the host view/shutdown code. It does not require artwork. The DGLES patch applies to a different source archive; never apply it to the QEMU tree.
 

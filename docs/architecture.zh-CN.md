@@ -45,6 +45,8 @@
 | 21 | `-sdk-cal-storage.patch` | 实验性易失 OneNAND、实际 DMA 映射及诊断输出通道 |
 | 22 | `-ssi.patch` | 可选单端口 SSI、PIO/IRQ 及基本非链式 GDD；无基带对端 |
 | 23 | `-control-status.patch` | 原版 GP CONTROL_STATUS 引脚值及字节访问；无 ROM/监控器 |
+| 24 | `-gp-cache-monitor.patch` | 可选 GP 缓存服务 1 监控器；不支持的 SMC 停止执行 |
+| 25 | `-uart-offset.patch` | OMAP UART 扩展地址及物理字节回退 |
 
 正常 `--cocoa-interaction` 构建包含 idle、输入活动及宿主视图和退出代码，无需素材文件。DGLES 补丁属于另一份源码归档，不应应用到 QEMU 树中。
 

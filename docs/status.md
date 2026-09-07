@@ -2,7 +2,7 @@
 
 [简体中文](status.zh-CN.md)
 
-The [boot-chain input and GP register work](boot-chain.md) restores CONTROL_STATUS and preserves 109 original non-rootfs payloads in a private preparation path. Full ROM/monitor execution remains blocked; extraction is not secure-boot acceptance.
+The [boot-chain input and GP register work](boot-chain.md) restores CONTROL_STATUS and preserves 109 original non-rootfs payloads in a private preparation path. An opt-in GP cache monitor and UART offset repair now advance the original cold loader to its absent ROM function table; full ROM/BB5 execution and secure boot remain blocked.
 
 ## Experimental compatibility
 
