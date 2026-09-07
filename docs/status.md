@@ -45,6 +45,8 @@ Network-enabled UI launches now select software page compositing in the pinned o
 
 The new [original device-service experiment](device-services.md) restores SDK power devices and volatile CAL storage, disabled by default. Original BME hardware/IPC diagnostics are separate from complete power and cellular acceptance; Aegis/BB5, DSME validator notifications and SSI modem transport remain incomplete.
 
+The opt-in SSI controller now passes MMIO/PIO/GDD/IRQ tests and lets the original SSI/CMT/Phonet modules load. `phonet0` can be administratively enabled, but reports no ready link. See the [SSI validation record](ssi-validation.json) for the clean source build, BME and headless UI regression; there is no modem or security-chain acceptance.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

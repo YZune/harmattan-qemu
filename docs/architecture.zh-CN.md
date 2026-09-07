@@ -42,6 +42,7 @@
 | 19 | `-storage-shutdown.patch` | Cocoa 用户档案退出时，等待控制器完成客体写盘 |
 | 20 | `-sdk-power.patch` | 实验性 SDK 充电器、电量计及 TWL 电池 ADC |
 | 21 | `-sdk-cal-storage.patch` | 实验性易失 OneNAND、实际 DMA 映射及诊断输出通道 |
+| 22 | `-ssi.patch` | 可选单端口 SSI、PIO/IRQ 及基本非链式 GDD；无基带对端 |
 
 正常 `--cocoa-interaction` 构建包含 idle、输入活动及宿主视图和退出代码，无需素材文件。DGLES 补丁属于另一份源码归档，不应应用到 QEMU 树中。
 

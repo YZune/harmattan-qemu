@@ -45,6 +45,8 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 新增的[原版设备服务实验](device-services.zh-CN.md)恢复了 SDK 电源器件和易失 CAL 存储，默认关闭。原版 BME 硬件/IPC 诊断与完整电源、蜂窝服务验收是不同范围；Aegis/BB5、DSME validator 通知和 SSI 调制解调器传输仍未跑通。
 
+可选 SSI 控制器现已通过 MMIO/PIO/GDD/IRQ 测试，并使原版 SSI/CMT/Phonet 模块成功加载。`phonet0` 可被管理命令启用，但报告链路未就绪。[SSI 验证记录](ssi-validation.json)覆盖全新源码构建、BME 和无窗口 UI 回归，不代表基带或安全链验收通过。
+
 ## 尚未完成
 
 原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。

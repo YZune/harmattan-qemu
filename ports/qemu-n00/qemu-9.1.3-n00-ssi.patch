@@ -1,0 +1,28 @@
+--- a/hw/arm/n00_port_spike.c
++++ b/hw/arm/n00_port_spike.c
+@@ -47,6 +47,7 @@
+ void n00_sdrc_init(MemoryRegion *sysmem, hwaddr base);
+ void n00_twl5031_init(I2CBus *bus, qemu_irq irq);
+ void n00_sdk_power_init(I2CBus *bus);
++void n00_ssi_init(DeviceState *intc);
+ bool n00_sdk_power_enabled(void);
+ void n00_mxt_init(I2CBus *bus, DeviceState *gpio);
+ #ifdef CONFIG_N00_GLES
+@@ -618,6 +619,7 @@
+     n00_mmc2_init(intc, mpu->drq);
+     n00_display_init(intc, mpu);
+     n00_network_init(intc, mpu);
++    n00_ssi_init(intc);
+ #ifdef CONFIG_N00_GLES
+     n00_gles_init(cpu);
+ #endif
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -1,6 +1,7 @@
+ arm_ss = ss.source_set()
+ arm_ss.add(files('boot.c'))
+ arm_ss.add(files('n00-sdk-power.c'))
++arm_ss.add(files('n00-ssi.c'))
+ arm_ss.add(files('n00_port_spike.c', 'n00_sdrc_port.c', 'n00_mmc_port.c'))
+ arm_ss.add(files('n00_i2c_port.c', 'n00_twl4030_port.c', 'n00_dss_port.c'))
+ arm_ss.add(files('n00_mxt_port.c'))

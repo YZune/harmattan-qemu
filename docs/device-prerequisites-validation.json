@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-07",
+  "base_commit": "326664b",
+  "scope": "Service prerequisite diagnostic and source audit; no new hardware or secure-boot implementation",
+  "host": "Apple Silicon macOS, Python 3.12.2",
+  "guest": "PR1.0 SDK kernel 2.6.32.26 with PR1.3 original-media prepared userspace",
+  "checks": [
+    {
+      "name": "host suite",
+      "status": "PASS",
+      "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+      "tests": 321
+    },
+    {
+      "name": "first prerequisite diagnostic",
+      "status": "FAIL",
+      "reason": "Strict parser rejected a start marker sharing a line with the rescue shell prompt. Guest output was corrected to start on a new line; the parser was not relaxed. Failed local evidence was retained."
+    },
+    {
+      "name": "final prerequisite diagnostic",
+      "diagnostic_status": "PASS",
+      "service_readiness": "BLOCKED",
+      "exit_code": 2,
+      "entrypoint": "scripts/harmattan-qemu/diagnose-device-prerequisites.py",
+      "method": "Independent raw-image snapshot, no network, no desktop, original kernel module; exact security-device open and DSME protocol/group bind",
+      "facts": {
+        "kernel": "2.6.32.26",
+        "soc": "OMAP3430/3530 ES1.0-test",
+        "kci": "0",
+        "kci_firmware": "missing",
+        "omap_sec": "errno_2",
+        "validator_netlink": "bind_errno_2",
+        "ssi_modprobe": "1",
+        "ssi_bound": "no"
+      },
+      "interpretation": "KCI is unset, so no corresponding PA pair is selected. This does not mean original-media PA variants are absent. Kernel log confirms omap_hs rejected the device type and SSI hardware reset failed.",
+      "qemu_exit": 0,
+      "graphics_faults": 0,
+      "workers": "joined"
+    },
+    {
+      "name": "original BME diagnostic after shared transport extraction",
+      "status": "PASS",
+      "entrypoint": "scripts/harmattan-qemu/diagnose-sdk-power.py",
+      "method": "New independent snapshot with the existing strict original-binary, absent-server, statistics, liveness and teardown checks",
+      "battery": {"max_level": 8, "current_level": 8, "percent": 100},
+      "qemu_exit": 0,
+      "graphics_faults": 0,
+      "workers": "joined"
+    },
+    {
+      "name": "new emulator build and graphics/UI regression",
+      "status": "SKIP",
+      "reason": "This follow-up changes diagnostic tools and documentation only; it reuses the clean source-built QEMU/DGLES from the preceding power validation. No new hardware implementation or UI change is claimed."
+    },
+    {
+      "name": "complete cellular and power services",
+      "status": "BLOCKED",
+      "reason": "SSI/GDD/modem transport, a compatible security backend and verified boot handoff, and kernel/credential initialization remain incomplete. Cocoa/physical input and long sessions were not tested."
+    }
+  ],
+  "full_services": false
+}

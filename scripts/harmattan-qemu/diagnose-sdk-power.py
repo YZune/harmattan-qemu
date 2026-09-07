@@ -44,8 +44,12 @@ def validate_serial(data):
     return values
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def run_diagnostic(*, description=__doc__, guest_script="sdk-power-guest.sh",
+                   prefix="N00_BME", probe_flag="n00.sdk_power_probe=1",
+                   validator=validate_serial, result_key="battery",
+                   scope="original BME hardware and IPC only"):
+    """Shared bounded transport; guest validators own the acceptance criteria."""
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--qemu", required=True, type=Path)
     parser.add_argument("--kernel", required=True, type=Path)
     parser.add_argument("--image", required=True, type=Path, help="quiescent prepared raw disk")
@@ -66,12 +70,13 @@ def main():
                "-kernel", str(args.kernel.resolve()), "-display", "none", "-nic", "none",
                "-drive", f"if=sd,format=raw,file={args.image.resolve()}", "-snapshot",
                "-append", "init=/sbin/preinit root=0xB302 rootfstype=ext4 rw rootdelay=2 "
-               "console=ttyS0,115200n8 omap3_die_id n00.sdk_power_probe=1 " + PARTITIONS]
+               "console=ttyS0,115200n8 omap3_die_id " + probe_flag + " " + PARTITIONS]
     serial, child = socket.socketpair()
     deadline = time.monotonic() + args.timeout
     environment = display.qemu_environment() | {"HARMATTAN_N00_SDK_POWER": "on"}
-    result = {"scope": "original BME hardware and IPC only", "full_services": False,
-              "command": command, "status": "FAIL"}
+    result = {"scope": scope, "full_services": False,
+              "command": command, "status": "FAIL",
+              "hardware": {"sdk_power": "on", "ssi": environment.get("HARMATTAN_N00_SSI", "off")}}
     process = None
     try:
         with (out / "serial.log").open("xb") as log, (out / "qemu-stderr.log").open("xb") as errors:
@@ -90,14 +95,14 @@ def main():
                            b"/sys/devices/platform/serial8250.2/sleep_timeout; "
                            b"printf '\\nN00_UPLOAD_READY\\n'\n")
             wait(b"\nN00_UPLOAD_READY\n")
-            payload = Path(__file__).with_name("sdk-power-guest.sh").read_bytes().hex()
+            payload = Path(__file__).with_name(guest_script).read_bytes().hex()
             serial.sendall(b"perl -ne 'chomp; print pack(\"H*\",$_)' > /tmp/n00-sdk-power.sh <<'PAYLOAD'\n")
             for pos in range(0, len(payload), 76):
                 serial.sendall(payload[pos:pos + 76].encode() + b"\n")
-            serial.sendall(b"PAYLOAD\nsh /tmp/n00-sdk-power.sh; "
-                           b"printf '\\nN00_BME_EXIT_%s\\nN00_BME_DONE\\n' $?\n")
-            wait(b"\nN00_BME_DONE\n")
-            result["battery"] = validate_serial((out / "serial.log").read_bytes())
+            serial.sendall(b"PAYLOAD\nsh /tmp/n00-sdk-power.sh; " +
+                           f"printf '\\n{prefix}_EXIT_%s\\n{prefix}_DONE\\n' $?\n".encode())
+            wait(f"\n{prefix}_DONE\n".encode())
+            result[result_key] = validator((out / "serial.log").read_bytes())
             qmp.deadline = time.monotonic() + 10
             qmp.call("quit")
             if process.wait(timeout=10) != 0:
@@ -120,6 +125,11 @@ def main():
         serial.close()
         child.close()
         (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+    return result, out
+
+
+def main():
+    _, out = run_diagnostic()
     print(f"PASS: original BME hardware/IPC; complete power and cellular services remain unverified. {out}")
 
 
