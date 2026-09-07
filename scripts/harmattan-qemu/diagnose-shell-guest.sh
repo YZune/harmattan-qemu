@@ -333,13 +333,21 @@ case ${1:-} in
         cat /tmp/n00-systemui-ready.log
         test "$ready" = 1
         ;;
-    compositor)
-        if [ "${N00_UI_ANIMATIONS:-0}" = 1 ]; then
-            test "$(md5sum /usr/lib/libmcompositor.so.1.1.3 | cut -d ' ' -f 1)" = 49985bb59bf13ae22d20075feb11818a
-            test -s /tmp/n00-compositor-matrices.so
-            chmod 0644 /tmp/n00-compositor-matrices.so
+    compositor|compositor-start|compositor-report)
+        if [ "$1" != compositor-report ]; then
+            if [ "${N00_UI_ANIMATIONS:-0}" = 1 ]; then
+                test "$(md5sum /usr/lib/libmcompositor.so.1.1.3 | cut -d ' ' -f 1)" = 49985bb59bf13ae22d20075feb11818a
+                test -s /tmp/n00-compositor-matrices.so
+                chmod 0644 /tmp/n00-compositor-matrices.so
+            fi
+            su user -c "$user_env $compositor_env mcompositor -nohung >/tmp/n00-shell-compositor.log 2>&1 &"
         fi
-        su user -c "$user_env $compositor_env mcompositor -nohung >/tmp/n00-shell-compositor.log 2>&1 &"
+        if [ "$1" = compositor-start ]; then
+            # Establish X11 ownership before System UI publishes its initial
+            # geometry. Full shader/root-event validation still follows.
+            perl /tmp/n00-ui-helpers/wait-shell-ready-guest.pl compositor-owner
+            exit 0
+        fi
         if [ "${N00_UI_READY_WAITS:-0}" = 1 ]; then
             perl /tmp/n00-ui-helpers/wait-shell-ready-guest.pl compositor
         else
@@ -484,6 +492,7 @@ esac
 
 case ${1:-} in
     home-report) report_clock home ;;
+    compositor-report) report_clock compositor ;;
     bootstrap|theme|compositor|home|settled|final) report_clock "$1" ;;
 esac
 if [ "${N00_UI_KEYBOARD:-0}" = 1 ]; then

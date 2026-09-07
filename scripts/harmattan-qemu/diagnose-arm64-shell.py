@@ -29,6 +29,9 @@ POSE_SPEC.loader.exec_module(orientation)
 SYSTEMUI_SPEC = importlib.util.spec_from_file_location("systemui", Path(__file__).with_name("arm64-systemui.py"))
 systemui = importlib.util.module_from_spec(SYSTEMUI_SPEC)
 SYSTEMUI_SPEC.loader.exec_module(systemui)
+POWER_SPEC = importlib.util.spec_from_file_location("ui_power", Path(__file__).with_name("arm64-ui-power.py"))
+ui_power = importlib.util.module_from_spec(POWER_SPEC)
+POWER_SPEC.loader.exec_module(ui_power)
 CLOCK_SPEC = importlib.util.spec_from_file_location("guest_clock", Path(__file__).with_name("arm64-clock.py"))
 guest_clock = importlib.util.module_from_spec(CLOCK_SPEC)
 CLOCK_SPEC.loader.exec_module(guest_clock)
@@ -230,6 +233,7 @@ def desktop_frame(data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--network", choices=("off", "user"), default="off")
+    parser.add_argument('--power', choices=('off', 'sdk-bme'), default='off')
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
     parser.add_argument('--ca-certificates', choices=('off', 'host'), default='off')
     parser.add_argument('--browser-mode', choices=('original', 'basic'), default='original')
@@ -335,6 +339,13 @@ def main():
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command or "-snapshot" not in command or args.timeout <= 0:
         parser.error("a positive timeout and QEMU -snapshot are required")
+    command = ui_power.prepare_command(command, args.power)
+    ui_power.validate_configuration(args.power, system_ui=systemui_on,
+        profile=args.profile, environment=os.environ, command=command)
+    power_on = args.power == 'sdk-bme'
+    if power_on and args.startup_waits != 'ready':
+        parser.error('SDK BME requires ready startup checks')
+    power_info = {'enabled': power_on, 'mode': args.power, 'full_services': False}
     pose = {'enabled': edge is not None}
     if edge is not None:
         pose_binary, pose_script, pose_info = orientation.prepare()
@@ -345,6 +356,8 @@ def main():
         animation_info.update(metadata)
     splash_info = {'enabled': splash_on}
     helper_payloads = {}
+    if power_on:
+        helper_payloads['ui-sdk-power-guest.sh'] = Path(__file__).with_name('ui-sdk-power-guest.sh').read_bytes()
     browser_info = {'enabled': False}
     if args.network == 'user':
         browser_payloads, browser_info = browser.prepare(args.browser_mode)
@@ -537,16 +550,27 @@ def main():
                 serial.sendall(f'export N00_UI_TOP_EDGE={edge}\n'.encode())
             if args.exercise_input or args.interactive or args.exercise_calculator or args.exercise_orientation:
                 serial.sendall(b"export N00_SHELL_INPUT=1\n")
+            if power_on:
+                ui_power.run_phase(serial, wait_line, out, 'start', power_info)
+            def start_home():
+                serial.sendall(b"printf '\\n'; sh /tmp/n00-shell-guest.sh home-start; printf '\\nN00_HOME_START_EXIT_%s\\nN00_HOME_START_DONE\\n' $?\n")
+                wait_line(b'N00_HOME_START_DONE')
+                if re.findall(rb'^N00_HOME_START_EXIT_(\d+)$', (out / 'serial.log').read_bytes().replace(b'\r', b''), re.M) != [b'0']:
+                    raise ValueError('original Home did not finish window initialization')
             for phase in PHASES:
                 phase_started = time.monotonic()
                 if phase == 'home' and args.boot_animation:
                     boot_animation.signal(out / 'boot', 'play')
                 phase_command = phase
+                if phase == 'compositor' and power_on:
+                    # With battery state ready, no early System UI window is
+                    # guaranteed. Map the real Home before requiring the root
+                    # ConfigureNotify guard; retain the complete animation gate.
+                    start_home()
+                    phase_command = 'compositor-report'
                 if phase == 'home' and args.startup_waits == 'ready':
-                    serial.sendall(b"sh /tmp/n00-shell-guest.sh home-start; printf '\\nN00_HOME_START_EXIT_%s\\n' $?; printf 'N00_HOME_START_DONE\\n'\n")
-                    wait_line(b'N00_HOME_START_DONE')
-                    if re.findall(rb'^N00_HOME_START_EXIT_(\d+)$', (out / 'serial.log').read_bytes().replace(b'\r', b''), re.M) != [b'0']:
-                        raise ValueError('original Home did not finish window initialization')
+                    if not power_on:
+                        start_home()
                     def observe_home():
                         capture('home-readiness')
                         return raw_frame('home-readiness')
@@ -603,6 +627,11 @@ def main():
                     pose['startup'] = orientation.validate_provider(
                         orientation.block((out / 'serial.log').read_bytes(), 'startup'), edge, pose['helper_md5'])
                 if phase == 'theme' and systemui_on:
+                    if power_on:
+                        serial.sendall(b"printf '\\n'; sh /tmp/n00-shell-guest.sh compositor-start; printf '\\nN00_POWER_COMPOSITOR_START_EXIT_%s\\nN00_POWER_COMPOSITOR_START_DONE\\n' $?\n")
+                        wait_line(b'N00_POWER_COMPOSITOR_START_DONE')
+                        if re.findall(rb'^N00_POWER_COMPOSITOR_START_EXIT_(\d+)$', (out / 'serial.log').read_bytes().replace(b'\r', b''), re.M) != [b'0']:
+                            raise ValueError('compositor did not acquire ownership before battery-enabled System UI')
                     serial.sendall(b"printf '\\nN00_SYSTEMUI_START_BEGIN\\n'; sh /tmp/n00-shell-guest.sh systemui; "
                                    b"printf '\\nN00_SYSTEMUI_START_EXIT_%s\\n' $?; printf '\\nN00_SYSTEMUI_START_DONE\\n'\n")
                     wait_line(b'N00_SYSTEMUI_START_DONE')
@@ -617,6 +646,8 @@ def main():
                     if re.findall(rb'^N00_IME_START_EXIT_(\d+)$', ime_data, re.M) != [b'0']:
                         raise ValueError('original input method did not start')
                     keyboard_info['startup'] = keyboard.validate_serial(ime_data, minimum_reports=1)
+            if power_on:
+                ui_power.run_phase(serial, wait_line, out, 'settled', power_info)
             if systemui_on:
                 ui_service['runtime'] = systemui.validate_serial((out / 'serial.log').read_bytes())
             if keyboard_on:
@@ -709,6 +740,7 @@ def main():
                     'runner_sha256': runner_digest,
                     'virtual_orientation': pose,
                     'system_ui': ui_service,
+                    'power': power_info,
                     'clock': clock_info,
                     'input_method': keyboard_info,
                     'audio': audio_output.info if audio_output else {'enabled': False},
@@ -735,7 +767,10 @@ def main():
                     raise KeyboardInterrupt
                 previous_term = signal.signal(signal.SIGTERM, interrupt)
                 def quit_guest():
-                    nonlocal profile_synced
+                    nonlocal profile_synced, deadline
+                    deadline = time.monotonic() + 40
+                    if power_on:
+                        ui_power.run_phase(serial, wait_line, out, "stop", power_info)
                     qmp.deadline = time.monotonic() + 40
                     if profile_session:
                         storage.sync_guest(serial, process, log, display)
@@ -781,6 +816,9 @@ def main():
                         indent=2) + '\n')
                     print(f'PASS: bounded original Home startup; evidence: {out}', flush=True)
                 return
+            if power_on:
+                ui_power.run_phase(serial, wait_line, out, 'final', power_info)
+                ui_power.run_phase(serial, wait_line, out, 'stop', power_info)
             # quit joins bridge workers; process presence above is not UI acceptance.
             qmp.call("quit")
             process.wait(timeout=5)
@@ -807,6 +845,7 @@ def main():
                 "runner_sha256": runner_digest,
                 "virtual_orientation": pose,
                 "system_ui": ui_service,
+                "power": power_info,
                 "clock": clock_info,
                 "input_method": keyboard_info,
                 "audio": audio_output.info if audio_output else {"enabled": False},

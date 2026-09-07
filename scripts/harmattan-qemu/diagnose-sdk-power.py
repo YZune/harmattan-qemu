@@ -40,10 +40,15 @@ def validate_serial(data):
                          data, re.M | re.S)
     if len(records) != 1:
         raise ValueError("missing or ambiguous BME statistics")
+    return parse_stats(records[0])
+
+
+def parse_stats(data):
+    """Validate the original bmestat payload, independent of transport markers."""
     values = {}
     for key in ("max. level", "cur. level", "pct. level"):
         found = re.findall(rb"^\s*battery " + re.escape(key.encode()) + rb":\s*(\d+)\s*$",
-                           records[0], re.M)
+                           data, re.M)
         if len(found) != 1:
             raise ValueError("missing or ambiguous battery level")
         values[key] = int(found[0])

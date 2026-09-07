@@ -15,7 +15,27 @@
 
 这些是历史 SDK 寄存器模型，含固定虚拟电气参数，不模拟随时间放电、Mac 电池、SIM 或蜂窝网络。对外电池统计由原版 BME 计算；没有替换状态栏或 ContextKit 数据提供器。
 
-新增 flash 仅在 QEMU 运行期间存在，即使 SD 使用持久用户配置，也不会保留这块 flash。不要将其当作持久 CAL 存储或在用户配置上启用完整服务。标准启动器不会自动添加 flash 分区或启动 BME。
+新增 flash 仅在 QEMU 运行期间存在，即使 SD 使用持久用户配置，也不会保留这块 flash。不要将其当作持久 CAL 存储或在用户配置上启用完整服务。默认电源模式关闭时，标准启动器不会自动添加 flash 分区或启动 BME。
+
+## 桌面中的可选原版电池模式
+
+显式设置 `HARMATTAN_UI_POWER=sdk-bme`，即可连接原版 BME、其 IPC socket、原版 ContextKit 电池插件和 System UI。默认仍为 `off`。此模式要求包含 SDK 电源支持的构建、固定的 SDK 内核与 PR1.3 客体二进制，以及独立临时磁盘；拒绝持久用户配置、fixed 启动等待和无关诊断模式。
+
+```sh
+HARMATTAN_UI_POWER=sdk-bme sh scripts/harmattan-qemu/run-arm64-ui.sh
+# 有界无窗口交互回归：
+HARMATTAN_UI_POWER=sdk-bme sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic
+```
+
+BME 在首个 System UI 进程订阅电池状态前启动。此模式先让合成器取得 X11 管理权，再启动 System UI 和原版 Home，随后进行完整合成器检查。所需根窗口事件可能到 Home 映射后才出现，取得管理权不单独算作就绪。Home 身份/几何、稳定像素、根窗口事件和动画检查均继续保留。报告核验原版可执行文件身份、PID/启动时间、socket 与事件文件，以及实际 `bmestat` 档位；受控退出会停止同一进程。`power-result.json` 将这些观测与完整电源服务验收区分开。关闭 Cocoa 窗口会销毁临时客体，不代表已覆盖 BME 的有序退出。此模式不重启 System UI，不改变安全策略。
+
+SDK 提供固定虚拟电气参数。显示满电表示原版 BME 对这些参数的计算结果，不是宿主电量，也不是放电模拟。完整 DSME 集成、充电/温控和长时间运行仍未验收。
+
+可以在 `scripts/create-local-launcher.py` 的构建与工具参数后添加 `--power sdk-bme --name "Run N9 SDK Battery.command"`，生成单独的私有快捷入口；参见[本地开发](development.zh-CN.md)。保留默认入口，显式覆盖 `HARMATTAN_UI_POWER=off` 即可关闭此模式。
+
+原版信号指示器将不可用的蜂窝注册属性映射为 **NoNetwork**，使用 `icon-s-status-no-gsm-connection`；明确的 `no-sim` 值才会选择另一图标。因此原版 CSD 提供器不可用时，带斜线的网络图标属于预期显示。电池报告通过不触发服务激活的 D-Bus `NameHasOwner` 查询记录该提供器状态，不伪造 SIM、信号格或网络注册。
+
+参见[验证记录](ui-power-validation.json)和[有界安全审计](security-feasibility.zh-CN.md)。
 
 ## 有界 BME 诊断
 

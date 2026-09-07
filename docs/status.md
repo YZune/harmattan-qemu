@@ -51,6 +51,8 @@ The opt-in SSI controller now passes MMIO/PIO/GDD/IRQ tests and lets the origina
 
 The optional [PR1.3 kernel](kernel.md) now boots with 101 matching modules and the original Aegis implementation. Its [validation record](kernel-validation.json) covers 338 host tests, a clean Linux kernel build, validator netlink binding and original DSME reaching USER. BME integration is rejected for missing credentials, and MCE/CSD bus ownership fails. Full security and cellular services remain BLOCKED; new-kernel UI behavior is untested.
 
+The optional [SDK battery desktop mode](device-services.md#optional-original-battery-in-the-desktop) now starts original BME before ContextKit subscription and preserves original NoNetwork semantics. It remains disabled by default and rejects persistent profiles. See the [UI validation record](ui-power-validation.json). The [bounded security audit](security-feasibility.md) found no verified matching GP backend in the inspected material; ROM and modem-peer expansion is paused.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

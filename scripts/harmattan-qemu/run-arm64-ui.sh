@@ -20,6 +20,17 @@ case "$startup_waits" in fixed|ready) ;; *) echo 'HARMATTAN_UI_STARTUP_WAITS mus
 if [ -n "$user_profile" ] && [ "$mode" != interactive ] && [ "$mode" != --install-packages ]; then
     echo 'User profiles are for interactive use; diagnostics create independent disks.' >&2; exit 2
 fi
+power_mode=${HARMATTAN_UI_POWER:-off}
+case "$power_mode" in off|sdk-bme) ;; *) echo 'HARMATTAN_UI_POWER must be off or sdk-bme.' >&2; exit 2 ;; esac
+if [ "$power_mode" = sdk-bme ]; then
+    case "$mode" in interactive|--startup-headless-diagnostic|--usability-diagnostic|--usability-headless-diagnostic) ;;
+        *) echo 'SDK BME mode supports interactive/startup/usability runs only.' >&2; exit 2 ;; esac
+    test "$startup_waits" = ready || { echo 'SDK BME mode requires ready startup checks.' >&2; exit 2; }
+    test -z "$user_profile" || { echo 'SDK BME mode requires a disposable disk; unset HARMATTAN_USER_PROFILE.' >&2; exit 2; }
+    test "${HARMATTAN_N00_SDK_POWER:-on}" = on || { echo 'SDK BME mode conflicts with disabled power hardware.' >&2; exit 2; }
+    HARMATTAN_N00_SDK_POWER=on
+    export HARMATTAN_N00_SDK_POWER
+fi
 network=${HARMATTAN_UI_NETWORK:-off}
 audio=${HARMATTAN_UI_AUDIO:-off}
 ca_certificates=${HARMATTAN_UI_CA_CERTIFICATES:-off}
@@ -202,6 +213,12 @@ if [ "$mode" = interactive ] && [ "$runtime" = responsive ] && [ -z "${HARMATTAN
     qemu_binary="$bin_root/Harmattan N9.app/Contents/MacOS/qemu-system-arm"
     test -x "$qemu_binary" || { echo 'Rebuild the native Cocoa application first.' >&2; exit 1; }
 fi
+if [ "$power_mode" = sdk-bme ]; then
+    strings "$qemu_binary" | grep -q HARMATTAN_N00_SDK_POWER || {
+        echo 'SDK BME mode requires a build containing the SDK power hardware patch.' >&2; exit 1;
+    }
+    echo 'SDK battery mode: original BME -n, virtual SDK electrical values; full power/cellular services remain unavailable.'
+fi
 if [ -n "$user_profile" ]; then
     strings "$qemu_binary" | grep -q N00_COCOA_STORAGE_SHUTDOWN || {
         echo 'Persistent profiles require a fresh --cocoa-interaction build with graceful storage shutdown.' >&2; exit 1;
@@ -365,4 +382,4 @@ if [ -n "$user_profile" ]; then
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
-    --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --browser-mode "$browser_mode" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
+    --power "$power_mode" --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --browser-mode "$browser_mode" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"

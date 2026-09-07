@@ -15,7 +15,27 @@ The [boot-chain work](boot-chain.md) now prepares all original boot/modem varian
 
 These are the historical SDK register models. They contain fixed virtual electrical values and do not model battery discharge over time, a host Mac's battery, a SIM, or a cellular network. Original BME computes the exported battery statistics; there is no replacement statusbar/context provider.
 
-The new flash exists only while QEMU is running, even with a persistent SD user profile. Do not treat it as persistent CAL storage or enable full services on a profile. The standard launcher does not automatically add flash partitions or start BME.
+The new flash exists only while QEMU is running, even with a persistent SD user profile. Do not treat it as persistent CAL storage or enable full services on a profile. With the default power mode off, the standard launcher does not automatically add flash partitions or start BME.
+
+## Optional original battery in the desktop
+
+The explicit `HARMATTAN_UI_POWER=sdk-bme` mode connects the original BME, its IPC socket, the original ContextKit battery plugin and System UI. The default remains `off`. It requires a build with SDK power support, the pinned SDK kernel and PR1.3 guest binaries, and a disposable disk; persistent profiles, fixed startup waits and unrelated diagnostic modes are rejected.
+
+```sh
+HARMATTAN_UI_POWER=sdk-bme sh scripts/harmattan-qemu/run-arm64-ui.sh
+# Bounded headless interaction regression:
+HARMATTAN_UI_POWER=sdk-bme sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic
+```
+
+BME starts before the first System UI process subscribes to battery state. In this mode the compositor first acquires X11 ownership, then System UI and the original Home start before the full compositor checkpoint. The required root event may arrive only after Home maps; ownership alone is not accepted as readiness. Home identity/geometry, stable pixels, root-event and animation checks all remain required. Reports check original executable identity, PID/start time, socket and event file, and actual `bmestat` levels. Controlled shutdown stops that same process. `power-result.json` keeps the observations separate from complete power-service acceptance. Closing the Cocoa window destroys the disposable guest; it does not establish graceful BME shutdown coverage. This mode does not restart System UI or change security policies.
+
+The SDK supplies fixed virtual electrical values. A displayed full battery means the original BME interpreted those values; it is neither the host battery nor a discharge simulation. Complete DSME integration, charging/thermal management and long sessions remain unaccepted.
+
+A separate private shortcut can be generated with `scripts/create-local-launcher.py --power sdk-bme --name "Run N9 SDK Battery.command"`, alongside the build/tool arguments in [local development](development.md). Keep the default shortcut. Override `HARMATTAN_UI_POWER=off` to disable the optional mode.
+
+The original signal indicator maps an unavailable cellular registration property to **NoNetwork**, using `icon-s-status-no-gsm-connection`; an explicit `no-sim` value selects a different icon. A crossed-out network indicator is therefore expected while the original CSD provider is unavailable. The battery report uses the non-activating D-Bus `NameHasOwner` query to observe that provider. No SIM identity, signal bars or registration are fabricated.
+
+See the [validation record](ui-power-validation.json) and [bounded security audit](security-feasibility.md).
 
 ## Bounded BME diagnostic
 

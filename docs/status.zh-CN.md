@@ -51,6 +51,8 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 可选 [PR1.3 内核](kernel.zh-CN.md)现已携带 101 个匹配模块及原版 Aegis 实现启动。[验证记录](kernel-validation.json)覆盖 338 项宿主测试、Linux 干净内核构建、validator netlink 绑定及原版 DSME 进入 USER。BME 接入因缺少凭据被拒绝，MCE/CSD 总线所有权失败。完整安全与蜂窝服务仍为 BLOCKED，新内核 UI 行为未验证。
 
+可选 [SDK 电池桌面模式](device-services.zh-CN.md#桌面中的可选原版电池模式)现会在 ContextKit 订阅前启动原版 BME，并保持原版 NoNetwork 语义。默认关闭，拒绝持久用户配置；参见 [UI 验证记录](ui-power-validation.json)。[有界安全审计](security-feasibility.zh-CN.md)未在已查材料中找到经过验证的匹配 GP 后端，暂停 ROM 和调制解调器对端扩展。
+
 ## 尚未完成
 
 原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。

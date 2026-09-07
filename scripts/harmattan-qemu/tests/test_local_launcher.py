@@ -92,3 +92,16 @@ class LocalLauncherTests(unittest.TestCase):
             launcher.validate_build(root, 'user', 'off')
             with self.assertRaisesRegex(ValueError, 'black frame'):
                 launcher.validate_build(root, 'user', 'black')
+
+    def test_battery_shortcut_requires_both_patched_binaries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            files = ('qemu-system-arm', 'qemu-img', 'meson-info/intro-buildoptions.json',
+                     'Harmattan N9.app/Contents/MacOS/qemu-system-arm')
+            for name in files:
+                path = root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b'old')
+            for name in (files[0], files[3]):
+                with self.assertRaisesRegex(ValueError, 'SDK power hardware'):
+                    launcher.validate_build(root, 'off', 'off', 'sdk-bme')
+                (root / name).write_bytes(b'HARMATTAN_N00_SDK_POWER')
+            launcher.validate_build(root, 'off', 'off', 'sdk-bme')

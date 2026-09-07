@@ -25,7 +25,7 @@ def launcher_name(value):
     return value
 
 
-def validate_build(root, network, skin):
+def validate_build(root, network, skin, power='off'):
     for relative in ('qemu-system-arm', 'qemu-img',
                      'meson-info/intro-buildoptions.json',
                      'Harmattan N9.app/Contents/MacOS/qemu-system-arm'):
@@ -37,6 +37,10 @@ def validate_build(root, network, skin):
                 raise ValueError('Selected QEMU build lacks the N00 networking patch: ' + relative)
     if skin == 'black' and not (root / 'Harmattan N9.app/Contents/Resources/n9-black-livven.png').is_file():
         raise ValueError('Selected build does not contain the user-supplied black frame')
+    if power == 'sdk-bme':
+        for relative in ('qemu-system-arm', 'Harmattan N9.app/Contents/MacOS/qemu-system-arm'):
+            if b'HARMATTAN_N00_SDK_POWER' not in (root / relative).read_bytes():
+                raise ValueError('Selected QEMU build lacks SDK power hardware: ' + relative)
 
 
 def render(repo, settings, audio):
@@ -94,6 +98,8 @@ def main():
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
     parser.add_argument('--ca-certificates', choices=('off', 'host'), default='off')
     parser.add_argument('--browser-mode', choices=('original', 'basic'), default='original')
+    parser.add_argument('--power', choices=('off', 'sdk-bme'), default='off',
+                        help='original BME on virtual SDK battery hardware; disposable runs only')
     parser.add_argument('--name', type=launcher_name, default='Run N9.command', help='filename inside artifacts/local')
     parser.add_argument('--pulseaudio', default='pulseaudio')
     parser.add_argument('--skin', choices=('off', 'frame', 'black'), default='off')
@@ -108,7 +114,7 @@ def main():
             raise ValueError('Host CA certificates require --network user or --audio pulse')
         if args.browser_mode == 'basic' and network != 'user':
             raise ValueError('Basic browser mode requires --network user or --audio pulse')
-        validate_build(build, network, args.skin)
+        validate_build(build, network, args.skin, args.power)
         settings = {'HARMATTAN_UI_BUILD_ROOT': build,
                     'HARMATTAN_PORT_WORKSPACE': args.workspace.expanduser().resolve(),
                     'HARMATTAN_PYTHON': Path(sys.executable).resolve(),
@@ -116,7 +122,8 @@ def main():
                     'HARMATTAN_DEBUGFS': executable(args.debugfs),
                     'HARMATTAN_UI_SKIN': args.skin, 'HARMATTAN_UI_NETWORK': network,
                     'HARMATTAN_UI_CA_CERTIFICATES': args.ca_certificates,
-                    'HARMATTAN_UI_BROWSER_MODE': args.browser_mode}
+                    'HARMATTAN_UI_BROWSER_MODE': args.browser_mode,
+                    'HARMATTAN_UI_POWER': args.power}
         if args.audio == 'pulse':
             pulse = Path(executable(args.pulseaudio))
             for name in ('pactl', 'parec'):
@@ -127,6 +134,7 @@ def main():
         backup = write_launcher(output, render(ROOT, settings, args.audio), args.replace)
         print(output)
         print('Network:', network, '; audio:', args.audio, '; browser:', args.browser_mode)
+        print('Power:', args.power)
         if backup:
             print('Previous launcher retained:', backup)
         print('Selections are validated when launched; existing QEMU sessions keep their original settings.')

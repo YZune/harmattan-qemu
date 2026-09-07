@@ -1,0 +1,177 @@
+{
+  "date": "2026-09-07",
+  "scope": "Explicit original BME desktop mode on SDK virtual power hardware; full services remain blocked",
+  "host": {
+    "os": "macOS",
+    "architecture": "arm64",
+    "python": "3.12.2"
+  },
+  "qemu": {
+    "sha256": "ece3c574965f22c46a339b6ae17e7f3817eefb39e2c2681629997f4906526e58",
+    "fresh_build_this_change": false,
+    "note": "Existing verified GP/UART build; this change modifies launcher and guest helpers only"
+  },
+  "kernel": {
+    "kind": "original SDK 2.6.32.26",
+    "sha256": "4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e"
+  },
+  "guest": "new disposable snapshots of the disk prepared from original PR1.3 media",
+  "default_ui": {
+    "status": "PASS",
+    "mode": "power off, headless usability",
+    "coverage": [
+      "Home",
+      "original keyboard",
+      "Notes",
+      "Calculator transitions",
+      "animation intermediate frames",
+      "black-frame checks"
+    ],
+    "qemu_exit": 0
+  },
+  "sdk_bme_ui": {
+    "status": "PASS",
+    "command": "HARMATTAN_UI_POWER=sdk-bme sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic",
+    "all_six_shell_phases": 0,
+    "coverage": [
+      "Home",
+      "original keyboard",
+      "Notes",
+      "Calculator transitions",
+      "animation intermediate frames",
+      "black-frame checks"
+    ],
+    "qemu_exit": 0
+  },
+  "battery": {
+    "enabled": true,
+    "mode": "sdk-bme",
+    "full_services": false,
+    "pid": 120,
+    "runtime_md5": "3656cad5df189b759639aa21bb5e00ea",
+    "reports": {
+      "startup": {
+        "max. level": 8,
+        "cur. level": 8,
+        "pct. level": 100
+      },
+      "settled": {
+        "max. level": 8,
+        "cur. level": 8,
+        "pct. level": 100,
+        "cellular_provider_owned": false
+      },
+      "final": {
+        "max. level": 8,
+        "cur. level": 8,
+        "pct. level": 100,
+        "cellular_provider_owned": false
+      },
+      "shutdown": {
+        "max. level": 8,
+        "cur. level": 8,
+        "pct. level": 100,
+        "cellular_provider_owned": false
+      }
+    },
+    "scope": "original BME -n on SDK virtual power hardware; no host battery or cellular telemetry",
+    "stopped": true
+  },
+  "statusbar_pixels": {
+    "capture_sha256": "59be4462da39573c93b13ba497ca193e31aecc9abb2a794f14c8e3ce3e630061",
+    "checks": [
+      {
+        "asset": "battery8",
+        "asset_sha256": "ea8e6c81528a07adbd115e090710c14f56e8dcfb068a6afbb24d987569d313ef",
+        "position": [
+          4,
+          5
+        ],
+        "size": [
+          31,
+          20
+        ],
+        "exact_pixels": true
+      },
+      {
+        "asset": "no-network",
+        "asset_sha256": "6e5b072ce5b7c172c211197b8e2996e39c4425a012e5d85d8df8706708b28903",
+        "position": [
+          39,
+          5
+        ],
+        "size": [
+          20,
+          20
+        ],
+        "exact_pixels": true
+      }
+    ]
+  },
+  "pixel_method": "Exact RGB crops against original Blanco RGBA assets composited onto black; private assets and captures not published",
+  "retained_failures": [
+    {
+      "attempt": "initial startup",
+      "status": "FAIL",
+      "cause": "Serial prompt prefixed a BME report boundary; fixed command framing, kept anchored parser"
+    },
+    {
+      "attempt": "first and second usability",
+      "status": "FAIL",
+      "cause": "Root ConfigureNotify guard absent before Home; moving BME earlier alone did not fix it"
+    },
+    {
+      "attempt": "third usability",
+      "status": "FAIL",
+      "cause": "Compositor ownership before System UI alone did not produce the root event; split report also needed its original clock phase"
+    },
+    {
+      "attempt": "first host suite",
+      "status": "FAIL",
+      "cause": "One negative test expected unsupported-mode error before fixed-wait error; reordered early validation; no requirement removed"
+    },
+    {
+      "attempt": "first private shortcut startup",
+      "status": "REJECTED",
+      "cause": "Existing Unix socket path-length check rejected long private workspace; shortened the workspace selection without changing the guard"
+    }
+  ],
+  "startup_resolution": "SDK mode requires ready waits; compositor ownership precedes System UI; real Home maps before the full compositor checkpoint. Original Home geometry, stable pixels, root event and animation validators remain required.",
+  "unverified": [
+    "Cocoa window and physical input for this mode",
+    "long sessions",
+    "host battery integration",
+    "dynamic discharge and charging",
+    "persistent profiles",
+    "complete DSME/MCE/CSD",
+    "secure boot and modem/ISI peer"
+  ],
+  "full_services": false,
+  "host_tests": {
+    "status": "PASS",
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "tests": 357,
+    "failed": 0,
+    "skipped": 0
+  },
+  "source_checks": {
+    "shell_syntax": "PASS",
+    "perl_syntax": "PASS"
+  },
+  "private_shortcut": {
+    "status": "PASS",
+    "mode": "sdk-bme, startup-headless-diagnostic",
+    "ready": true,
+    "qemu_exit": 0,
+    "same_bme_through_shutdown": true,
+    "bme_stopped": true,
+    "default_shortcut_preserved": true
+  },
+  "default_final_startup": {
+    "status": "PASS",
+    "power_enabled": false,
+    "ready": true,
+    "qemu_exit": 0,
+    "scope": "Final source, explicit power-off override through the separate shortcut"
+  }
+}
