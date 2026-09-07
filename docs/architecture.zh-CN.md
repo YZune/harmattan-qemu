@@ -9,6 +9,7 @@
 | 宿主模拟器 | QEMU 9.1.3 与前向移植的 Nokia N00 设备 | `ports/qemu-n00/` |
 | 宿主图形 | Nokia DGLES 与 Cocoa 离屏 FBO 适配 | `ports/dgles2/` |
 | 客体内核及适配层 | 自行提供的 PR1.0 模拟器内核和图形 ABI | 外部输入 |
+| 实验性 PR1.3 内核 | 原版 DVD 内核、QEMU 适配和构建兼容 | `ports/guest-kernel/`、`build-pr13-kernel.sh`，见[内核](kernel.zh-CN.md) |
 | 客体产品软件 | 自行提供的 PR1.3 原版库及应用 | 外部输入 |
 | 客体兼容 | 装入独立运行的小范围辅助代码 | `scripts/harmattan-qemu/*-guest.c` 及客体脚本 |
 | 验证 | 主机单元测试、QMP 输入、客体身份和像素检查 | `scripts/harmattan-qemu/tests/` 及诊断脚本 |

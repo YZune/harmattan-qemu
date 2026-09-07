@@ -19,6 +19,15 @@ PARTITIONS = ("mtdparts=omap2-onenand:128k(bootloader),384k@128k(config),"
               "3072k@512k(kernel),1024k@3584k(log),519680k@4608k(swap)")
 
 
+def validate_kernel_log(data):
+    # A rescue shell can appear after SLUB has repaired poisoned objects.
+    # Such a run must never pass merely because later IPC checkpoints succeed.
+    if re.search(rb"(?:^|\n)(?:<\d+>)?(?:\[\s*[0-9.]+\]\s*)?"
+                 rb"(?:BUG[: ]|kernel BUG at|Unable to handle kernel|"
+                 rb"Internal error:|Kernel panic)", data.replace(b"\r", b"")):
+        raise ValueError("guest kernel fault or allocator corruption")
+
+
 def validate_serial(data):
     data = data.replace(b"\r", b"")
     lines = data.splitlines()
@@ -102,7 +111,9 @@ def run_diagnostic(*, description=__doc__, guest_script="sdk-power-guest.sh",
             serial.sendall(b"PAYLOAD\nsh /tmp/n00-sdk-power.sh; " +
                            f"printf '\\n{prefix}_EXIT_%s\\n{prefix}_DONE\\n' $?\n".encode())
             wait(f"\n{prefix}_DONE\n".encode())
-            result[result_key] = validator((out / "serial.log").read_bytes())
+            evidence = (out / "serial.log").read_bytes()
+            validate_kernel_log(evidence)
+            result[result_key] = validator(evidence)
             qmp.deadline = time.monotonic() + 10
             qmp.call("quit")
             if process.wait(timeout=10) != 0:

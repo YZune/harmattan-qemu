@@ -9,6 +9,7 @@
 | Host emulator | QEMU 9.1.3 plus forward-ported Nokia N00 devices | `ports/qemu-n00/` |
 | Host graphics | Nokia DGLES source with Cocoa offscreen FBO adaptation | `ports/dgles2/` |
 | Guest kernel and adaptation | User-supplied PR1.0 emulator kernel and graphics ABI | External inputs |
+| Experimental PR1.3 kernel | Original DVD kernel plus QEMU adaptation and build compatibility | `ports/guest-kernel/`, `build-pr13-kernel.sh`; see [kernel](kernel.md) |
 | Guest product software | User-supplied PR1.3 original libraries and applications | External inputs |
 | Guest compatibility | Small, scoped helpers loaded into disposable runs | `scripts/harmattan-qemu/*-guest.c` and guest scripts |
 | Validation | Host unit tests, QMP input, guest identity and pixel checks | `scripts/harmattan-qemu/tests/` and diagnostic scripts |

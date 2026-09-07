@@ -1,0 +1,187 @@
+{
+  "date": "2026-09-07",
+  "scope": "Optional PR1.3 kernel and bounded original-service probes; default SDK launcher unchanged",
+  "full_services": false,
+  "service_readiness": "BLOCKED",
+  "inputs": {
+    "kernel_source": {
+      "archive": "kernel_2.6.32-20121301+0m8.tar.gz",
+      "sha256": "2ceddaf3a460c21e8ab779393de9096058bf99623e620e42c98bcaf6a65b2cd8"
+    },
+    "qemu_adaptation": {
+      "archive": "kernel-qemu_2.6.32.20112701+0m6.tar.gz",
+      "sha256": "1599efe16deaaee36bdcea7fa3f95dc6ca80b324c1350d1516695f4708eb7331"
+    },
+    "gles_source": {
+      "archive": "gles-libs_1.4.2-3+0m6.tar.gz",
+      "sha256": "2a611910254d877b76d4da26bbf679b9341a63f9eb2453790daf10928a188711"
+    },
+    "qemu_sha256": "9ae2b3885f2571feead91c5aab636a3e8a868b042a1e5a8766fd5a6745008667",
+    "guest": "Prepared original-media PR1.3 disk; matching modules installed only into an independent APFS clone"
+  },
+  "clean_kernel_build": {
+    "status": "PASS",
+    "host": "isolated Debian 12 ARM64 Linux VM with a case-sensitive filesystem",
+    "command": "sh scripts/harmattan-qemu/build-pr13-kernel.sh",
+    "toolchain": "GNU GCC 4.9.4 ARM32 cross compiler; binutils 2.40",
+    "release": "2.6.32.54-n00-pr13",
+    "kernel_sha256": "4490e433b0ee97131ee2cfb8f92e506e5d49b5c06fad63d82a51b99a2b02f7a2",
+    "private_bundle_sha256": "ff64dfe6fad76b1124621ddbf19ab69a5a9b091073ba7909fbaee610e899f44e",
+    "matching_modules": 101,
+    "aegis_original_files_unchanged": 31,
+    "entry": "b0008000 T _stext",
+    "original_smc_instructions": [
+      "asm_sec_hal_entry+0x18: e1600071",
+      "asm_sec_hal_rpc_handler+0x10: e1600071"
+    ],
+    "warnings_retained": [
+      "legacy missing modules.order and built-in metadata",
+      "kfgles2 assembly lacks GNU-stack note"
+    ],
+    "preflight_negative_checks": [
+      "wrong source hash rejected before creating workspace",
+      "existing workspace rejected with sentinel unchanged"
+    ]
+  },
+  "host_tests": {
+    "status": "PASS",
+    "host": "Darwin arm64",
+    "python": "3.12.2",
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "tests": 338,
+    "seconds": 21.927
+  },
+  "prerequisite_probe": {
+    "status": "PASS",
+    "exit": 2,
+    "service_readiness": "BLOCKED",
+    "command": "HARMATTAN_N00_SSI=on python3 -B scripts/harmattan-qemu/diagnose-device-prerequisites.py --qemu \"$QEMU\" --kernel \"$PR13_KERNEL\" --image \"$PROBE_DISK\" --output \"$NEW_OUTPUT\"",
+    "display": "none",
+    "network": "none",
+    "disposable_snapshot": true,
+    "kernel": "2.6.32.54-n00-pr13",
+    "validator_netlink": "bound: protocol 25, group 1",
+    "ssi_driver": "bound",
+    "kci": 0,
+    "selected_kci_firmware": "missing; other PA variants exist",
+    "omap_sec_open": "errno 2"
+  },
+  "original_service_attempt": {
+    "status": "BLOCKED",
+    "method": "Private bounded serial-shell experiment on another disposable snapshot; original system D-Bus policy and service binaries",
+    "dsme_command": "DSME_RD_FLAGS='no-ext-wd,no-omap-wd' /sbin/dsme -l stderr -v 7 -p /lib/dsme/libstartup.so",
+    "bme_command": "/usr/sbin/bme_RX-71 -l stderr -v 5 -c /usr/lib/hwi/hw/rx71.so",
+    "mce_command": "/sbin/mce --force-stderr --verbose",
+    "csd_commands": [
+      "/usr/lib/csd/csd.sh pre-start",
+      "CONSOLE=1 /usr/lib/csd/csd.sh start; resume child with SIGCONT"
+    ],
+    "validator_init_exit": 1,
+    "validator_enabled": 1,
+    "validator_enforce": 0,
+    "security_settings_changed": false,
+    "modules_loaded": [
+      "omap_ssi",
+      "cmt",
+      "phonet",
+      "ssi_protocol",
+      "cmt_speech",
+      "kfgles2"
+    ],
+    "dsme": {
+      "state": "USER",
+      "processes": [
+        "dsme",
+        "dsme-server"
+      ],
+      "validator_notifications_received": true,
+      "malf_observed": false,
+      "bus_names": [
+        "com.nokia.dsme",
+        "com.nokia.diskmonitor",
+        "com.nokia.powerontimer",
+        "com.nokia.thermalmanager"
+      ]
+    },
+    "bme": {
+      "status": "FAIL",
+      "reason": "DSME explicitly rejects the IPC client for missing dsme::DeviceStateControl credential",
+      "bmestat_exit": 2
+    },
+    "mce": {
+      "status": "FAIL",
+      "reason": "Original D-Bus policy rejects ownership of com.nokia.mce"
+    },
+    "csd": {
+      "status": "FAIL",
+      "reason": "Process exists but required ContextProvider and SIMPB bus ownership fails"
+    },
+    "observed_binary_md5": {
+      "dsme": "a00ca1ff8a6ca38f189e288b17c2c11e",
+      "dsme-server": "87cac7bd773955d8f293894660a314ae",
+      "mce": "a2d84873851d6e1afca809dcdde76970",
+      "csd": "6bfc84999c48f6daa2175663a87bb49c",
+      "bme_RX-71": "3656cad5df189b759639aa21bb5e00ea",
+      "validator-init": "ed3db81fb2af02227b5ef13603065c07"
+    },
+    "kernel_fault_check": "PASS",
+    "host_teardown": "PASS: calls=0 swaps=0 faults=0 workers=joined",
+    "limits": [
+      "short observation after service startup",
+      "watchdogs disabled through existing diagnostic flags",
+      "no complete Aegis credential initialization",
+      "no modem peer"
+    ]
+  },
+  "sdk_bme_regression": {
+    "status": "PASS",
+    "command": "HARMATTAN_N00_SSI=on python3 -B scripts/harmattan-qemu/diagnose-sdk-power.py --qemu \"$QEMU\" --kernel \"$SDK_KERNEL\" --image \"$BASE_DISK\" --output \"$NEW_OUTPUT\"",
+    "kernel": "original SDK 2.6.32.26",
+    "bme_mode": "original -n hardware/IPC isolation",
+    "battery": {
+      "max_level": 8,
+      "current_level": 8,
+      "percent": 100
+    },
+    "full_services": false
+  },
+  "rejected_development_runs": [
+    {
+      "status": "FAIL",
+      "problem": "build-id note shifted linked entry from raw image",
+      "fix": "disable LDFLAGS_BUILD_ID and require exact _stext"
+    },
+    {
+      "status": "FAIL",
+      "problem": "new compiler emitted unaligned packed loads",
+      "fix": "-mno-unaligned-access; alignment traps retained"
+    },
+    {
+      "status": "FAIL",
+      "problem": "GCC builtin memset return assumptions corrupted console font allocations",
+      "fix": "-fno-builtin preserves original ARM macro contract"
+    },
+    {
+      "status": "FAIL",
+      "problem": "SLUB debug repaired poisoned allocations and reached shell",
+      "fix": "not accepted; kernel-fault validator rejects corruption even with later checkpoints"
+    },
+    {
+      "status": "FAIL",
+      "problem": "modern relative module dependency indexes broke original modprobe",
+      "fix": "absolute text paths and removal of modern binary indexes"
+    }
+  ],
+  "not_tested": {
+    "new_kernel_graphics_and_ui": "SKIP",
+    "cocoa_window_and_physical_input": "SKIP",
+    "long_sessions_and_watchdogs": "SKIP",
+    "complete_secure_boot_and_PA_verification": "SKIP",
+    "SIM_and_network_registration": "SKIP"
+  },
+  "next_dependencies": [
+    "compatible OMAP secure backend and verified KCI boot handoff",
+    "original BB5, certificate, resource-token and Aegis credential initialization",
+    "SSI/ISI modem peer and original consumer acceptance"
+  ]
+}

@@ -16,6 +16,10 @@ The N00 SSI controller's register contracts derive from Nokia's GPLv2-only
 kernel 2.6.32-20121301+0m8 SSI headers/driver. n00-ssi-core.h and n00-ssi.c
 are GPL-2.0-only; retain that distinction from the older QEMU device sources.
 
+The experimental guest-kernel patches apply to the original Nokia PR1.3
+Linux sources. Inherited code keeps its original GPLv2 notices; in
+particular sec_hal_entry.S is Copyright (C) 2008 Nokia Corporation.
+
 The DGLES Cocoa addition and n00-n9-skin.h have explicit MIT notices.
 MIT text is provided in LICENSES/MIT.txt. The DGLES archive contains other
 components under their own terms; it is not uniformly MIT-licensed.
@@ -48,6 +52,7 @@ docs/screenshots/ 下的运行截图用于说明模拟器实际行为，画面�
 图标、字体和商标仍归 Nokia 及各自权利人，不因项目 GPL 声明而重新许可。
 详细来源与许可边界见 docs/sources.zh-CN.md。
 N00 SSI 控制器依据 Nokia 内核 SSI 接口实现，相关 C 源码明确采用 GPL-2.0-only。
+实验性客体内核补丁保留原 Linux/Nokia GPLv2 声明；sec_hal_entry.S 的原版权为 Nokia 2008。
 
 网站 docs/assets/cobble.js 的版权归 YZune 及贡献者所有，采用 Apache-2.0。
 网页适配包含等尺寸转角的三次曲线路径、内层表面及尺寸监听。

@@ -43,9 +43,11 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 启用网络的 UI 启动现已增加固定版本原版浏览器的软件合成适配，并可选择宿主 CA 信任库。此前的[浏览器记录](browser-validation.json)覆盖 302 项宿主测试、Web 图标启动、百度 HTTPS 首页、原版键盘输入、证书拒绝和生成的快捷入口 UI 回归。可选[基础网页模式](networking.zh-CN.md#可选基础网页模式)新增关闭网页 JavaScript 的独立入口，原入口与默认设置保持不变。[基础模式记录](browser-basic-validation.json)覆盖 306 项宿主测试和全新客体中的百度精简版搜索结果。启用 JavaScript 的搜索及任意现代站点仍未通过验收。
 
-新增的[原版设备服务实验](device-services.zh-CN.md)恢复了 SDK 电源器件和易失 CAL 存储，默认关闭。原版 BME 硬件/IPC 诊断与完整电源、蜂窝服务验收是不同范围；Aegis/BB5、DSME validator 通知和 SSI 调制解调器传输仍未跑通。
+新增的[原版设备服务实验](device-services.zh-CN.md)恢复了 SDK 电源器件和易失 CAL 存储，默认关闭。原版 BME 硬件/IPC 诊断与完整电源、蜂窝服务验收是不同范围；Aegis/BB5 和 SSI 调制解调器传输仍未跑通，默认 SDK 内核还缺少 DSME validator 通知。
 
 可选 SSI 控制器现已通过 MMIO/PIO/GDD/IRQ 测试，并使原版 SSI/CMT/Phonet 模块成功加载。`phonet0` 可被管理命令启用，但报告链路未就绪。[SSI 验证记录](ssi-validation.json)覆盖全新源码构建、BME 和无窗口 UI 回归，不代表基带或安全链验收通过。
+
+可选 [PR1.3 内核](kernel.zh-CN.md)现已携带 101 个匹配模块及原版 Aegis 实现启动。[验证记录](kernel-validation.json)覆盖 338 项宿主测试、Linux 干净内核构建、validator netlink 绑定及原版 DSME 进入 USER。BME 接入因缺少凭据被拒绝，MCE/CSD 总线所有权失败。完整安全与蜂窝服务仍为 BLOCKED，新内核 UI 行为未验证。
 
 ## 尚未完成
 

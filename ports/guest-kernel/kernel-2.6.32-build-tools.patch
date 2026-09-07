@@ -1,0 +1,23 @@
+--- a/kernel/timeconst.pl
++++ b/kernel/timeconst.pl
+@@ -370,7 +370,7 @@
+ 	}
+ 
+ 	@val = @{$canned_values{$hz}};
+-	if (!defined(@val)) {
++	if (!@val) {
+ 		@val = compute_values($hz);
+ 	}
+ 	output($hz, @val);
+--- a/arch/arm/mach-omap2/sec_hal_entry.S
++++ b/arch/arm/mach-omap2/sec_hal_entry.S
+@@ -15,6 +15,9 @@
+ 
+ #include <linux/linkage.h>
+ #include <asm/assembler.h>
++
++/* GNU as requires the TrustZone extension to encode the original SMCs. */
++	.arch_extension sec
+ 
+ ENTRY(asm_sec_hal_entry)
+ 	stmfd	sp!, {r4-r12, lr}

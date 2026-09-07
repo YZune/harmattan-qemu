@@ -6,6 +6,8 @@
 
 The complete build/run path currently targets native **Apple Silicon macOS on APFS**. Linux can run portable host tests; Linux guest execution is an open porting task. QEMU 9.1.3 is pinned because its OMAP foundations match this port, not because it is the newest QEMU release.
 
+The separate [experimental PR1.3 kernel build](kernel.md) uses a Linux build environment and preserves the original Aegis implementation. It does not change the default SDK kernel or establish full device-service readiness.
+
 There are two independent entry points:
 
 1. **Source work:** host tests and building QEMU/DGLES from public source inputs.

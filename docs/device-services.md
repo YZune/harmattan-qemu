@@ -44,9 +44,9 @@ mtdparts=omap2-onenand:128k(bootloader),384k@128k(config),3072k@512k(kernel),102
 
 | Layer | Observed failure / boundary |
 | --- | --- |
-| BME | I²C detection and CAL-backed startup work. Empty-flash initialization and PMM-table warnings remain; long-session charging/thermal behavior and persistent CAL are unverified. |
+| BME | Isolated I²C/IPC startup works. With DSME integration enabled, DSME rejects BME for missing `dsme::DeviceStateControl`; BME exits. Empty-flash/PMM warnings remain; long-session charging/thermal behavior and persistent CAL are unverified. |
 | Aegis | On a disk newly prepared from original media, `validator-init` exits 1 with `BB5 open failed -1`; `/dev/omap_sec` is absent. Mounting securityfs exposes credential interfaces but does not initialize the hardware trust chain. |
-| DSME | Complete `libstartup.so` startup fails binding the validator notification socket and enters security MALF. The minimal clock heartbeat is not this complete startup. |
+| DSME | The default SDK kernel fails binding the validator notification socket and enters security MALF. The optional [PR1.3 kernel](kernel.md) resolves that bind: original `libstartup.so` reaches USER and acquires its bus names. BB5/Aegis credentials remain missing. |
 | MCE / CSD | Original D-Bus ownership requires `mce::mce` / `csd-base::csd-base` credentials; failed security initialization prevents normal ownership. |
 | Cellular transport | With the new explicit SSI model enabled, the original controller driver binds and CMT/Phonet/SSI modules load. `phonet0` is initially DOWN; administrative enablement still reports no ready link. ISI resources, SIM and registration remain unimplemented. With SSI disabled, the earlier reset failure remains the expected baseline. |
 
@@ -60,7 +60,7 @@ The current diagnostic identifies these dependencies, in implementation order:
 
 1. **SSI controller and peer:** the new model implements controller reset, pending-word buffers, IRQ and basic GDD transfers as described below. Clock timing and a modem/ISI peer remain missing. Probe success alone does not establish transport, SIM presence or network registration. The original reset stub must not be counted as completion.
 2. **Secure platform and boot handoff:** `arch/arm/plat-omap/sec.c` rejects an unset `omap_sec.kci` before registering its misc device. KCI selects `omap3_pafmt_<kci>.bin` and `omap3_pa_<kci>.bin`; it is not a value to guess. Opening the device also requires the backend registered by `arch/arm/mach-omap2/hs.c`, which requires HS/EMU type, secure RAM and working secure RPC. PAFMT is verified through the ROM interface. Merely creating a node, changing the SoC type or supplying any existing KCI does not provide that backend.
-3. **Compatible kernel and credentials:** the current SDK kernel lacks the validator notification initializer present in the later PR1.3 kernel source. Use a compatible kernel implementation and initialize BB5, certificates, resource tokens and credential policy through their original interfaces before starting full DSME/MCE/CSD.
+3. **Compatible kernel and credentials:** the default SDK kernel lacks the validator notification initializer present in the later PR1.3 source. The optional [PR1.3 build](kernel.md) now boots with that original implementation and matching modules. BB5, certificates, resource tokens and credential policy still need initialization through their original interfaces before the complete service graph can work.
 
 The fresh guest reports `OMAP3430/3530 ES1.0-test`, zero identification registers and KCI 0. Original-media PA variants are present, but no matching secure-monitor execution, verified KCI handoff or initialized device credentials have been established. The prepared SD image and the erased experimental OneNAND are not a boot-ROM or provisioned security-storage image. These dependencies remain **unimplemented/unverified**, not a missing service-start switch.
 
@@ -94,6 +94,8 @@ Use the same DGLES runtime environment as above. To test original-driver binding
 
 ## Current validation
 
+The optional kernel's [validation record](kernel-validation.json) adds a clean kernel build, 338 host tests, original-module loading and DSME startup with validator notifications. Full-service startup remains blocked by missing credentials and the modem peer; it does not supersede earlier UI results or establish new-kernel UI acceptance.
+
 The [2026-09-07 validation record](device-services-validation.json) separates 316 passing host tests, fresh DGLES/QEMU source builds, default headless Home startup and the standalone BME diagnostic; all passed.
 
 The early-BME experiment failed compositor readiness and remains FAIL. A separate snapshot first verified Home READY, then started original BME and restarted original sysuid: the statusbar changed from the original very-low icon to the eight-bar icon, with an exact 31-by-20-pixel match to the original asset composited on black. This is a bounded experiment, not default launcher integration. Complete DSME/MCE/CSD checks remain FAIL; Cocoa windows, physical input and long sessions were not tested.
@@ -111,4 +113,4 @@ The register code is recovered from [Nokia revision 32530f6a](https://archive.so
 
 PR1.3 service contracts were checked against the DVD packages `contextkit-maemo_0.7.30+0m7`, `dsme_0.63.0+0m8`, and `aegis-enabler_0.0.32+0m8`, alongside the original guest binaries. Firmware, CAL data and runtime screenshots are not added to the public source tree.
 
-The security/SSI source audit also uses DVD `kernel_2.6.32-20121301+0m8.tar.gz` (SHA-256 `2ceddaf3a460c21e8ab779393de9096058bf99623e620e42c98bcaf6a65b2cd8`). This later source is a contract reference, not proof that the running `2.6.32.26` SDK kernel contains those implementations.
+The security/SSI source audit and optional kernel build use DVD `kernel_2.6.32-20121301+0m8.tar.gz` (SHA-256 `2ceddaf3a460c21e8ab779393de9096058bf99623e620e42c98bcaf6a65b2cd8`). This does not establish that the default `2.6.32.26` SDK kernel contains those implementations.

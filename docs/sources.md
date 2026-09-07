@@ -64,6 +64,8 @@ Livven / Liwen Guo authored the Nokia N9 PSD referenced by the optional skin int
 
 ## Applying licenses
 
+The [experimental PR1.3 kernel](kernel.md) uses the original DVD `kernel_2.6.32-20121301+0m8` and `kernel-qemu_2.6.32.20112701+0m6` packages, plus the existing DGLES package's `kfgles2`. The kernel guide records all input hashes. `ports/guest-kernel/` owns build compatibility patches; the full original sources, kernel binaries and module bundles remain external/private inputs and outputs.
+
 The experimental SSI controller uses register/driver contracts from the GPLv2-only Nokia DVD kernel package `kernel_2.6.32-20121301+0m8`, specifically `arch/arm/plat-omap/include/plat/ssi.h` and `drivers/hsi/controllers/omap_ssi.c`. The controller retains this narrower license. Package checksum and runtime boundaries are recorded in [device services](device-services.md).
 
 The [QEMU license documentation](https://www.qemu.org/docs/master/about/license.html) describes GPLv2 with file-specific terms. Original Nokia files here include both `GPL version 2 or version 3` and `GPL version 2 or later` declarations. Preserve those distinctions. Explicit MIT additions retain MIT. Do not apply a blanket permissive license to the combined QEMU code or treat the whole DGLES archive as MIT.

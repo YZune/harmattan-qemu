@@ -31,6 +31,18 @@ N00_BME_EXIT_0
         values = PROBE.validate_serial(self.RECORD.replace(b'\n', b'\r\n'))
         self.assertEqual(values['cur. level'], 6)
 
+    def test_kernel_faults_and_slub_repairs_never_pass(self):
+        for error in (b'BUG kmalloc-128: Poison overwritten',
+                      b'BUG: bad page state', b'Internal error: Oops',
+                      b'Unable to handle kernel NULL pointer dereference',
+                      b'Kernel panic - not syncing'):
+            with self.subTest(error=error), self.assertRaises(ValueError):
+                PROBE.validate_kernel_log(b'boot\r\n<3>[    0.174] ' + error + b'\r\n' + self.RECORD)
+
+    def test_missing_security_backend_is_a_readiness_fact_not_a_kernel_crash(self):
+        PROBE.validate_kernel_log(b'[ 0.2] sec_init: kci parameter is not set\n'
+                                  b'BB5 open failed -1\n' + self.RECORD)
+
     def test_missing_identity_exit_or_liveness_is_not_a_pass(self):
         for marker in (b'N00_BME_IDENTITY_OK', b'N00_BME_ABSENT_REJECTED',
                        b'N00_BME_ALIVE', b'N00_BME_STOPPED', b'N00_BME_EXIT_0'):

@@ -44,9 +44,9 @@ mtdparts=omap2-onenand:128k(bootloader),384k@128k(config),3072k@512k(kernel),102
 
 | 层次 | 实测失败或边界 |
 | --- | --- |
-| BME | I²C 识别及访问 CAL 后的启动已通。空 flash 初始化和 PMM 表警告仍存在；长时间充电、温控及持久 CAL 未验证。 |
+| BME | 独立 I²C/IPC 启动已通。接入 DSME 后，DSME 因 BME 缺少 `dsme::DeviceStateControl` 拒绝连接，BME 随后退出。空 flash/PMM 警告仍存在；长时间充电、温控及持久 CAL 未验证。 |
 | Aegis | 原始媒体新制备磁盘中，`validator-init` 以 `BB5 open failed -1` 退出 1，缺少 `/dev/omap_sec`。挂载 securityfs 能暴露凭据接口，不能完成硬件信任链初始化。 |
-| DSME | 完整 `libstartup.so` 启动无法绑定 validator 通知 socket，进入安全 MALF；最小时钟心跳不等于完整启动。 |
+| DSME | 默认 SDK 内核无法绑定 validator 通知 socket，进入安全 MALF。可选 [PR1.3 内核](kernel.zh-CN.md)已解决绑定问题：原版 `libstartup.so` 进入 USER 并取得总线名称，BB5/Aegis 凭据仍缺失。 |
 | MCE / CSD | 原版 D-Bus 名称所有权要求 `mce::mce` / `csd-base::csd-base` 凭据；安全初始化失败后不能正常取得所有权。 |
 | 蜂窝传输 | 显式启用新 SSI 模型后，原版控制器驱动能绑定，CMT/Phonet/SSI 模块能加载。`phonet0` 初始为 DOWN，管理命令启用后仍报告链路未就绪。ISI 资源、SIM 和网络注册仍未实现。关闭 SSI 时，之前的复位失败仍是预期基线。 |
 
@@ -60,7 +60,7 @@ mtdparts=omap2-onenand:128k(bootloader),384k@128k(config),3072k@512k(kernel),102
 
 1. **SSI 控制器与对端：**新模型已实现下文所述的控制器复位、待传输缓冲区、IRQ 和基本 GDD 传输，时钟时序及调制解调器/ISI 对端仍未实现。探测成功不代表传输、SIM 或网络注册可用，不能把恢复原版复位桩算作完成。
 2. **安全平台与启动交接：**`arch/arm/plat-omap/sec.c` 在 `omap_sec.kci` 未设置时，会在注册设备前退出。KCI 选择 `omap3_pafmt_<kci>.bin` 和 `omap3_pa_<kci>.bin`，不能猜值。打开设备还依赖 `arch/arm/mach-omap2/hs.c` 注册的后端，后者要求 HS/EMU 类型、安全 RAM 和有效的安全 RPC；PAFMT 通过 ROM 接口验签。创建设备节点、修改 SoC 类型或随意选择已有 KCI，都不能提供这个后端。
-3. **兼容内核与凭据：**当前 SDK 内核缺少后续 PR1.3 内核源码中的 validator 通知初始化器。需要兼容的内核实现，通过原接口完成 BB5、证书、资源令牌和凭据策略初始化，再启动完整 DSME/MCE/CSD。
+3. **兼容内核与凭据：**默认 SDK 内核缺少后续 PR1.3 源码中的 validator 通知初始化器。可选 [PR1.3 构建](kernel.zh-CN.md)现已携带原版实现及匹配模块启动。仍需通过原接口完成 BB5、证书、资源令牌和凭据策略初始化，完整服务图才能运行。
 
 新快照报告 `OMAP3430/3530 ES1.0-test`、全零身份寄存器及 KCI 0。原始媒体内存在多组 PA 固件，但尚未建立匹配的安全监控器执行、经过验证的 KCI 交接和已初始化设备凭据。已制备 SD 镜像及已擦除的实验 OneNAND 不等于 boot-ROM 或已配置的安全存储镜像。这些依赖仍属**未实现/未验证**，不是少开几个服务开关。
 
@@ -94,6 +94,8 @@ python3 -B scripts/harmattan-qemu/diagnose-ssi.py \
 
 ## 本次验证
 
+可选内核的[验证记录](kernel-validation.json)新增干净内核构建、338 项宿主测试、原版模块加载，以及接收 validator 通知的 DSME 启动。完整服务仍受缺失凭据及调制解调器对端阻塞；这不替代先前 UI 结果，也不代表新内核 UI 验收通过。
+
 2026-09-07 的[验证记录](device-services-validation.json)区分了 316 项主机测试、DGLES/QEMU 全新源码构建、默认无窗口 Home 启动和独立 BME 诊断，以上均通过。
 
 提前启动 BME 的实验在合成器就绪检查失败，保留为 FAIL。另一独立快照先验证 Home READY，再启动原版 BME 并重启原版 sysuid，状态栏从原版极低电量图标变为 8 格图标；31×20 像素区域与原素材在黑底上的合成结果完全一致。这只是有界实验路径，尚未接入默认启动器。完整 DSME/MCE/CSD 服务检查仍为 FAIL，Cocoa 窗口、实体输入和长时间会话未测。
@@ -111,4 +113,4 @@ python3 -B scripts/harmattan-qemu/diagnose-ssi.py \
 
 PR1.3 服务契约依据 DVD 中的 `contextkit-maemo_0.7.30+0m7`、`dsme_0.63.0+0m8`、`aegis-enabler_0.0.32+0m8` 及原版客体二进制核对。公开源码树不添加固件、CAL 数据或运行截图。
 
-安全/SSI 源码核对还使用 DVD 的 `kernel_2.6.32-20121301+0m8.tar.gz`（SHA-256 `2ceddaf3a460c21e8ab779393de9096058bf99623e620e42c98bcaf6a65b2cd8`）。这一后续版本用于确认接口契约，不能证明当前运行的 `2.6.32.26` SDK 内核包含相同实现。
+安全/SSI 源码核对及可选内核构建使用 DVD 的 `kernel_2.6.32-20121301+0m8.tar.gz`（SHA-256 `2ceddaf3a460c21e8ab779393de9096058bf99623e620e42c98bcaf6a65b2cd8`）。这不能证明默认 `2.6.32.26` SDK 内核包含相同实现。
