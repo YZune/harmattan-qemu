@@ -20,7 +20,7 @@ The experimental guest-kernel patches apply to the original Nokia PR1.3
 Linux sources. Inherited code keeps its original GPLv2 notices; in
 particular sec_hal_entry.S is Copyright (C) 2008 Nokia Corporation.
 
-The DGLES Cocoa addition and n00-n9-skin.h have explicit MIT notices.
+The DGLES Cocoa addition, n00-n9-skin.h and n00-n9-frame.h have explicit MIT notices.
 MIT text is provided in LICENSES/MIT.txt. The DGLES archive contains other
 components under their own terms; it is not uniformly MIT-licensed.
 

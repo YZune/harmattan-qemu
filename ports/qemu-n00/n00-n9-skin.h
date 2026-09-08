@@ -6,6 +6,7 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #include "n00-lockscreen-control.h"
+#include "n00-n9-frame.h"
 
 @interface N00LockButton : NSButton
 @end
@@ -18,18 +19,30 @@
 }
 @end
 
-static NSSize n00_n9_model_size(NSSize guest)
+static N00N9Geometry n00_n9_geometry(BOOL artwork)
 {
-    return guest.width > guest.height ? NSMakeSize(1160, 620)
-                                      : NSMakeSize(620, 1160);
+    if (!artwork) return n00_n9_frame_geometry();
+    /* Optional user-supplied Livven skin only. Preserve its existing mapping:
+     * PSD Screen (220,546)-(1180,2254); crop (80,240)-(1320,2560), half size.
+     * Glass follows that artwork's Body/Glass mask. */
+    N00N9Geometry geometry = {
+        NSMakeSize(620, 1160), NSMakeRect(70, 153, 480, 854),
+        NSMakeRect(36, 49.5, 548, 1061), 40, NSMakeRect(586, 628, 34, 106)
+    };
+    return geometry;
 }
 
-static NSRect n00_n9_aperture(NSSize guest)
+static NSSize n00_n9_model_size(NSSize guest, N00N9Geometry geometry)
 {
-    /* Original PSD: Screen (480x854 @2x), (220,546)-(1180,2254).
-     * PNG crop: (80,240)-(1320,2560), displayed at half its pixel size. */
-    return guest.width > guest.height ? NSMakeRect(153, 70, 854, 480)
-                                      : NSMakeRect(70, 153, 480, 854);
+    return guest.width > guest.height
+        ? NSMakeSize(geometry.canvas.height, geometry.canvas.width) : geometry.canvas;
+}
+
+static NSRect n00_n9_oriented_rect(NSRect portrait, NSSize guest, NSSize canvas)
+{
+    return guest.width > guest.height
+        ? NSMakeRect(portrait.origin.y, canvas.width - NSMaxX(portrait),
+                     portrait.size.height, portrait.size.width) : portrait;
 }
 
 static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
@@ -55,7 +68,9 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
 @implementation N00N9SkinView
 - (id)initWithGuestView:(NSView *)view image:(NSImage *)image
 {
-    self = [super initWithFrame:NSMakeRect(0, 0, 465, 870)];
+    N00N9Geometry geometry = n00_n9_geometry(image != nil);
+    self = [super initWithFrame:NSMakeRect(0, 0, geometry.canvas.width * .75,
+                                         geometry.canvas.height * .75)];
     if (self) {
         guestView = view;
         caseImage = [image retain];
@@ -101,28 +116,29 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
     if (!hit) return nil;
     if (hit == lockButton) return hit;
     NSPoint local = [self convertPoint:point fromView:[self superview]];
-    NSSize model = n00_n9_model_size(guestSize), bounds = [self bounds].size;
+    N00N9Geometry geometry = n00_n9_geometry(caseImage != nil);
+    NSSize model = n00_n9_model_size(guestSize, geometry), bounds = [self bounds].size;
     CGFloat scale = MIN(bounds.width / model.width, bounds.height / model.height);
     if (scale <= 0) return hit;
     local.x = (local.x - (bounds.width - model.width * scale) / 2) / scale;
     local.y = (local.y - (bounds.height - model.height * scale) / 2) / scale;
     if (guestSize.width > guestSize.height) {
-        local = NSMakePoint(620 - local.y, local.x);
+        local = NSMakePoint(geometry.canvas.width - local.y, local.x);
     }
-    /* Original PSD Body/Glass vector mask, in the cropped half-size model.
-     * Give AppKit the guest as the initial receiver even outside its frame:
+    /* Give AppKit the guest as the initial receiver even outside its frame:
      * it then owns the complete down/drag/up sequence across the screen edge. */
     NSBezierPath *glass = [NSBezierPath bezierPathWithRoundedRect:
-        NSMakeRect(36, 49.5, 548, 1061) xRadius:40 yRadius:40];
+        geometry.glass xRadius:geometry.glassRadius yRadius:geometry.glassRadius];
     return [glass containsPoint:local] ? guestView : hit;
 }
 
 - (void)layoutGuest
 {
-    NSSize model = n00_n9_model_size(guestSize);
+    N00N9Geometry geometry = n00_n9_geometry(caseImage != nil);
+    NSSize model = n00_n9_model_size(guestSize, geometry);
     NSSize bounds = [self bounds].size;
     CGFloat scale = MIN(bounds.width / model.width, bounds.height / model.height);
-    NSRect aperture = n00_n9_aperture(guestSize);
+    NSRect aperture = n00_n9_oriented_rect(geometry.aperture, guestSize, geometry.canvas);
     /* Keep all guest pixels and their aspect ratio. The 480x864 guest is a
      * little taller than the original N9 screen; the gap stays black. */
     CGFloat fit = MIN(aperture.size.width / guestSize.width,
@@ -140,8 +156,7 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
     [guestView setBoundsSize:guestSize];
     /* The lower side key, below the volume rocker. The hit area stays
      * outside the glass, in artwork/model coordinates, at every zoom. */
-    NSRect key = NSMakeRect(586, 628, 34, 106);
-    if (guestSize.width > guestSize.height) key = NSMakeRect(628, 0, 106, 34);
+    NSRect key = n00_n9_oriented_rect(geometry.lockTarget, guestSize, geometry.canvas);
     [lockButton setFrame:NSMakeRect(
         (bounds.width - model.width * scale) / 2 + key.origin.x * scale,
         (bounds.height - model.height * scale) / 2 + key.origin.y * scale,
@@ -161,7 +176,8 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
     guestSize = size;
     NSWindow *window = [self window];
     if (!window) return;
-    NSSize model = n00_n9_model_size(size);
+    N00N9Geometry geometry = n00_n9_geometry(caseImage != nil);
+    NSSize model = n00_n9_model_size(size, geometry);
     [window setContentAspectRatio:model];
     [window setContentMinSize:NSMakeSize(model.width * .32, model.height * .32)];
     if (!([window styleMask] & NSWindowStyleMaskFullScreen)) {
@@ -190,7 +206,8 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
 {
     [[NSColor clearColor] setFill];
     NSRectFillUsingOperation(dirty, NSCompositingOperationCopy);
-    NSSize model = n00_n9_model_size(guestSize), bounds = [self bounds].size;
+    N00N9Geometry geometry = n00_n9_geometry(caseImage != nil);
+    NSSize model = n00_n9_model_size(guestSize, geometry), bounds = [self bounds].size;
     CGFloat scale = MIN(bounds.width / model.width, bounds.height / model.height);
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
     [NSGraphicsContext saveGraphicsState];
@@ -198,38 +215,22 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
                           (bounds.height - model.height * scale) / 2);
     CGContextScaleCTM(context, scale, scale);
     if (guestSize.width > guestSize.height) {
-        CGContextTranslateCTM(context, 0, 620);
+        CGContextTranslateCTM(context, 0, geometry.canvas.width);
         CGContextRotateCTM(context, -M_PI_2);
     }
     [[NSGraphicsContext currentContext] setImageInterpolation:NSImageInterpolationHigh];
     if (caseImage) {
-        [caseImage drawInRect:NSMakeRect(0, 0, 620, 1160)
+        [caseImage drawInRect:NSMakeRect(0, 0, geometry.canvas.width, geometry.canvas.height)
                     fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
     } else {
-        /* Original code-drawn fallback; no third-party image or logo. */
-        NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:
-            NSMakeRect(25, 20, 570, 1120) xRadius:78 yRadius:78];
-        [[NSColor colorWithCalibratedWhite:.12 alpha:1] setFill];
-        [body fill];
-        [[NSColor colorWithCalibratedWhite:.25 alpha:1] setStroke];
-        [body setLineWidth:2];
-        [body stroke];
-        [[NSColor colorWithCalibratedWhite:.025 alpha:1] setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(36, 49.5, 548, 1061)
-            xRadius:40 yRadius:40] fill];
-        [[NSColor colorWithCalibratedWhite:.18 alpha:1] setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(259, 1072, 102, 5)
-            xRadius:2.5 yRadius:2.5] fill];
-        [[NSColor colorWithCalibratedWhite:.55 alpha:1] setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(595, 640, 6, 82)
-            xRadius:3 yRadius:3] fill];
+        n00_n9_draw_frame();
     }
     /* Overlap the opening by two view points, including at fractional zoom.
      * This covers the resampled PNG/child-layer fringe as well as aspect-fit
      * gaps. The framebuffer itself keeps its complete, unscaled bounds. */
     [[NSColor blackColor] setFill];
     if (scale > 0) {
-        NSRectFill(NSInsetRect(NSMakeRect(70, 153, 480, 854), -2 / scale, -2 / scale));
+        NSRectFill(NSInsetRect(geometry.aperture, -2 / scale, -2 / scale));
     }
     [NSGraphicsContext restoreGraphicsState];
 }
