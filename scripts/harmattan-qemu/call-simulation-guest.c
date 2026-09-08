@@ -222,6 +222,19 @@ static void streams(Iter *i) {
     }
     close(i, &a);
 }
+extern DBusMessage *dbus_connection_send_with_reply_and_block(DBusConnection *, DBusMessage *, int, void *);
+static int lock_ui(const char *method) {
+    const char *enabled = getenv("N00_CALL_LOCKSCREEN");
+    if (!enabled || strcmp(enabled, "on")) return 1;
+    DBusMessage *m = dbus_message_new_method_call("org.harmattan.CallSimulation.LockUi",
+        "/org/harmattan/CallSimulation/LockUi", "org.harmattan.CallSimulation.LockUi", method);
+    DBusMessage *r = dbus_connection_send_with_reply_and_block(bus, m, 15000, 0);
+    dbus_message_unref(m);
+    int ok = r && dbus_message_get_type(r) == 2 && !*dbus_message_get_signature(r);
+    if (r) dbus_message_unref(r);
+    if (!ok) { printf("DEMO_FATAL lock bridge %s\n", method); fflush(0); }
+    return ok;
+}
 static void finish(unsigned actor, const char *why) {
     if (state != 1 && state != 2)
         return;
@@ -229,6 +242,7 @@ static void finish(unsigned actor, const char *why) {
     members(0, 6, 0, actor, 0);
     state = 3;
     send(dbus_message_new_signal(channel, CH, "Closed"));
+    if (!lock_ui("Finish")) exit(2);
     printf("DEMO_STATE ended cause=%s sequence=%u\n", why, seq);
     fflush(0);
 }
@@ -369,6 +383,11 @@ static void process(DBusMessage *m) {
             if (state == 1 || state == 2) {
                 dbus_message_unref(r);
                 error(m, TP ".Error.NotAvailable", "A simulated call is already open");
+                return;
+            }
+            if (!lock_ui("Begin")) {
+                dbus_message_unref(r);
+                error(m, "org.freedesktop.DBus.Error.Failed", "Original lock UI bridge failed");
                 return;
             }
             send(r);

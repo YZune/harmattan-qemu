@@ -256,6 +256,7 @@ def main():
     parser.add_argument("--interactive", action="store_true", help="validate startup, then keep the native window running until closed")
     parser.add_argument('--exit-on-ready', action='store_true', help='bounded startup diagnostic using the interactive readiness gates')
     parser.add_argument('--call-simulation', choices=('off', 'on'), default='off', help='isolated synthetic calls in original call-ui')
+    parser.add_argument('--call-lockscreen', action='store_true', help='original locked-call event bridge on the private call bus')
     parser.add_argument('--call-simulation-test', action='store_true', help='exercise the explicitly enabled simulator before bounded exit')
     parser.add_argument('--lockscreen', choices=('off', 'on'), default='off')
     parser.add_argument('--lockscreen-test', action='store_true', help='bounded original lock/clock/swipe regression')
@@ -280,6 +281,8 @@ def main():
         parser.error('basic browser mode requires --network user')
     if args.exit_on_ready and (not args.interactive or args.profile or args.boot_animation):
         parser.error('bounded startup requires interactive readiness with an independent snapshot and no boot movie')
+    if args.call_lockscreen and (args.call_simulation != 'on' or args.lockscreen != 'on'):
+        raise ValueError('Locked calls require explicit call simulation and original lock UI')
     call_simulation.validate_configuration(args.call_simulation, interactive=args.interactive,
         ready=args.startup_waits == 'ready', profile=args.profile, rotation=args.rotation,
         test=args.call_simulation_test)
@@ -379,7 +382,7 @@ def main():
         helper_payloads.update(lockscreen.payloads())
     call_info = {'enabled': args.call_simulation == 'on'}
     if call_info['enabled']:
-        call_payloads, call_info = call_simulation.prepare()
+        call_payloads, call_info = call_simulation.prepare(locked=args.call_lockscreen)
         helper_payloads.update(call_payloads)
     if power_on:
         helper_payloads['ui-sdk-power-guest.sh'] = Path(__file__).with_name('ui-sdk-power-guest.sh').read_bytes()
@@ -558,6 +561,8 @@ def main():
                 serial.sendall(b'mkdir -m 0755 /tmp/n00-ui-helpers\n')
                 for index, (name, payload) in enumerate(helper_payloads.items()):
                     upload(payload, f'{splash.HELPER_ROOT}/{name}', f'N00_SPLASH_UPLOAD_{index}')
+            if args.call_lockscreen:
+                serial.sendall(b'export N00_CALL_LOCKSCREEN=on\n')
             if browser_info['enabled']:
                 browser.install(serial, wait_line, upload, out, browser_info)
             if splash_on:
@@ -824,8 +829,14 @@ def main():
                         deadline = qmp.deadline = time.monotonic() + 180
                         lockscreen.run_probe(lock_control, qmp, serial, wait_line, capture, drain, calculator, display, guest_result)
                     if args.call_simulation_test:
-                        call_simulation.run_probe(qmp, serial, wait_line, capture, drain, out, call_info, audio_output)
+                        deadline = qmp.deadline = time.monotonic() + 360
+                        if args.call_lockscreen:
+                            call_simulation.run_locked_probe(lock_control, qmp, serial, wait_line, capture, drain, out, call_info, audio_output)
+                        else:
+                            call_simulation.run_probe(qmp, serial, wait_line, capture, drain, out, call_info, audio_output)
                     elif call_info['enabled'] and not args.exit_on_ready:
+                        if args.call_lockscreen:
+                            lock_control.phase(serial, wait_line, 'press')
                         drain(3)
                         call_simulation.phase(serial, wait_line, out, 'incoming', 'initial-incoming', call_info)
                     if args.exit_on_ready:

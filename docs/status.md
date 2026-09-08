@@ -5,7 +5,7 @@
 The [boot-chain input and GP register work](boot-chain.md) restores CONTROL_STATUS and preserves 109 original non-rootfs payloads in a private preparation path. An opt-in GP cache monitor and UART offset repair now advance the original cold loader to its absent ROM function table; full ROM/BB5 execution and secure boot remain blocked.
 
 
-An explicit [incoming-call simulation](call-simulation.md) now drives the original call UI and ringtone with synthetic call state. It is separate from cellular emulation and is disabled in normal startup. See its [validation record](call-simulation-validation.json).
+An explicit [incoming-call simulation](call-simulation.md) now drives the original call UI and ringtone with synthetic call state. It is separate from cellular emulation and is disabled in normal startup. See its [validation record](call-simulation-validation.json). Its explicit locked mode retains the original green swipe animation; answer/reject and lock restoration passed functional checks, while the strict GPU gate still fails. See [combined validation](call-lockscreen-validation.json).
 
 ## Experimental compatibility
 

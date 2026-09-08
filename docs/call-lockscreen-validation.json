@@ -1,0 +1,144 @@
+{
+  "date": "2026-09-08",
+  "scope": "Explicit source-only original locked-call simulation; disposable snapshots, synthetic state, no modem/SIM/real voice",
+  "base_commit": "5bba0c5e84de76148af7a5c02553aaddb5b7065f",
+  "overall": "FAIL: strict graphics acceptance; functional checks passed",
+  "commands": [
+    "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "HARMATTAN_UI_AUDIO=off sh scripts/harmattan-qemu/run-call-simulation.sh --locked-headless-diagnostic",
+    "HARMATTAN_UI_AUDIO=off sh scripts/harmattan-qemu/run-call-simulation.sh --headless-diagnostic"
+  ],
+  "host_tests": {
+    "result": "PASS",
+    "tests": 369,
+    "python": "3.12.2",
+    "platform": "Darwin arm64"
+  },
+  "build": {
+    "arm_helpers": "PASS: clang-15, ARM32 hard-float, pinned guest link inputs",
+    "clean_qemu_build": "SKIP: maintained QEMU/DGLES sources unchanged; reused Cocoa interaction build"
+  },
+  "locked_guest": {
+    "functional_result": "PASS",
+    "diagnostic_exit": 1,
+    "qemu_exit": 0,
+    "audio": "off",
+    "scenarios": [
+      "clock-incoming",
+      "native-lock-event",
+      "tap-no-answer",
+      "short-swipe-no-answer",
+      "swipe-opens-controls",
+      "answer",
+      "hangup-restores-clock",
+      "reject",
+      "remote-cancel",
+      "wallpaper-incoming",
+      "overlap-rejected",
+      "stale-channel-rejected",
+      "lock control sender impersonation rejected"
+    ],
+    "calls": 4,
+    "original_processes_stable": true,
+    "restoration": "pre-call standby clock or wallpaper mode",
+    "pixels": {
+      "locked-expanded": {
+        "missing_resource_pixels": 0,
+        "controls": [
+          {
+            "colour_pixels": 11796,
+            "glyph_pixels": 250
+          },
+          {
+            "colour_pixels": 11717,
+            "glyph_pixels": 249
+          }
+        ],
+        "scope": "resource markers and main button pixels; separate visual review required"
+      },
+      "locked-answered": {
+        "missing_resource_pixels": 0,
+        "controls": [
+          {
+            "colour_pixels": 11717,
+            "glyph_pixels": 1792
+          }
+        ],
+        "scope": "resource markers and main button pixels; separate visual review required"
+      }
+    },
+    "banner": {
+      "green_top": 714,
+      "green_rows": 147,
+      "caller_text_pixels": 4418
+    },
+    "motion_green_top_rows": [
+      714,
+      721,
+      747,
+      753,
+      754,
+      721
+    ],
+    "motion_scope": "Original green event moved in successive QMP captures; no FPS or timing acceptance",
+    "backend_sha256": "a9b009813a97845a7d4215529b83e9111b20f0c38af340a375dca975ef6c4585",
+    "relay_md5": "7dd136241c9f8b4041dc0daf4221993f",
+    "pixmap_adapter_sha256": "ef0df42ca0f101ccc269c9efd260d15ab195ed44b5fb824562318b453a798f4a",
+    "diagnostic_sha256": "9c4b764a1b189586a2e6d0b13c76413b51ee1c3a74b2f52b12154f4b93d46152",
+    "serial_sha256": "b85f1cbd8ba4458aa2f0490435944d2d50be09f3bc5b6224968fcd2a1a2f0551",
+    "gpu_log_sha256": "84e12a73a9c2756d59505a272fa9edacde45b98413279041d792c6db2e5bb25d",
+    "reviewed_captures": {
+      "locked-call-banner.png": "86afc7fa7b9919d177548706c913d4874556a1fa10d5bc323a5dcb0ce2e82492",
+      "locked-call-expanded.png": "44e1d770d2037197c53eb80287d1efe0644c7dd7857133f9203fb90138fbddc3",
+      "locked-call-answered.png": "125c696297f360137bdfeea813ddbdf72de9235eb5752c8ec3ed552258cc1f79",
+      "locked-call-cancelled.png": "ef985a55d77d8e922f380aa9c5b4f6bab6406c95d5a52c3bcf9364cd1b5be5a3"
+    }
+  },
+  "ordinary_guest_regression": {
+    "functional_result": "PASS",
+    "diagnostic_exit": 1,
+    "qemu_exit": 0,
+    "audio": "off",
+    "scenarios": [
+      "incoming",
+      "ringtone-mute",
+      "answer",
+      "hangup",
+      "reject",
+      "remote-cancel",
+      "repeat"
+    ],
+    "diagnostic_sha256": "0dc1bf0324c9c8815d7bc63a6c42516567e12c0f283ca8f2cc117a21d1890bbe"
+  },
+  "graphics": {
+    "result": "FAIL",
+    "reason": "Both locked and ordinary calls report unloadable GLD_TEXTURE_INDEX_2D. Strict validator remains unchanged.",
+    "faults": 0,
+    "rejects": 0,
+    "workers": "joined",
+    "note": "Zero counters do not override the warning failure."
+  },
+  "limitations": [
+    "Visible Cocoa input and physical-device behavior were not tested in this change.",
+    "Audio was disabled in both current diagnostics; earlier audio records do not validate locked-call audio.",
+    "A thin colored seam is visible at the green banner edge in one reviewed frame; pixel-perfect rendering is not accepted.",
+    "Full-screen device power-off, idle locking, PIN/security lock and general notifications remain unsupported.",
+    "Temporary desktop-bus policy permits root to send only original insertEvent/removeEvent; original Aegis policies remain.",
+    "The private MCE-name adapter only reports actual UI lock state; unsupported radio and device requests fail explicitly."
+  ],
+  "source_sha256": {
+    "scripts/harmattan-qemu/arm64-call-simulation.py": "78073d705c7e7ec26e56015f10d791c36e2c2bb9c57bf1279ae0250f2b018077",
+    "scripts/harmattan-qemu/build-call-simulation-guest.sh": "5e398e48fc109379eb625088c316f461cc4cfd70273eb5e7fa1a0885ee03c0fa",
+    "scripts/harmattan-qemu/call-simulation-guest.c": "fcd4e780b70246d02b1260eff016344a5dc17290ad5ef5ba2cf0647ba12bd39c",
+    "scripts/harmattan-qemu/call-simulation-guest.sh": "fdf8dcc561a6fc8d13188cee4428f1e2febea464f53454dd78724d188b0b35e6",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "24435990bf519b4dbcfda38dedd9277a5eab0b6d4012f8f603d92e3856776e11",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "d814a36b2e18700ba8f8b3f0d887950b621082e67f23e127737c06c82deeab34",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "32617c900df8455086ef1d628fd7a803b2f484b3dc020f6ca20b0c295f834dd5",
+    "scripts/harmattan-qemu/run-call-simulation.sh": "fd1ec098d58c48eb4b040b8756099d757e734384bbd5cdc16187916fc537a035",
+    "scripts/harmattan-qemu/screenlock-guest.pl": "852d77fcea7384de35e0d3b579425285d2b169e511f2b9d62c69e4f50b1b6fad",
+    "scripts/harmattan-qemu/tests/test_call_simulation.py": "4b34a84da26d5b7bb0b3f88bb8f23b5b3f1f4bdb4ceabc643373531ff1f0f5d7",
+    "scripts/harmattan-qemu/call-livepixmap-guest.c": "206fdce6da09497fdf1ad38a7b5c16a42f04f77b73f737bdadd7696bdcfacac9",
+    "scripts/harmattan-qemu/call-lockscreen-guest.c": "09efa2acdc6361b40a673ef17a8d109911e6c6a9028610c9fd987e305558e557",
+    "scripts/harmattan-qemu/call-lockscreen-guest.sh": "ca1d573fa250fe18b6239616129170dc6061695d567de4123a11482ec2fd4963"
+  }
+}

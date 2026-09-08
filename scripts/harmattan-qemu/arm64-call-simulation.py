@@ -23,7 +23,7 @@ def validate_configuration(mode, *, interactive, ready, profile, rotation, test)
         raise ValueError('Call simulation requires upright interactive readiness and a disposable disk')
 
 
-def prepare():
+def prepare(*, locked=False):
     scripts = Path(__file__).resolve().parent
     root = scripts.parents[1]
     work = Path(os.environ.get('HARMATTAN_PORT_WORKSPACE', root / 'extracted/qemu-arm64-port'))
@@ -31,12 +31,25 @@ def prepare():
     binary = (work / 'call-simulation-guest/n00-call-simulation').read_bytes()
     if not binary.startswith(b'\x7fELF\x01\x01') or binary[18:20] != b'\x28\x00':
         raise ValueError('Expected an ARM32 little-endian call simulation helper')
-    return {'n00-call-simulation': binary,
-            'call-simulation-guest.sh': (scripts / 'call-simulation-guest.sh').read_bytes()}, {
+    payloads = {'n00-call-simulation': binary,
+            'call-simulation-guest.sh': (scripts / 'call-simulation-guest.sh').read_bytes()}
+    info = {
         'enabled': True, 'synthetic_calls': True, 'real_telephony': False,
         'helper_md5': hashlib.md5(binary).hexdigest(),
         'helper_sha256': hashlib.sha256(binary).hexdigest(),
         'original_ui_md5': UI_MD5, 'scope': 'isolated original call-ui presentation; no modem, SIM or microphone'}
+    info['locked'] = locked
+    if locked:
+        for name in ('n00-call-lockscreen', 'n00-call-livepixmap.so'):
+            data = (work / 'call-simulation-guest' / name).read_bytes()
+            if not data.startswith(b'\x7fELF\x01\x01') or data[18:20] != b'\x28\x00':
+                raise ValueError('Expected ARM32 lock-call helper')
+            payloads[name] = data
+        payloads['call-lockscreen-guest.sh'] = (scripts / 'call-lockscreen-guest.sh').read_bytes()
+        info['relay_md5'] = hashlib.md5(payloads['n00-call-lockscreen']).hexdigest()
+        info['pixmap_sha256'] = hashlib.sha256(payloads['n00-call-livepixmap.so']).hexdigest()
+    return payloads, info
+
 
 
 def validate_host(data, systemui_validator):
@@ -79,6 +92,13 @@ def validate_report(data, info):
         if actual != [digest.encode()]:
             raise ValueError('Call simulation executable identity mismatch')
         return value
+    if info.get('locked'):
+        relay = pid(b'RELAY', info['relay_md5'])
+        if info.get('relay_pid', relay) != relay:
+            raise ValueError('Lock call relay was replaced')
+        info['relay_pid'] = relay
+        if b'LOCK_FATAL' in data or b'LOCK_FORWARD_ERROR' in data or b'LIVE_FATAL' in data:
+            raise ValueError('Original locked call bridge failed')
     backend = pid(b'BACKEND', info['helper_md5'])
     ui = pid(b'UI', UI_MD5)
     gconf = pid(b'GCONF', GCONF_MD5)
@@ -98,7 +118,7 @@ def validate_report(data, info):
 
 
 def phase(serial, wait_line, output, action, tag, info, audio=None):
-    if action not in ('setup', 'incoming', 'end', 'report', 'stop', 'invalid-input', 'busy', 'stale') or not re.fullmatch('[a-z][a-z0-9-]*', tag):
+    if action not in ('setup', 'incoming', 'end', 'report', 'stop', 'invalid-input', 'busy', 'stale', 'lock-negative') or not re.fullmatch('[a-z][a-z0-9-]*', tag):
         raise ValueError('Invalid call simulation phase')
     marker = 'N00_CALL_PHASE_' + tag.replace('-', '_')
     environment = ''
@@ -108,6 +128,8 @@ def phase(serial, wait_line, output, action, tag, info, audio=None):
             if not re.fullmatch(r'tcp:10\.0\.2\.2:[1-9][0-9]{0,4}', audio.guest_server):
                 raise ValueError('Invalid private call audio address')
             environment = 'N00_CALL_AUDIO=pulse ' + audio.guest_environment() + ' '
+    if action == 'setup' and info.get('locked'):
+        environment += 'N00_CALL_LOCKSCREEN=on '
     command = f"printf '\\n{marker}_BEGIN\\n'; {environment}sh {GUEST} {action}; "
     command += f"printf '\\n{marker}_EXIT_%s\\n{marker}_DONE\\n' $?\n"
     serial.sendall(command.encode())
@@ -280,4 +302,100 @@ def run_probe(qmp, serial, wait_line, capture, drain, output, info, audio):
     info['diagnostic'] = {'protocol_audio_pixels_passed': True, 'input': 'headless QMP taps',
         'scenarios': ['incoming', 'ringtone-mute', 'answer', 'hangup', 'reject', 'remote-cancel', 'repeat'],
         'physical_input': False, 'real_voice': False}
+    (output / 'call-simulation-result.json').write_text(json.dumps(info, indent=2) + '\n')
+
+
+def validate_locked_pixels(ppm):
+    header = b'P6\n480 864\n255\n'
+    if not ppm.startswith(header) or len(ppm) != len(header) + 480 * 864 * 3:
+        raise ValueError('Expected complete upright lock-call frame')
+    pixels = ppm[len(header):]
+    green_rows = []
+    for y in range(550, 864):
+        green = 0
+        for x in range(16, 464):
+            r, g, b = pixels[(y * 480 + x) * 3:(y * 480 + x) * 3 + 3]
+            green += g > 90 and g > r * 1.3 and g > b * 1.3
+        if green > 350:
+            green_rows.append(y)
+    top = min(green_rows) if green_rows else 864
+    text = sum(min(pixels[(y * 480 + x) * 3:(y * 480 + x) * 3 + 3]) > 220
+               for y in range(max(550, top - 190), max(550, top - 5)) for x in range(16, 464))
+    if len(green_rows) < 25 or text < 500:
+        raise ValueError('Native green lock event or original caller text is absent')
+    return {'green_top': min(green_rows), 'green_rows': len(green_rows), 'caller_text_pixels': text}
+
+
+def run_locked_probe(control, qmp, serial, wait_line, capture, drain, output, info, audio):
+    """Original lock event, short/full swipes and call state are separate gates."""
+    def act(action, tag):
+        return phase(serial, wait_line, output, action, tag, info)
+    def check(tag, state, sequence):
+        observed = act('report', tag)
+        if observed['state'] != state or observed['sequence'] != sequence:
+            raise ValueError(f'Unexpected locked call state at {tag}: {observed}')
+    def lock(mapped, low=None):
+        value = control.phase(serial, wait_line, 'inspect')
+        if value['mapped'] != mapped or (low is not None and value['low_power'] != low):
+            raise ValueError(f'Unexpected locked call window state: {value}')
+    def pointer(x, y, down):
+        qmp.call('input-send-event', {'events': [
+            {'type': 'abs', 'data': {'axis': 'x', 'value': round(x * 32767 / 479)}},
+            {'type': 'abs', 'data': {'axis': 'y', 'value': round(y * 32767 / 863)}},
+            {'type': 'btn', 'data': {'button': 'left', 'down': down}}]})
+    def tap(x, y):
+        pointer(x, y, True); drain(.12); pointer(x, y, False); drain(3)
+    def swipe(end):
+        pointer(240, 800, True)
+        for step in range(1, 21):
+            drain(.04); pointer(240, 800 + (end - 800) * step / 20, True)
+        pointer(240, end, False); drain(3)
+    def incoming(sequence):
+        act('incoming', f'locked-incoming-{sequence}')
+        for attempt in range(20):
+            value = act('report', f'locked-wait-{sequence}-{attempt}')
+            if value['state'] == 1 and sequence in info['ringtone_requests']:
+                drain(3); lock(True, False); return
+            drain(1)
+        raise ValueError('Original locked incoming event was not ready')
+    lock(False)
+    control.phase(serial, wait_line, 'press'); lock(True, True)
+    capture('locked-call-before')
+    act('invalid-input', 'locked-invalid-signature')
+    act('lock-negative', 'locked-reject-impersonation')
+    incoming(1)
+    capture('locked-call-banner')
+    info['locked_banner'] = validate_locked_pixels((output / 'locked-call-banner.ppm').read_bytes())
+    # Retain successive frames for review of original breathing movement.
+    for frame in range(6):
+        drain(.3); capture(f'locked-call-motion-{frame}')
+        info.setdefault('locked_motion_frames', []).append(validate_locked_pixels((output / f'locked-call-motion-{frame}.ppm').read_bytes()))
+    act('busy', 'locked-reject-overlap')
+    tap(240, 795); lock(True, False); check('locked-tap-no-answer', 1, 1)
+    swipe(775); lock(True, False); check('locked-short-swipe', 1, 1)
+    swipe(250); lock(False); check('locked-open-still-incoming', 1, 1)
+    capture('locked-call-expanded')
+    info.setdefault('pixels', {})['locked-expanded'] = validate_pixels((output / 'locked-call-expanded.ppm').read_bytes(), 'incoming')
+    tap(124, 457); check('locked-answered', 2, 1)
+    capture('locked-call-answered')
+    info['pixels']['locked-answered'] = validate_pixels((output / 'locked-call-answered.ppm').read_bytes(), 'answered')
+    tap(240, 774); check('locked-hung-up', 3, 1); lock(True, True)
+    capture('locked-call-restored')
+    incoming(2)
+    act('stale', 'locked-reject-stale-channel')
+    swipe(250); lock(False); check('locked-second-expanded', 1, 2)
+    tap(360, 457); check('locked-rejected', 3, 2); lock(True, True)
+    incoming(3)
+    act('end', 'locked-remote-cancel'); drain(3)
+    check('locked-cancelled', 3, 3); lock(True, True)
+    capture('locked-call-cancelled')
+    # Also enter from the already awake wallpaper, preserving that mode.
+    control.phase(serial, wait_line, 'press'); lock(True, False)
+    incoming(4); act('end', 'locked-wallpaper-cancel'); drain(3)
+    check('locked-wallpaper-ended', 3, 4); lock(True, False)
+    info['diagnostic'] = {'protocol_pixels_passed': True, 'input': 'headless QMP taps/swipes',
+        'scenarios': ['clock-incoming', 'native-lock-event', 'tap-no-answer', 'short-swipe-no-answer',
+                     'swipe-opens-controls', 'answer', 'hangup-restores-clock', 'reject', 'remote-cancel',
+                     'wallpaper-incoming', 'overlap-rejected', 'stale-channel-rejected'],
+        'physical_input': False, 'real_voice': False, 'animation_timing_measured': False}
     (output / 'call-simulation-result.json').write_text(json.dumps(info, indent=2) + '\n')

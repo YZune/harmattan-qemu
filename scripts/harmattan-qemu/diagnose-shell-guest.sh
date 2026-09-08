@@ -320,9 +320,14 @@ case ${1:-} in
         test "${N00_UI_SYSTEMUI:-0}" = 1
         test -z "$(pidof sysuid 2>/dev/null || true)"
         test "$(md5sum /usr/bin/sysuid | cut -d ' ' -f 1)" = 6e6ca0153aea0bf3b4556c08d68f934f
+        sysuid_env=
+        if [ "${N00_CALL_LOCKSCREEN:-off}" = on ]; then
+            sh /tmp/n00-ui-helpers/call-lockscreen-guest.sh check
+            sysuid_env='N00_CALL_LIVE_PIXMAP=on LD_PRELOAD=/tmp/n00-ui-helpers/n00-call-livepixmap.so'
+        fi
         # The real provider creates/renders its own shared pixmap. No substitute
         # texture, fabricated indicators, library patch or global DBus edit.
-        su user -c "$user_env sysuid -local-theme -graphicssystem raster >/tmp/n00-shell-sysuid.log 2>&1 &"
+        su user -c "$user_env $sysuid_env sysuid -local-theme -graphicssystem raster >/tmp/n00-shell-sysuid.log 2>&1 &"
         ready=0
         for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
             if report_systemui > /tmp/n00-systemui-ready.log 2>&1; then

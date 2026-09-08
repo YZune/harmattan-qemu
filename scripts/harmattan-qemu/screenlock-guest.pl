@@ -10,7 +10,11 @@ use Time::HiRes qw(time sleep);
 
 alarm 20;
 my $action = shift || '';
-($action eq 'inspect' || $action eq 'press') && !@ARGV or die "invalid lock action\n";
+($action =~ /^(inspect|press|call-wake|call-clock|call-wallpaper)$/) && !@ARGV or die "invalid lock action\n";
+if ($action =~ /^call-/) {
+    ($ENV{N00_CALL_LOCKSCREEN} || '') eq 'on' && -S '/tmp/n00-call-simulation/bus'
+        or die "call lock actions require the explicit simulation bridge\n";
+}
 
 sub command {
     open my $pipe, '-|', @_ or die "lock command: $!\n";
@@ -61,10 +65,12 @@ sub state {
 }
 
 my $state = state();
-if ($action eq 'press') {
+if ($action ne 'inspect' && !($action eq 'call-wake' && !$state->{mapped})) {
     # The original low-power clock is a UI mode, not guest suspend. The next
     # press reveals the original wallpaper/unlock gesture. Never bypass it.
     my $mode = $state->{mapped} && $state->{low} ? 5 : 6;
+    $mode = 5 if $action eq 'call-wake' || $action eq 'call-wallpaper';
+    $mode = 6 if $action eq 'call-clock';
     # sysuid accepts an empty callback method. Its own unlocked() signal hides
     # the UI; no fake com.nokia.mce owner or successful security response.
     my $reply = command(@bus, '--dest=com.nokia.system_ui', '/com/nokia/system_ui/request',

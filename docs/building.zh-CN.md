@@ -169,6 +169,7 @@ python3 scripts/create-local-launcher.py \
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |
 | `HARMATTAN_UI_SKIN` | `off`（源码默认）/ `frame`（代码绘制，发行版默认）/ `black`（需自行取得素材并重新构建） |
 | `HARMATTAN_UI_LOCKSCREEN` | `on`（交互默认）／`off`；[原版待机时钟、锁屏与外壳侧键](lockscreen.zh-CN.md) |
+| `HARMATTAN_UI_CALL_LOCKSCREEN` | `off`（默认）／`on`；要求同时启用来电模拟与锁屏，见[锁屏来电](call-simulation.zh-CN.md#锁屏来电) |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
 | `HARMATTAN_UI_BOOT_ANIMATION` | `on`（交互默认）/ `off`（直接显示启动过程）；需要重新构建 Cocoa interaction |
 | `HARMATTAN_UI_HANDOFF` | `on` / `off` |
