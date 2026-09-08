@@ -95,6 +95,13 @@ static void check(NSSize guest, NSSize container, NSImage *image)
         NSPoint point = [skin convertPoint:hostPoint(body[i], guest, container) toView:parent];
         assert([skin hitTest:point] == skin);
     }
+    NSPoint keyPoint = [skin convertPoint:hostPoint(NSMakePoint(603, 681), guest, container) toView:parent];
+    NSView *key = [skin hitTest:keyPoint];
+    assert([key isKindOfClass:[N00LockButton class]]);
+    assert([(NSButton *)key target] == skin);
+    assert([(NSButton *)key action] == @selector(pressLockButton:));
+    assert(!NSIntersectsRect([key frame], [screen frame]));
+    assert([[(NSButton *)key accessibilityLabel] isEqualToString:@"Lock screen / show unlock screen"]);
     assert([skin hitTest:[skin convertPoint:NSMakePoint(-1, -1) toView:parent]] == nil);
     assert(CGColorEqualToColor([[screen layer] backgroundColor], [[NSColor blackColor] CGColor]));
     checkMatte(skin, guest, container);

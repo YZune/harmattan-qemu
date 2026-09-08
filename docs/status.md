@@ -56,6 +56,8 @@ The optional [PR1.3 kernel](kernel.md) now boots with 101 matching modules and t
 
 The optional [SDK battery desktop mode](device-services.md#optional-original-battery-in-the-desktop) now starts original BME before ContextKit subscription and preserves original NoNetwork semantics. It remains disabled by default and rejects persistent profiles. See the [UI validation record](ui-power-validation.json). The [bounded security audit](security-feasibility.md) found no verified matching GP backend in the inspected material; ROM and modem-peer expansion is paused.
 
+The [original lock-screen integration](lockscreen.md) connects the Cocoa shell side key to the original standby clock and swipe-to-unlock UI. Its [validation record](lockscreen-validation.json) separates host geometry, guest input and visible Cocoa checks. This does not restore MCE or hardware suspend/resume.
+
 ## Open limitations
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.

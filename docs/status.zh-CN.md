@@ -56,6 +56,8 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 可选 [SDK 电池桌面模式](device-services.zh-CN.md#桌面中的可选原版电池模式)现会在 ContextKit 订阅前启动原版 BME，并保持原版 NoNetwork 语义。默认关闭，拒绝持久用户配置；参见 [UI 验证记录](ui-power-validation.json)。[有界安全审计](security-feasibility.zh-CN.md)未在已查材料中找到经过验证的匹配 GP 后端，暂停 ROM 和调制解调器对端扩展。
 
+新增[原版锁屏接入](lockscreen.zh-CN.md)，将 Cocoa 外壳侧键连接至原版待机时钟和滑动解锁界面。[验证记录](lockscreen-validation.json)分别列出宿主几何、来宾输入与可见 Cocoa 检查。这不代表已恢复 MCE 或硬件休眠恢复。
+
 ## 尚未完成
 
 原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。

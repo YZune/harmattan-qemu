@@ -1,0 +1,168 @@
+{
+  "date": "2026-09-08",
+  "base_commit": "ce323b8487f558c76fe8210a25c9c72093f890ba",
+  "scope": "Original sysuid standby clock and swipe lock UI, with a Cocoa shell button. No MCE, physical power-key emulation or device security lock.",
+  "host": {
+    "os": "macOS 26.6.2 (25G83)",
+    "architecture": "arm64",
+    "compiler": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+    "python": "3.12.2"
+  },
+  "source_sha256": {
+    "ports/qemu-n00/n00-n9-skin.h": "29082d5b30a1709c557eac9e17e1882a7674d05e70db159b7fa2c2919a0436c8",
+    "ports/qemu-n00/n00-lockscreen-control.h": "fcb5af58ff6564ae788b0f0fcbb4de65a179449c9532633428a4528d7373c4cd",
+    "scripts/harmattan-qemu/build-arm64-port.sh": "e79a1cf567dfb36db09fdc39735cb43353d4c357e04536124f646dc36aa2b36b",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "988be09f20ba8401f87ffbacbe376dec5c13d773ba63f9d7eb57ad3099815c96",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "e229ec9e8ace74040a614fdeff5d709e04796d326091c09629fff9250514cb34",
+    "scripts/harmattan-qemu/arm64-lockscreen.py": "29fc6b41c1e74d2a24fd55b0328ee5e74e187722111a20f2b4fcd66e86191dcd",
+    "scripts/harmattan-qemu/screenlock-guest.pl": "05667468f58e0cc840e528528864e20179a35f0f7b97e868fb637be56dfebf69",
+    "scripts/harmattan-qemu/tests/n9-skin-host.m": "0ae244e4831f3e28a8157d3503ffdc39741d4ad7a2ce2f8b3fc47e1c0b82456f",
+    "scripts/harmattan-qemu/tests/lockscreen-host.c": "78f9c5d083a4cbf7eb48c6a96408a56834693f14d96a564595aa17666ee35c18",
+    "scripts/harmattan-qemu/tests/test_lockscreen.py": "bffed29c0f6bcf34a3e41af46849ac9c921791f5ae9c07da7f1df80bb07c078b"
+  },
+  "checks": {
+    "host_tests": {
+      "status": "PASS",
+      "count": 368,
+      "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'",
+      "scope": "Includes 30 native image/code-frame layouts, side-key hit targets and target/action routing, producer readiness and click coalescing, invalid requests and original-process identity. No OS mouse events."
+    },
+    "clean_build": {
+      "status": "PASS",
+      "qemu": "9.1.3",
+      "commands": [
+        "sh scripts/harmattan-qemu/build-dgles2-host.sh",
+        "sh scripts/harmattan-qemu/build-arm64-port.sh --cocoa-interaction"
+      ],
+      "fresh_qemu_source": true,
+      "plain_binary_sha256": "29c5b820d2e9e079334936616e5cd46bcc4ddca81d727652c4b492097dc5b293",
+      "cocoa_binary_sha256": "bc234bc1bd1812371515e3feab76af3780b92f3c88dedbc1b13bbed1495e512d"
+    },
+    "native_graphics": {
+      "status": "PASS",
+      "command": "python3 -B scripts/harmattan-qemu/smoke-dgles-host.py --workspace \"$HARMATTAN_DGLES_WORKSPACE\"",
+      "gles1_runs": 2,
+      "gles2_runs": 2
+    },
+    "lockscreen_guest": {
+      "status": "PASS",
+      "command": "HARMATTAN_UI_LOCKSCREEN_TEST=on sh scripts/harmattan-qemu/run-arm64-ui.sh --startup-headless-diagnostic",
+      "run": "run.e3Jgp8/ui",
+      "display": "none",
+      "storage": "independent snapshot",
+      "network": "off",
+      "audio": "off",
+      "original_sysuid_md5": "6e6ca0153aea0bf3b4556c08d68f934f",
+      "original_plugin_md5": "d80c0728dae6c55ac53b08170aea63f7",
+      "standby_clock": true,
+      "side_key_mailbox_to_original_window": true,
+      "low_power_swipe_stays_locked": true,
+      "wallpaper_lock": true,
+      "tap_and_short_swipe_stay_locked": true,
+      "full_swipe_unlocks": true,
+      "repeated_cycles": true,
+      "calculator": {
+        "pid": 758,
+        "window": "00200002",
+        "runtime_md5": "b59070fbc46bf164750a2d3f4960d068",
+        "same_instance_resumed": true,
+        "home_returns": 2,
+        "observations": [
+          "before",
+          "opened",
+          "sum",
+          "returned",
+          "reopened",
+          "final"
+        ]
+      },
+      "calculator_frame_validation": {
+        "native_rgb_sha256": {
+          "before": "ebdf249caf0c91e079d7f2f24eb3ff86e9b76bccb5c8d501e1ed872ef066ae28",
+          "opened": "7cf630898970109a10df0f44f4764708ee284b8a320807620da2a2fc46833425",
+          "sum": "430d0a56a69aa4c609e88749d5ade393a8b43428448efa7ac830634f4c0d14a8",
+          "returned": "ebdf249caf0c91e079d7f2f24eb3ff86e9b76bccb5c8d501e1ed872ef066ae28",
+          "reopened": "430d0a56a69aa4c609e88749d5ade393a8b43428448efa7ac830634f4c0d14a8",
+          "final": "50938c554edcd9ff10d70ea84dd4c0a9d7b492e7c1ae9b9f5855c4e17148835e"
+        },
+        "initial_home_rgb_sha256": "39c3babd7b6c58817266e5e743fe800af10e70be97ba27d5c9a4fdeedb6c7c58",
+        "reference_expression": "2 + 3 = 5",
+        "home_content_matches": true,
+        "statusbar_dynamic": true,
+        "statusbar_region": "left 72 pixels of native 864x480 Home",
+        "statusbar_changed_pixels": {
+          "before": 111,
+          "returned": 111,
+          "final": 276
+        },
+        "full_frame_matches": false
+      },
+      "calculator_pixels_restored": true,
+      "host": {
+        "clean": true,
+        "warnings": [],
+        "gpu_contexts": 3,
+        "known_guest_api_defects": [
+          "client 3: original eglTerminate repeats with NULL, correctly rejected"
+        ],
+        "compiles": 9,
+        "links": 6,
+        "uploads": 300,
+        "draws": 780,
+        "calls": 22096,
+        "swaps": 234,
+        "rejects": 0,
+        "faults": 0,
+        "workers_joined": true
+      },
+      "qemu_exit": 0,
+      "captures_sha256": {
+        "lockscreen-clock.png": "f883d92a6758966cb465b040460a5522a615b5ae8920aa33972bc730c7e9a9cf",
+        "lockscreen-wallpaper.png": "d7f8c4106709283e30b509a69f8fdea8e508c0adbbec35d16b57edc1498705b0",
+        "lockscreen-unlocked.png": "bc6c64a3e165e4d3ccba24a50d82247779473dc4a85ecb27169a63fb6381f119",
+        "lockscreen-calculator-resumed.png": "ee39b240b6e1c71674d52f0bdf3376245c24ae5db24d991bdd0f628a7b3235d1"
+      }
+    },
+    "combined_guest_regression": {
+      "status": "PASS",
+      "command": "HARMATTAN_UI_NETWORK=user HARMATTAN_UI_AUDIO=pulse sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic",
+      "run": "run.haIxjN/ui",
+      "scope": "Original Home, Notes, Maliit keyboard, Calculator and application transitions; network and private audio output enabled. Separate from physical interaction."
+    },
+    "cocoa_startup_and_exit": {
+      "status": "PASS",
+      "run": "run.c13INT/ui",
+      "startup_ready": true,
+      "qemu_exit": 0,
+      "host": {
+        "clean": true,
+        "warnings": [],
+        "gpu_contexts": 3,
+        "known_guest_api_defects": [
+          "client 2: original eglTerminate repeats with NULL, correctly rejected"
+        ],
+        "compiles": 9,
+        "links": 6,
+        "uploads": 149,
+        "draws": 8,
+        "calls": 1653,
+        "swaps": 9,
+        "rejects": 0,
+        "faults": 0,
+        "workers_joined": true
+      },
+      "scope": "Cocoa process/startup gates and controller-requested clean exit. The locked Mac prevented visual inspection and physical input."
+    },
+    "cocoa_physical_side_key": {
+      "status": "BLOCKED",
+      "reason": "Mac locked; computer-use tool could not access the native window. Host geometry/mailbox tests do not establish physical clicking."
+    }
+  },
+  "remaining": [
+    "Wallpaper lock view has a 10-pixel white strip at the bottom of the 480x864 SDK surface.",
+    "Physical Cocoa click/drag, resizing and unfocused-window interaction still need verification after the Mac is unlocked.",
+    "Persistent-profile lock cycles have not been separately exercised.",
+    "No automatic idle lock, PIN/device security, full display-off, hardware suspend/resume, or call/notification wake-up acceptance."
+  ],
+  "publication": "Source and curated validation only. Guest binaries, wallpaper, private run logs and new runtime screenshots remain excluded."
+}

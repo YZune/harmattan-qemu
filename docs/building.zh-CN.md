@@ -168,6 +168,7 @@ python3 scripts/create-local-launcher.py \
 | `HARMATTAN_UI_STARTUP_WAITS` | `ready`（交互/usability/启动诊断默认）/ `fixed`（历史诊断默认） |
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`；8 秒无输入后释放活动 |
 | `HARMATTAN_UI_SKIN` | `off`（源码默认）/ `frame`（代码绘制，发行版默认）/ `black`（需自行取得素材并重新构建） |
+| `HARMATTAN_UI_LOCKSCREEN` | `on`（交互默认）／`off`；[原版待机时钟、锁屏与外壳侧键](lockscreen.zh-CN.md) |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
 | `HARMATTAN_UI_BOOT_ANIMATION` | `on`（交互默认）/ `off`（直接显示启动过程）；需要重新构建 Cocoa interaction |
 | `HARMATTAN_UI_HANDOFF` | `on` / `off` |
