@@ -286,6 +286,7 @@ fi
             git apply "$skin_patch"
         fi
         cp "$port_root/n00-n9-skin.h" ui/n00-n9-skin.h
+        cp "$port_root/n00-n9-frame.h" ui/n00-n9-frame.h
         cp "$port_root/n00-lockscreen-control.h" ui/n00-lockscreen-control.h
         git apply --check "$shutdown_patch"
         git apply "$shutdown_patch"
