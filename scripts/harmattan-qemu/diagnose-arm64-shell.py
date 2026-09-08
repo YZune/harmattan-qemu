@@ -75,6 +75,9 @@ AUDIO_SPEC.loader.exec_module(audio)
 CALL_SPEC = importlib.util.spec_from_file_location('call_simulation', Path(__file__).with_name('arm64-call-simulation.py'))
 call_simulation = importlib.util.module_from_spec(CALL_SPEC)
 CALL_SPEC.loader.exec_module(call_simulation)
+LOCK_SPEC = importlib.util.spec_from_file_location('lockscreen', Path(__file__).with_name('arm64-lockscreen.py'))
+lockscreen = importlib.util.module_from_spec(LOCK_SPEC)
+LOCK_SPEC.loader.exec_module(lockscreen)
 READINESS_SPEC = importlib.util.spec_from_file_location('readiness', Path(__file__).with_name('arm64-readiness.py'))
 readiness = importlib.util.module_from_spec(READINESS_SPEC)
 READINESS_SPEC.loader.exec_module(readiness)
@@ -254,6 +257,8 @@ def main():
     parser.add_argument('--exit-on-ready', action='store_true', help='bounded startup diagnostic using the interactive readiness gates')
     parser.add_argument('--call-simulation', choices=('off', 'on'), default='off', help='isolated synthetic calls in original call-ui')
     parser.add_argument('--call-simulation-test', action='store_true', help='exercise the explicitly enabled simulator before bounded exit')
+    parser.add_argument('--lockscreen', choices=('off', 'on'), default='off')
+    parser.add_argument('--lockscreen-test', action='store_true', help='bounded original lock/clock/swipe regression')
     parser.add_argument('--boot-animation', type=Path, help='private raw clone containing the original boot movie; interactive Cocoa only')
     parser.add_argument("--device-orientation", choices=('display', 'disabled', 'top', 'left', 'bottom', 'right'),
                         help="virtual ContextKit pose; default follows display in interactive mode, disabled in historical diagnostics")
@@ -280,6 +285,10 @@ def main():
         test=args.call_simulation_test)
     if args.call_simulation_test and not args.exit_on_ready:
         parser.error('call simulation tests require bounded startup exit')
+    if args.lockscreen == 'on' and (not args.interactive or args.startup_waits != 'ready' or args.rotation != 270 or args.system_ui == 'off'):
+        parser.error('lock UI requires upright interactive readiness and original System UI')
+    if args.lockscreen_test and (args.lockscreen != 'on' or not args.exit_on_ready or args.call_simulation_test):
+        parser.error('lock UI tests require their own bounded startup run')
     if args.profile and (not args.interactive or not args.profile_base or not args.profile_image_tool):
         parser.error('profiles require interactive mode and the launcher\'s private base/image tool')
     if not args.profile and (args.profile_base or args.profile_image_tool):
@@ -366,6 +375,8 @@ def main():
         animation_info.update(metadata)
     splash_info = {'enabled': splash_on}
     helper_payloads = {}
+    if args.lockscreen == 'on':
+        helper_payloads.update(lockscreen.payloads())
     call_info = {'enabled': args.call_simulation == 'on'}
     if call_info['enabled']:
         call_payloads, call_info = call_simulation.prepare()
@@ -403,8 +414,12 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     boot_info = {'enabled': False}
     boot_environment = {}
+    lock_control = lockscreen.Control(out) if args.lockscreen == 'on' else None
+    if lock_control:
+        boot_environment.update(lock_control.environment())
     if args.boot_animation:
-        boot_environment, boot_info = boot_animation.prepare(args.boot_animation, out / 'boot', args.rotation)
+        movie_environment, boot_info = boot_animation.prepare(args.boot_animation, out / 'boot', args.rotation)
+        boot_environment.update(movie_environment)
     guest = Path(__file__).with_name("diagnose-shell-guest.sh").read_bytes()
     inspector = Path(__file__).with_name("inspect-shell-x11.pl").read_bytes()
     qemu_digest = hashlib.sha256(Path(command[0]).read_bytes()).hexdigest()
@@ -747,7 +762,11 @@ def main():
                     boot_info['desktop_revealed'] = True
                 if call_info['enabled']:
                     call_simulation.phase(serial, wait_line, out, 'setup', 'setup', call_info, audio_output)
+                if lock_control:
+                    lock_control.phase(serial, wait_line, 'inspect')
                 guard_info['released'] = startup.validate(startup.collect(serial, wait_line, out, release=True), released=True)
+                if lock_control:
+                    lock_control.enable()
                 ready = {'state': 'ready', 'scope': 'verified original Home startup with real guest input; no app or physical-input acceptance',
                     'command': command, 'qemu_pid': process.pid, 'controller_pid': os.getpid(),
                     'control_socket': control_path, 'rotation': args.rotation,
@@ -761,6 +780,7 @@ def main():
                     'input_method': keyboard_info,
                     'audio': audio_output.info if audio_output else {'enabled': False},
                     'call_simulation': call_info,
+                    'lockscreen': lock_control.info if lock_control else {'enabled': False},
                     'ca_certificates': ca_info,
                     'app_viewport': app_viewport_info,
                     'browser': browser_info,
@@ -786,6 +806,8 @@ def main():
                 def quit_guest():
                     nonlocal profile_synced, deadline
                     deadline = time.monotonic() + 40
+                    if lock_control:
+                        lock_control.close()
                     if call_info['enabled']:
                         call_simulation.phase(serial, wait_line, out, 'stop', 'shutdown', call_info)
                     if power_on:
@@ -798,6 +820,9 @@ def main():
                     qmp.call('quit')
                     process.wait(timeout=10)
                 try:
+                    if args.lockscreen_test:
+                        deadline = qmp.deadline = time.monotonic() + 180
+                        lockscreen.run_probe(lock_control, qmp, serial, wait_line, capture, drain, calculator, display, guest_result)
                     if args.call_simulation_test:
                         call_simulation.run_probe(qmp, serial, wait_line, capture, drain, out, call_info, audio_output)
                     elif call_info['enabled'] and not args.exit_on_ready:
@@ -806,12 +831,16 @@ def main():
                     if args.exit_on_ready:
                         quit_guest()
                     while process.poll() is None:
+                        if lock_control and lock_control.pending():
+                            deadline = qmp.deadline = time.monotonic() + 30
+                            state = lock_control.consume(serial, wait_line)
+                            print('Lock screen: ' + ('standby clock' if state['low_power'] else 'swipe to unlock'), flush=True)
                         if audio_output:
                             audio_output.check()
                         if profile_session and storage.shutdown_requested(shutdown_request):
                             quit_guest()
                             break
-                        readable, _, _ = select.select([serial, process.stdout], [], [], 1)
+                        readable, _, _ = select.select([serial, process.stdout], [], [], .1 if lock_control else 1)
                         for source in readable:
                             chunk = os.read(source.fileno(), 65536)
                             if source is serial and chunk:
@@ -834,6 +863,9 @@ def main():
                     host_data = (out / 'qemu-stderr.log').read_bytes()
                     final_host = (call_simulation.validate_host(host_data, host_validator) if call_info['enabled']
                                   else host_validator(host_data))
+                    if lock_control and args.lockscreen_test:
+                        lock_control.info.update(passed=True, host=final_host, qemu_exit=process.returncode)
+                        (out / 'lockscreen-result.json').write_text(json.dumps(lock_control.info, indent=2) + '\n')
                     if call_info['enabled']:
                         call_info['host'] = final_host
                         call_info['passed'] = bool(args.call_simulation_test and call_info.get('stopped'))
@@ -997,12 +1029,17 @@ def main():
                 label = 'original Home single-touch scroll and exact restoration' if args.verify_input else 'original Home window and stable desktop rendering, no input'
                 print(f"PASS: {label}; evidence: {out}", flush=True)
     except BaseException as error:
+        if lock_control:
+            lock_control.info.update(passed=False, failure=f'{type(error).__name__}: {error}')
+            (out / 'lockscreen-result.json').write_text(json.dumps(lock_control.info, indent=2) + '\n')
         if call_info['enabled']:
             call_info['passed'] = False
             call_info['failure'] = f'{type(error).__name__}: {error}'
             (out / 'call-simulation-result.json').write_text(json.dumps(call_info, indent=2) + '\n')
         raise
     finally:
+        if lock_control:
+            lock_control.close()
         serial.close(); child.close()
         if process is not None:
             if process.poll() is None:

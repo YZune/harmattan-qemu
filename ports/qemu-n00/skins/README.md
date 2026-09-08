@@ -11,3 +11,5 @@ For users who already have permission and the source PSD, `export-n9-livven.py` 
 Place the permitted local output at `ports/qemu-n00/skins/n9-black-livven.png`, rebuild `--cocoa-interaction`, then explicitly set `HARMATTAN_UI_SKIN=black` for the launcher. The build retains this attribution alongside a supplied image. `HARMATTAN_UI_SKIN=off` is the default.
 
 The view code is MIT-marked. That notice does not license the artwork, and the synthetic test fixture is not a rendering or authenticity check of the original PSD.
+
+Fresh interaction builds also connect the lower side key to the [original lock screen](../../../docs/lockscreen.md). The artwork remains unchanged; the hit target lives in the host view and also works with the code-drawn `frame` shell.

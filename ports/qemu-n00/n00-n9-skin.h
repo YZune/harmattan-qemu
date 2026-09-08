@@ -5,6 +5,18 @@
  */
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#include "n00-lockscreen-control.h"
+
+@interface N00LockButton : NSButton
+@end
+@implementation N00LockButton
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+- (BOOL)mouseDownCanMoveWindow { return NO; }
+- (void)mouseDown:(NSEvent *)event
+{
+    if (n00_lockscreen_ready()) [super mouseDown:event];
+}
+@end
 
 static NSSize n00_n9_model_size(NSSize guest)
 {
@@ -33,6 +45,7 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
     NSImage *caseImage;
     NSSize guestSize;
     BOOL configured;
+    N00LockButton *lockButton; /* retained by the subview hierarchy */
 }
 - (id)initWithGuestView:(NSView *)view image:(NSImage *)image;
 - (void)resizeWindowForGuestSize:(NSSize)size;
@@ -51,6 +64,16 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
         [view setWantsLayer:YES];
         [[view layer] setBackgroundColor:[[NSColor blackColor] CGColor]];
         [self addSubview:view];
+        lockButton = [[N00LockButton alloc] initWithFrame:NSZeroRect];
+        [lockButton setBordered:NO];
+        [lockButton setTransparent:YES];
+        [lockButton setTitle:@""];
+        [lockButton setToolTip:@"Lock screen / show unlock screen"];
+        [lockButton setAccessibilityLabel:@"Lock screen / show unlock screen"];
+        [lockButton setTarget:self];
+        [lockButton setAction:@selector(pressLockButton:)];
+        [self addSubview:lockButton];
+        [lockButton release];
         [self layoutGuest];
     }
     return self;
@@ -64,10 +87,19 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
 
 - (BOOL)isOpaque { return NO; }
 
+- (void)pressLockButton:(id)sender
+{
+    if (n00_lockscreen_request() < 0) {
+        fprintf(stderr, "N00_LOCKSCREEN_REQUEST_FAILED\n");
+        NSBeep();
+    }
+}
+
 - (NSView *)hitTest:(NSPoint)point
 {
     NSView *hit = [super hitTest:point];
     if (!hit) return nil;
+    if (hit == lockButton) return hit;
     NSPoint local = [self convertPoint:point fromView:[self superview]];
     NSSize model = n00_n9_model_size(guestSize), bounds = [self bounds].size;
     CGFloat scale = MIN(bounds.width / model.width, bounds.height / model.height);
@@ -106,6 +138,14 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
     [CATransaction setDisableActions:YES];
     [guestView setFrame:frame];
     [guestView setBoundsSize:guestSize];
+    /* The lower side key, below the volume rocker. The hit area stays
+     * outside the glass, in artwork/model coordinates, at every zoom. */
+    NSRect key = NSMakeRect(586, 628, 34, 106);
+    if (guestSize.width > guestSize.height) key = NSMakeRect(628, 0, 106, 34);
+    [lockButton setFrame:NSMakeRect(
+        (bounds.width - model.width * scale) / 2 + key.origin.x * scale,
+        (bounds.height - model.height * scale) / 2 + key.origin.y * scale,
+        key.size.width * scale, key.size.height * scale)];
     [CATransaction commit];
 }
 
@@ -180,6 +220,9 @@ static NSPoint n00_n9_clamp_touch(NSPoint point, NSSize screen)
         [[NSColor colorWithCalibratedWhite:.18 alpha:1] setFill];
         [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(259, 1072, 102, 5)
             xRadius:2.5 yRadius:2.5] fill];
+        [[NSColor colorWithCalibratedWhite:.55 alpha:1] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(595, 640, 6, 82)
+            xRadius:3 yRadius:3] fill];
     }
     /* Overlap the opening by two view points, including at fractional zoom.
      * This covers the resampled PNG/child-layer fringe as well as aspect-fit

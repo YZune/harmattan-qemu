@@ -17,6 +17,14 @@ if [ -z "$startup_waits" ]; then
     esac
 fi
 case "$startup_waits" in fixed|ready) ;; *) echo 'HARMATTAN_UI_STARTUP_WAITS must be fixed or ready.' >&2; exit 2 ;; esac
+default_lockscreen=off
+case "$mode:$startup_waits" in interactive:ready|--startup-headless-diagnostic:ready) default_lockscreen=on ;; esac
+lockscreen=${HARMATTAN_UI_LOCKSCREEN:-$default_lockscreen}
+lockscreen_test=${HARMATTAN_UI_LOCKSCREEN_TEST:-off}
+case "$lockscreen:$lockscreen_test" in off:off|on:off|on:on) ;; *) echo 'Invalid lockscreen configuration.' >&2; exit 2 ;; esac
+if [ "$lockscreen_test" = on ] && [ "$mode" != --startup-headless-diagnostic ]; then
+    echo 'Lockscreen tests require bounded headless startup.' >&2; exit 2
+fi
 call_simulation=${HARMATTAN_UI_CALL_SIMULATION:-off}
 call_test=${HARMATTAN_UI_CALL_SIMULATION_TEST:-off}
 case "$call_simulation:$call_test" in off:off|on:off|on:on) ;; *) echo 'Invalid call simulation mode.' >&2; exit 2 ;; esac
@@ -392,5 +400,6 @@ if [ -n "$user_profile" ]; then
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
 if [ "$call_test" = on ]; then set -- --call-simulation-test --timeout 360 "$@"; fi
+if [ "$lockscreen_test" = on ]; then set -- --lockscreen-test --timeout 360 "$@"; fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
-    --call-simulation "$call_simulation" --power "$power_mode" --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --browser-mode "$browser_mode" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
+    --lockscreen "$lockscreen" --call-simulation "$call_simulation" --power "$power_mode" --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --browser-mode "$browser_mode" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
