@@ -72,6 +72,9 @@ STORAGE_SPEC.loader.exec_module(storage)
 AUDIO_SPEC = importlib.util.spec_from_file_location('audio', Path(__file__).with_name('arm64-audio.py'))
 audio = importlib.util.module_from_spec(AUDIO_SPEC)
 AUDIO_SPEC.loader.exec_module(audio)
+CALL_SPEC = importlib.util.spec_from_file_location('call_simulation', Path(__file__).with_name('arm64-call-simulation.py'))
+call_simulation = importlib.util.module_from_spec(CALL_SPEC)
+CALL_SPEC.loader.exec_module(call_simulation)
 READINESS_SPEC = importlib.util.spec_from_file_location('readiness', Path(__file__).with_name('arm64-readiness.py'))
 readiness = importlib.util.module_from_spec(READINESS_SPEC)
 READINESS_SPEC.loader.exec_module(readiness)
@@ -249,6 +252,8 @@ def main():
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--interactive", action="store_true", help="validate startup, then keep the native window running until closed")
     parser.add_argument('--exit-on-ready', action='store_true', help='bounded startup diagnostic using the interactive readiness gates')
+    parser.add_argument('--call-simulation', choices=('off', 'on'), default='off', help='isolated synthetic calls in original call-ui')
+    parser.add_argument('--call-simulation-test', action='store_true', help='exercise the explicitly enabled simulator before bounded exit')
     parser.add_argument('--boot-animation', type=Path, help='private raw clone containing the original boot movie; interactive Cocoa only')
     parser.add_argument("--device-orientation", choices=('display', 'disabled', 'top', 'left', 'bottom', 'right'),
                         help="virtual ContextKit pose; default follows display in interactive mode, disabled in historical diagnostics")
@@ -270,6 +275,11 @@ def main():
         parser.error('basic browser mode requires --network user')
     if args.exit_on_ready and (not args.interactive or args.profile or args.boot_animation):
         parser.error('bounded startup requires interactive readiness with an independent snapshot and no boot movie')
+    call_simulation.validate_configuration(args.call_simulation, interactive=args.interactive,
+        ready=args.startup_waits == 'ready', profile=args.profile, rotation=args.rotation,
+        test=args.call_simulation_test)
+    if args.call_simulation_test and not args.exit_on_ready:
+        parser.error('call simulation tests require bounded startup exit')
     if args.profile and (not args.interactive or not args.profile_base or not args.profile_image_tool):
         parser.error('profiles require interactive mode and the launcher\'s private base/image tool')
     if not args.profile and (args.profile_base or args.profile_image_tool):
@@ -356,6 +366,10 @@ def main():
         animation_info.update(metadata)
     splash_info = {'enabled': splash_on}
     helper_payloads = {}
+    call_info = {'enabled': args.call_simulation == 'on'}
+    if call_info['enabled']:
+        call_payloads, call_info = call_simulation.prepare()
+        helper_payloads.update(call_payloads)
     if power_on:
         helper_payloads['ui-sdk-power-guest.sh'] = Path(__file__).with_name('ui-sdk-power-guest.sh').read_bytes()
     browser_info = {'enabled': False}
@@ -731,6 +745,8 @@ def main():
                 if args.boot_animation:
                     boot_animation.reveal(out / 'boot', drain)
                     boot_info['desktop_revealed'] = True
+                if call_info['enabled']:
+                    call_simulation.phase(serial, wait_line, out, 'setup', 'setup', call_info, audio_output)
                 guard_info['released'] = startup.validate(startup.collect(serial, wait_line, out, release=True), released=True)
                 ready = {'state': 'ready', 'scope': 'verified original Home startup with real guest input; no app or physical-input acceptance',
                     'command': command, 'qemu_pid': process.pid, 'controller_pid': os.getpid(),
@@ -744,6 +760,7 @@ def main():
                     'clock': clock_info,
                     'input_method': keyboard_info,
                     'audio': audio_output.info if audio_output else {'enabled': False},
+                    'call_simulation': call_info,
                     'ca_certificates': ca_info,
                     'app_viewport': app_viewport_info,
                     'browser': browser_info,
@@ -769,6 +786,8 @@ def main():
                 def quit_guest():
                     nonlocal profile_synced, deadline
                     deadline = time.monotonic() + 40
+                    if call_info['enabled']:
+                        call_simulation.phase(serial, wait_line, out, 'stop', 'shutdown', call_info)
                     if power_on:
                         ui_power.run_phase(serial, wait_line, out, "stop", power_info)
                     qmp.deadline = time.monotonic() + 40
@@ -779,6 +798,11 @@ def main():
                     qmp.call('quit')
                     process.wait(timeout=10)
                 try:
+                    if args.call_simulation_test:
+                        call_simulation.run_probe(qmp, serial, wait_line, capture, drain, out, call_info, audio_output)
+                    elif call_info['enabled'] and not args.exit_on_ready:
+                        drain(3)
+                        call_simulation.phase(serial, wait_line, out, 'incoming', 'initial-incoming', call_info)
                     if args.exit_on_ready:
                         quit_guest()
                     while process.poll() is None:
@@ -807,7 +831,13 @@ def main():
                 if process.returncode != 0:
                     raise RuntimeError(f'interactive QEMU exited with {process.returncode}')
                 if args.exit_on_ready:
-                    final_host = host_validator((out / 'qemu-stderr.log').read_bytes())
+                    host_data = (out / 'qemu-stderr.log').read_bytes()
+                    final_host = (call_simulation.validate_host(host_data, host_validator) if call_info['enabled']
+                                  else host_validator(host_data))
+                    if call_info['enabled']:
+                        call_info['host'] = final_host
+                        call_info['passed'] = bool(args.call_simulation_test and call_info.get('stopped'))
+                        (out / 'call-simulation-result.json').write_text(json.dumps(call_info, indent=2) + '\n')
                     (out / 'startup-result.json').write_text(json.dumps({
                         'passed': True, 'startup_waits': args.startup_waits,
                         'startup_wall_seconds': ready['startup_wall_seconds'],
@@ -966,6 +996,12 @@ def main():
                 (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
                 label = 'original Home single-touch scroll and exact restoration' if args.verify_input else 'original Home window and stable desktop rendering, no input'
                 print(f"PASS: {label}; evidence: {out}", flush=True)
+    except BaseException as error:
+        if call_info['enabled']:
+            call_info['passed'] = False
+            call_info['failure'] = f'{type(error).__name__}: {error}'
+            (out / 'call-simulation-result.json').write_text(json.dumps(call_info, indent=2) + '\n')
+        raise
     finally:
         serial.close(); child.close()
         if process is not None:

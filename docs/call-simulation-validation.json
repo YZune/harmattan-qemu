@@ -1,0 +1,126 @@
+{
+  "date": "2026-09-08",
+  "base_commit": "cf4ad2e",
+  "scope": "Explicit simulated incoming calls in pinned original call-ui; no telephony or microphone.",
+  "overall": "EXPERIMENTAL; graphics gate FAIL",
+  "host": {
+    "system": "macOS 26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.2"
+  },
+  "build": {
+    "fresh_qemu_build": false,
+    "reason": "Guest helper/startup changes only; reused the validated native QEMU build.",
+    "qemu_sha256": "d958eb33272c9b6431ea5709bf1b5765c2ae9db0b7fe6d8f23876b96e29b170d",
+    "helper_sha256": "b26a46fef3b7b768b42ef1762435cafa8b5a541edebef66088b3bc3f8fa953b5",
+    "final_helper_rebuild_same_hash": true
+  },
+  "host_suite": {
+    "command": "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
+    "passed": 364,
+    "seconds": 20.718,
+    "scope": "Final host source, including avatar guard, explicit failure reporting and shortcut icon correction."
+  },
+  "call_diagnostic": {
+    "command": "sh scripts/harmattan-qemu/run-call-simulation.sh --headless-diagnostic",
+    "passed": false,
+    "protocol_and_audio": "PASS",
+    "main_button_and_avatar_pixels": "PASS",
+    "input": "headless QMP taps",
+    "scenarios": [
+      "incoming",
+      "ringtone-mute",
+      "answer",
+      "hangup",
+      "reject",
+      "remote-cancel",
+      "repeat"
+    ],
+    "negative_cases": [
+      "invalid signature rejected",
+      "overlapping call rejected",
+      "stale channel rejected"
+    ],
+    "original_ui_md5": "c9d625ced99916c45464069ccedf6c03",
+    "original_gconf_md5": "3103cb2bab05954ee11de77cb2b1096c",
+    "same_instances": true,
+    "shutdown": true,
+    "audio": {
+      "seconds": 31.861,
+      "rms": 1110.78,
+      "tail_rms": 1166.62,
+      "sha256": "a20bbd8a10f24eb90b04a9909cad6421c4e9ae6dda50408bf4ac5fb8f6aa46da",
+      "scope": "private CoreAudio output monitor; no acoustic or microphone recording"
+    },
+    "graphics": {
+      "status": "FAIL",
+      "reason": "Driver reports unloadable GLD_TEXTURE_INDEX_2D during repeated call presentation. The strict validator still rejects this warning.",
+      "faults": 0,
+      "rejects": 0,
+      "workers_joined": true,
+      "note": "Zero counters do not override the warning failure."
+    },
+    "runtime_runner_sha256": "987838ca9123d3aaf689a67fa907ae83d0b3cff55cf8ed3d24b600e82ab9cd65",
+    "final_source_difference": "Final changes add explicit failure-result reporting, a replayed avatar check and the corrected shortcut icon. The rebuilt guest backend ELF has the same hash."
+  },
+  "visual_review": {
+    "incoming": "PASS: original caller label, avatar, answer/reject and ringtone mute controls visible.",
+    "answered": "PASS: original caller label, elapsed timer and controls visible.",
+    "method": "Unedited QMP PNGs inspected; final avatar guard also replayed against the retained PPM captures.",
+    "screenshots_sha256": {
+      "call-incoming": "c48f5dba43360cc2bd17ed0d474b5db7d1fa9484d4b1f0c5c413f09a8d08b3cb",
+      "call-answered": "b7cdc3ce6d243a8b2c6b1874ca67cec52ee4cd7296de8b45650bea5849271da4",
+      "call-ringtone-muted": "73d521bf648c9847eaf840a3eae892ad6289658b7dbc5f8d1eaf7dfa18e674ff",
+      "call-hung-up": "d73c50668454ff6c2735438bdd428248f8718ad5f3aa7811ac9737df4fb992b7",
+      "call-rejected": "d73c50668454ff6c2735438bdd428248f8718ad5f3aa7811ac9737df4fb992b7",
+      "call-remote-cancelled": "d73c50668454ff6c2735438bdd428248f8718ad5f3aa7811ac9737df4fb992b7"
+    }
+  },
+  "cocoa": {
+    "status": "SKIP",
+    "reason": "Mac locked; native window startup reached READY, but desktop input could not be operated. The owned superseded session was stopped."
+  },
+  "baseline_regression": {
+    "status": "PASS",
+    "command": "HARMATTAN_UI_AUDIO=pulse sh scripts/harmattan-qemu/run-arm64-ui.sh --usability-headless-diagnostic",
+    "call_simulation": "off",
+    "home_notes_keyboard_calculator_transitions_gpu": "PASS",
+    "fresh_independent_snapshot": true
+  },
+  "prior_failures": [
+    "The isolated bus lacked original GConf configuration and rendered red missing-image markers; fixed with isolated original GConf and copied configuration.",
+    "Caller avatar was absent in an earlier run with a GPU texture warning. Software viewport options restore the inspected main frames, but do not eliminate all repeated-call GPU warnings."
+  ],
+  "limitations": [
+    "No real voice, modem, SIM, microphone, speaker routing or DTMF.",
+    "No contact lookup, missed-call history, call waiting or lock-screen wake-up acceptance.",
+    "Ringtone measured at private output monitor, not acoustically.",
+    "Previously downloaded prebuilt previews do not contain this source-only experiment."
+  ],
+  "source_sha256": {
+    "scripts/harmattan-qemu/arm64-call-simulation.py": "71b77ae16073823c7071d2d4c720c3fe8e6003ae7ac3174a0a9dcc00828c2279",
+    "scripts/harmattan-qemu/build-call-simulation-guest.sh": "b9d4fddd974233f946b872d112850e0990ffe7e8bd663056effa13d399631337",
+    "scripts/harmattan-qemu/call-simulation-dbus.h": "bb5b45db9676a450c438acb0d43b335e4eb9171a75239f0f652d5a2ca19d4039",
+    "scripts/harmattan-qemu/call-simulation-guest.c": "f0e111bab6f49f615220e7370e611ffb2dbd7d62d551e8a6bd347ef0cf7ddeec",
+    "scripts/harmattan-qemu/call-simulation-guest.sh": "0025e3c9690af13bd119177d22eee741ef16669fd249cebda1e394ef58c6aea5",
+    "scripts/harmattan-qemu/call-simulation-audio.inc": "3df971e6f17e9d80dc2afa768d6bb8305dd89a14aadaddc89dfa2ce6e7701341",
+    "scripts/harmattan-qemu/run-call-simulation.sh": "a83528153ee3880fa6db591e464822e59c5f91802e806b5e293d4d643fdfa26f",
+    "scripts/harmattan-qemu/run-arm64-ui.sh": "85088e8c16edbfb20c4a1d3b65fa516bd68ae62a204cea2e0ddff1a2e24b9dce",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "2fdfe7b5c02dcb4b753eb84bde7813b7c095ac853396bc9836ec4bb30e39bdf5",
+    "scripts/harmattan-qemu/tests/test_call_simulation.py": "3e1895833d9288ac403c2fae3ccf310aab40c2bc018d6da4d0f67b0414990abc"
+  },
+  "publication_checks": {
+    "files": 325,
+    "errors": 0,
+    "shell_syntax_files": 35,
+    "diff_check": "PASS"
+  },
+  "shortcut": {
+    "status": "PASS",
+    "icon": "Original icon-l-telephony, selected from the original Phone desktop entry.",
+    "method": "Separate private headless exploration: Home app-grid scroll and shortcut tap triggered the original incoming page.",
+    "scope": "The probe also loaded a diagnostic software-mode/viewport interposer; the original software flag was true and no viewport substitution was reported. This does not establish a clean GPU lifecycle.",
+    "icon_frame_sha256": "ca4e1e3fe685c404e898fba98e60ddb8efcb4269d1847d954bf8a56dd6f6ed0b",
+    "incoming_frame_sha256": "9ff9fe4633addc370895cc2ad87cdfcb8a1a7804cec8cb10a72fea8b9ec2b657"
+  }
+}

@@ -17,6 +17,16 @@ if [ -z "$startup_waits" ]; then
     esac
 fi
 case "$startup_waits" in fixed|ready) ;; *) echo 'HARMATTAN_UI_STARTUP_WAITS must be fixed or ready.' >&2; exit 2 ;; esac
+call_simulation=${HARMATTAN_UI_CALL_SIMULATION:-off}
+call_test=${HARMATTAN_UI_CALL_SIMULATION_TEST:-off}
+case "$call_simulation:$call_test" in off:off|on:off|on:on) ;; *) echo 'Invalid call simulation mode.' >&2; exit 2 ;; esac
+if [ "$call_simulation" = on ]; then
+    case "$mode" in interactive|--startup-headless-diagnostic) ;; *) echo 'Call simulation supports interactive or its bounded diagnostic.' >&2; exit 2 ;; esac
+    test -z "$user_profile" && test "$startup_waits" = ready || { echo 'Call simulation requires a disposable disk and ready startup checks.' >&2; exit 2; }
+fi
+if [ "$call_test" = on ] && [ "$mode" != --startup-headless-diagnostic ]; then
+    echo 'Call simulation tests require bounded headless startup.' >&2; exit 2
+fi
 if [ -n "$user_profile" ] && [ "$mode" != interactive ] && [ "$mode" != --install-packages ]; then
     echo 'User profiles are for interactive use; diagnostics create independent disks.' >&2; exit 2
 fi
@@ -40,8 +50,8 @@ case "$ca_certificates" in host|off) ;; *) echo 'HARMATTAN_UI_CA_CERTIFICATES mu
 if [ "$mode" = --audio-diagnostic ]; then audio=pulse; fi
 case "$audio:$mode" in
     off:*) ;;
-    pulse:interactive|pulse:--audio-diagnostic|pulse:--usability-diagnostic|pulse:--usability-headless-diagnostic) network=user ;;
-    *) echo 'HARMATTAN_UI_AUDIO supports off or pulse for interactive/usability/audio runs.' >&2; exit 2 ;;
+    pulse:interactive|pulse:--audio-diagnostic|pulse:--usability-diagnostic|pulse:--usability-headless-diagnostic|pulse:--startup-headless-diagnostic) network=user ;;
+    *) echo 'HARMATTAN_UI_AUDIO supports off or pulse for interactive/usability/audio/startup runs.' >&2; exit 2 ;;
 esac
 case "$mode" in --network-diagnostic|--install-packages) network=user ;; esac
 case "$network" in user|off) ;; *) echo 'HARMATTAN_UI_NETWORK must be user or off.' >&2; exit 2 ;; esac
@@ -381,5 +391,6 @@ if [ -n "$user_profile" ]; then
     set -- --profile "$user_profile" --profile-base "$run_root/pr13-backing.raw" \
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
+if [ "$call_test" = on ]; then set -- --call-simulation-test --timeout 360 "$@"; fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \
-    --power "$power_mode" --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --browser-mode "$browser_mode" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
+    --call-simulation "$call_simulation" --power "$power_mode" --startup-waits "$startup_waits" --audio "$audio" --ca-certificates "$ca_certificates" --browser-mode "$browser_mode" --network "$network" --output "$run_root/ui" --rotation "$rotation" --clock "$clock" --input-method "$keyboard" "$@"
