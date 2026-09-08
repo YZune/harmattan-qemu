@@ -47,6 +47,18 @@ class CallSimulationTests(unittest.TestCase):
             with self.subTest(broken=broken[-40:]), self.assertRaises(ValueError):
                 calls.validate_report(broken, dict(info))
 
+    def test_locked_report_requires_same_relay_and_clean_transfer(self):
+        data, info = self.report()
+        info.update(locked=True, relay_md5='c' * 32)
+        relay = b'N00_CALL_RELAY_PID 46\n' + b'c' * 32 + b'  /proc/46/exe\n'
+        good = data + relay
+        self.assertEqual(calls.validate_report(good, info)['state'], 1)
+        for bad in (data, good + relay, good.replace(b'46', b'47'),
+                    good + b'LOCK_FORWARD_ERROR denied\n', good + b'LOCK_FATAL state\n',
+                    good + b'LIVE_FATAL consumer geometry\n'):
+            with self.subTest(bad=bad[-60:]), self.assertRaises(ValueError):
+                calls.validate_report(bad, dict(info))
+
     def test_audio_requires_non_silent_tail(self):
         non_silent = array.array('h', [1000, -1000] * (44100 * 6)).tobytes()
         self.assertGreater(calls.validate_ringtone(non_silent)['rms'], 20)
@@ -78,6 +90,8 @@ class CallSimulationTests(unittest.TestCase):
                     header + bytes((255, 64, 64)) * (480 * 864)):
             with self.assertRaises(ValueError):
                 calls.validate_pixels(ppm, 'incoming')
+            with self.assertRaises(ValueError):
+                calls.validate_locked_pixels(ppm)
 
     def test_shell_refuses_profile_and_invalid_modes_before_running(self):
         import os
@@ -86,7 +100,9 @@ class CallSimulationTests(unittest.TestCase):
         for env, args in ((base | {'HARMATTAN_USER_PROFILE': '/private/profile'}, []),
                           (base | {'HARMATTAN_UI_STARTUP_WAITS': 'fixed'}, []),
                           (base, ['--usability-headless-diagnostic']),
-                          (base | {'HARMATTAN_UI_CALL_SIMULATION_TEST': 'on'}, [])):
+                          (base | {'HARMATTAN_UI_CALL_SIMULATION_TEST': 'on'}, []),
+                          (base | {'HARMATTAN_UI_CALL_LOCKSCREEN': 'on', 'HARMATTAN_UI_LOCKSCREEN': 'off'}, []),
+                          (base | {'HARMATTAN_UI_CALL_LOCKSCREEN': 'invalid'}, [])):
             with self.subTest(args=args):
                 result = subprocess.run(['sh', str(script), *args], env=env, capture_output=True, timeout=5)
                 self.assertEqual(result.returncode, 2, result.stderr)

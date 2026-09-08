@@ -27,7 +27,7 @@ The integration currently requires upright portrait mode, original System UI and
 
 The Cocoa button posts one complete request to the launcher's private per-run mailbox. Startup and shutdown disable that mailbox; rapid clicks coalesce while a request is pending. The existing controller invokes a small guest helper through its own serial connection. It verifies the original `sysuid`, the Nokia screen-lock plugin, D-Bus ownership and the actual X11 window state, then requests `tklock_open` mode 6 (standby clock) or mode 5 (unlock screen). Original guest UI, resources and swipe handling remain in `sysuid`.
 
-This is a screen-lock UI integration in the rescue desktop. It does not restore MCE, a PIN/device security lock, automatic idle locking, physical power-key GPIO events, display power savings, or hardware suspend/resume. The standby clock is the original low-power **UI mode**; QEMU keeps running. Native full-display-off mode is not selected. Calls and notification-driven wake-up remain outside the accepted scope.
+This is a screen-lock UI integration in the rescue desktop. It does not restore MCE, a PIN/device security lock, automatic idle locking, physical power-key GPIO events, display power savings, or hardware suspend/resume. The standby clock is the original low-power **UI mode**; QEMU keeps running. Native full-display-off mode is not selected. The separate [locked-call experiment](call-simulation.md#locked-incoming-calls) connects original call events to this UI. General notification wake-up remains outside the accepted scope.
 
 On the SDK 480 × 864 surface, the wallpaper lock view currently leaves a 10-pixel white strip at the bottom; the standby clock fills the surface. This rendering difference remains open.
 

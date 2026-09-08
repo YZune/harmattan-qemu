@@ -45,3 +45,18 @@ extract_input libc.so.6 /lib/libc-2.10.1.so 434c9ee9c201b0a3ae07ca6dbb85430719ed
     -o "$out/n00-call-simulation"
 file "$out/n00-call-simulation"
 shasum -a 256 "$out/n00-call-simulation"
+
+extract_input librt.so.1 /lib/librt-2.10.1.so 2ea32f3600f62be534eda017c88a1e775a69be43e677e63a59544cce66eba2b9
+extract_input libX11.so.6 /usr/lib/libX11.so.6.3.0 4b43c17356976b75b6d05204d03bc4693aa6ffd364dfd499264ebf4760b3b4e0
+"$cc" --target=arm-linux-gnueabihf -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=hard \
+    -fuse-ld=lld -nostdlib -ffreestanding -fno-builtin -fno-pie -O2 -Wall -Wextra -Werror \
+    -Wl,--build-id=none,--hash-style=sysv,--allow-shlib-undefined \
+    -Wl,-no-pie,--dynamic-linker=/lib/ld-linux.so.3,-z,max-page-size=4096 \
+    "$repo_root/scripts/harmattan-qemu/start-armel-libc.S" \
+    "$repo_root/scripts/harmattan-qemu/call-lockscreen-guest.c" \
+    "$link_root/libdbus-1.so.3" "$link_root/libc.so.6" "$link_root/librt.so.1" -o "$out/n00-call-lockscreen"
+"$cc" --target=arm-linux-gnueabihf -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=hard \
+    -fuse-ld=lld -nostdlib -ffreestanding -fno-builtin -fPIC -shared -O2 -Wall -Wextra -Werror \
+    -Wl,--build-id=none,--hash-style=sysv,--allow-shlib-undefined -Wl,-z,max-page-size=4096 \
+    "$repo_root/scripts/harmattan-qemu/call-livepixmap-guest.c" \
+    "$link_root/libX11.so.6" "$link_root/libc.so.6" -o "$out/n00-call-livepixmap.so"

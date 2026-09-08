@@ -26,6 +26,11 @@ if [ "$lockscreen_test" = on ] && [ "$mode" != --startup-headless-diagnostic ]; 
     echo 'Lockscreen tests require bounded headless startup.' >&2; exit 2
 fi
 call_simulation=${HARMATTAN_UI_CALL_SIMULATION:-off}
+call_lockscreen=${HARMATTAN_UI_CALL_LOCKSCREEN:-off}
+case "$call_lockscreen" in off|on) ;; *) exit 2 ;; esac
+if [ "$call_lockscreen" = on ]; then
+    test "$call_simulation" = on && test "$lockscreen" = on || { echo 'Locked calls require call simulation and lockscreen.' >&2; exit 2; }
+fi
 call_test=${HARMATTAN_UI_CALL_SIMULATION_TEST:-off}
 case "$call_simulation:$call_test" in off:off|on:off|on:on) ;; *) echo 'Invalid call simulation mode.' >&2; exit 2 ;; esac
 if [ "$call_simulation" = on ]; then
@@ -399,6 +404,7 @@ if [ -n "$user_profile" ]; then
     set -- --profile "$user_profile" --profile-base "$run_root/pr13-backing.raw" \
         --profile-image-tool "$bin_root/qemu-img" "$@"
 fi
+if [ "$call_lockscreen" = on ]; then set -- --call-lockscreen "$@"; fi
 if [ "$call_test" = on ]; then set -- --call-simulation-test --timeout 360 "$@"; fi
 if [ "$lockscreen_test" = on ]; then set -- --lockscreen-test --timeout 360 "$@"; fi
 exec "${HARMATTAN_PYTHON:-python3}" -B "$repo_root/scripts/harmattan-qemu/diagnose-arm64-shell.py" \

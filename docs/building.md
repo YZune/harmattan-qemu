@@ -169,6 +169,7 @@ Useful overrides:
 | `HARMATTAN_UI_INPUT_ACTIVITY` | `on` / `off`; activity releases after 8 seconds without input |
 | `HARMATTAN_UI_SKIN` | `off` (source default) / `frame` (code-drawn, release default) / `black` (requires separately obtained artwork and rebuild) |
 | `HARMATTAN_UI_LOCKSCREEN` | `on` (interactive default) / `off`; [original standby clock, lock screen and shell side key](lockscreen.md) |
+| `HARMATTAN_UI_CALL_LOCKSCREEN` | `off` (default) / `on`; requires call simulation and lockscreen, see [locked incoming calls](call-simulation.md#locked-incoming-calls) |
 | `HARMATTAN_UI_KEYBOARD` | `on` / `off` |
 | `HARMATTAN_UI_BOOT_ANIMATION` | `on` (interactive default) / `off` (show startup directly); requires a fresh Cocoa interaction build |
 | `HARMATTAN_UI_HANDOFF` | `on` / `off` |
