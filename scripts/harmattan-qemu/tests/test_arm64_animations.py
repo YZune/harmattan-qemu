@@ -139,7 +139,7 @@ class AnimationTests(unittest.TestCase):
             subprocess.run(['cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
                             str(SCRIPTS / 'compositor-pixmap-guest.c'),
                             str(SCRIPTS / 'tests/compositor-pixmap-host.c'), '-o', binary], check=True)
-            for mode in range(3):
+            for mode in range(6):
                 result = subprocess.run([binary, str(mode)], timeout=5, capture_output=True)
                 self.assertEqual(result.returncode, 0 if mode == 0 else 128)
 

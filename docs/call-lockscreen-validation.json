@@ -1,18 +1,20 @@
 {
   "date": "2026-09-08",
-  "scope": "Explicit source-only original locked-call simulation; disposable snapshots, synthetic state, no modem/SIM/real voice",
-  "base_commit": "5bba0c5e84de76148af7a5c02553aaddb5b7065f",
-  "overall": "FAIL: strict graphics acceptance; functional checks passed",
+  "scope": "Explicit source-launch original locked-call simulation; disposable snapshots, synthetic state, no modem/SIM/real voice",
+  "base_commit": "c6d19fab82fc4815bd2bac85e689b4ee68882e44",
+  "overall": "PASS: current headless functional, banner pixels and strict graphics regressions; audio disabled",
   "commands": [
     "python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py' -v",
     "HARMATTAN_UI_AUDIO=off sh scripts/harmattan-qemu/run-call-simulation.sh --locked-headless-diagnostic",
-    "HARMATTAN_UI_AUDIO=off sh scripts/harmattan-qemu/run-call-simulation.sh --headless-diagnostic"
+    "HARMATTAN_UI_AUDIO=off sh scripts/harmattan-qemu/run-call-simulation.sh --headless-diagnostic",
+    "HARMATTAN_UI_CALL_SIMULATION=off HARMATTAN_UI_AUDIO=off HARMATTAN_UI_LOCKSCREEN_TEST=on sh scripts/harmattan-qemu/run-arm64-ui.sh --startup-headless-diagnostic"
   ],
   "host_tests": {
     "result": "PASS",
-    "tests": 369,
+    "tests": 371,
     "python": "3.12.2",
-    "platform": "Darwin arm64"
+    "platform": "Darwin arm64",
+    "log_sha256": "c7388b4e04856cd6ee5f93108cdf9d4cbc22e4292243c676ad9944fd90056027"
   },
   "build": {
     "arm_helpers": "PASS: clang-15, ARM32 hard-float, pinned guest link inputs",
@@ -20,7 +22,7 @@
   },
   "locked_guest": {
     "functional_result": "PASS",
-    "diagnostic_exit": 1,
+    "diagnostic_exit": 0,
     "qemu_exit": 0,
     "audio": "off",
     "scenarios": [
@@ -69,34 +71,44 @@
     },
     "banner": {
       "green_top": 714,
-      "green_rows": 147,
-      "caller_text_pixels": 4418
+      "green_rows": 149,
+      "caller_text_pixels": 4418,
+      "top_border_rows_checked": 10
     },
     "motion_green_top_rows": [
       714,
       721,
-      747,
+      745,
       753,
       754,
-      721
+      723
     ],
     "motion_scope": "Original green event moved in successive QMP captures; no FPS or timing acceptance",
     "backend_sha256": "a9b009813a97845a7d4215529b83e9111b20f0c38af340a375dca975ef6c4585",
     "relay_md5": "7dd136241c9f8b4041dc0daf4221993f",
-    "pixmap_adapter_sha256": "ef0df42ca0f101ccc269c9efd260d15ab195ed44b5fb824562318b453a798f4a",
-    "diagnostic_sha256": "9c4b764a1b189586a2e6d0b13c76413b51ee1c3a74b2f52b12154f4b93d46152",
-    "serial_sha256": "b85f1cbd8ba4458aa2f0490435944d2d50be09f3bc5b6224968fcd2a1a2f0551",
-    "gpu_log_sha256": "84e12a73a9c2756d59505a272fa9edacde45b98413279041d792c6db2e5bb25d",
+    "pixmap_adapter_sha256": "c07017d3de6862f9dcd1a12f9f84482945e5bb4ad550295947cb5ce7c8657be4",
+    "diagnostic_sha256": "f2253ca7c92b6f5d0f8d437d937af9fbf32641a9f7b3c459f3381ce7f9bcb87d",
+    "serial_sha256": "a982554b9d234fe803407741b8cf523b54264e9dc49bf4c6257b52d20fdb8595",
+    "gpu_log_sha256": "29ade1d9bbbce445162712341d71c8d5d930cfb6f10ab77aee4b198b9a87a0b3",
     "reviewed_captures": {
-      "locked-call-banner.png": "86afc7fa7b9919d177548706c913d4874556a1fa10d5bc323a5dcb0ce2e82492",
-      "locked-call-expanded.png": "44e1d770d2037197c53eb80287d1efe0644c7dd7857133f9203fb90138fbddc3",
-      "locked-call-answered.png": "125c696297f360137bdfeea813ddbdf72de9235eb5752c8ec3ed552258cc1f79",
-      "locked-call-cancelled.png": "ef985a55d77d8e922f380aa9c5b4f6bab6406c95d5a52c3bcf9364cd1b5be5a3"
-    }
+      "locked-call-banner.png": "6e85785af24a52b5b39ea2a1293a6b6841dbdc2e4314a20d6fe1e154877e6d21",
+      "locked-call-expanded.png": "569a987a5052f4c32f1b1c4d8000cee72674831630e2276298a96decb9063f66",
+      "locked-call-answered.png": "9bd4e70afa006e3887c28884538dcbc71462f5d81f26caf67154502f22063bd3",
+      "locked-call-cancelled.png": "eefbddb302ac70a15663181f7b1a79a35c8746c7c77ca5606451eaef67735335"
+    },
+    "motion_top_border_rows_checked": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+    ],
+    "startup_result_sha256": "c497386795fad207e10f349a6ab93b5fe7e7b0524907ce994fdeefd1fead0191"
   },
   "ordinary_guest_regression": {
     "functional_result": "PASS",
-    "diagnostic_exit": 1,
+    "diagnostic_exit": 0,
     "qemu_exit": 0,
     "audio": "off",
     "scenarios": [
@@ -108,27 +120,36 @@
       "remote-cancel",
       "repeat"
     ],
-    "diagnostic_sha256": "0dc1bf0324c9c8815d7bc63a6c42516567e12c0f283ca8f2cc117a21d1890bbe"
+    "diagnostic_sha256": "1ce4fcc87147bc1eed154f974a819e573a3a4390baf706dc1f91279087ef4fcb",
+    "startup_result_sha256": "08261ab0116fbe23b409dcf733dbb002b5618f591d8c386b745b48c0c24c07fa",
+    "gpu_log_sha256": "a65d40f01efeb0a2a76420fd3687e33ae353787003e65e60da9d4c90d6714db6"
   },
   "graphics": {
-    "result": "FAIL",
-    "reason": "Both locked and ordinary calls report unloadable GLD_TEXTURE_INDEX_2D. Strict validator remains unchanged.",
+    "result": "PASS",
+    "reason": "Strict unmodified GPU validator accepts locked calls, ordinary calls and lock/unlock plus Calculator restore.",
     "faults": 0,
     "rejects": 0,
+    "warnings": [],
     "workers": "joined",
-    "note": "Zero counters do not override the warning failure."
+    "gpu_contexts": {
+      "locked": 4,
+      "ordinary": 4,
+      "lockscreen": 3
+    },
+    "compositor_adapter_sha256": "0539e335bc51b65b1921df03767c03fcdd4b711f61444f5d7895e972ad223349",
+    "driver_probe": "Before the fix, a read-only host GL trace observed 0x0 compositor textures with valid LINEAR filters; guest upload traces located clearing in original enableDirectFbRendering -> unbind. No diagnostic interposer was loaded in the final runs."
   },
   "limitations": [
     "Visible Cocoa input and physical-device behavior were not tested in this change.",
-    "Audio was disabled in both current diagnostics; earlier audio records do not validate locked-call audio.",
-    "A thin colored seam is visible at the green banner edge in one reviewed frame; pixel-perfect rendering is not accepted.",
+    "Audio was disabled in the current diagnostics; earlier audio records do not validate locked-call audio.",
+    "QMP captures verify sampled pixels and motion, not animation FPS or complete physical-device visual equivalence. The separately documented wallpaper-bottom strip is outside this call-graphics repair.",
     "Full-screen device power-off, idle locking, PIN/security lock and general notifications remain unsupported.",
     "Temporary desktop-bus policy permits root to send only original insertEvent/removeEvent; original Aegis policies remain.",
     "The private MCE-name adapter only reports actual UI lock state; unsupported radio and device requests fail explicitly."
   ],
   "source_sha256": {
-    "scripts/harmattan-qemu/arm64-call-simulation.py": "78073d705c7e7ec26e56015f10d791c36e2c2bb9c57bf1279ae0250f2b018077",
-    "scripts/harmattan-qemu/build-call-simulation-guest.sh": "5e398e48fc109379eb625088c316f461cc4cfd70273eb5e7fa1a0885ee03c0fa",
+    "scripts/harmattan-qemu/arm64-call-simulation.py": "90852df3d054a95d23f782d6fcab63b714fbd1a0c098272e85b0a442bf9450ca",
+    "scripts/harmattan-qemu/build-call-simulation-guest.sh": "f62fe22a3dbd80f2928ec0952cade8a58b5ff8e4a3b5cbf5e443ef942e13773b",
     "scripts/harmattan-qemu/call-simulation-guest.c": "fcd4e780b70246d02b1260eff016344a5dc17290ad5ef5ba2cf0647ba12bd39c",
     "scripts/harmattan-qemu/call-simulation-guest.sh": "fdf8dcc561a6fc8d13188cee4428f1e2febea464f53454dd78724d188b0b35e6",
     "scripts/harmattan-qemu/diagnose-arm64-shell.py": "24435990bf519b4dbcfda38dedd9277a5eab0b6d4012f8f603d92e3856776e11",
@@ -136,9 +157,45 @@
     "scripts/harmattan-qemu/run-arm64-ui.sh": "32617c900df8455086ef1d628fd7a803b2f484b3dc020f6ca20b0c295f834dd5",
     "scripts/harmattan-qemu/run-call-simulation.sh": "fd1ec098d58c48eb4b040b8756099d757e734384bbd5cdc16187916fc537a035",
     "scripts/harmattan-qemu/screenlock-guest.pl": "852d77fcea7384de35e0d3b579425285d2b169e511f2b9d62c69e4f50b1b6fad",
-    "scripts/harmattan-qemu/tests/test_call_simulation.py": "4b34a84da26d5b7bb0b3f88bb8f23b5b3f1f4bdb4ceabc643373531ff1f0f5d7",
+    "scripts/harmattan-qemu/tests/test_call_simulation.py": "ddbb5690c11bbc387610e599c9849a740794213d417ecd23bea3e0c91acf5cb6",
     "scripts/harmattan-qemu/call-livepixmap-guest.c": "206fdce6da09497fdf1ad38a7b5c16a42f04f77b73f737bdadd7696bdcfacac9",
     "scripts/harmattan-qemu/call-lockscreen-guest.c": "09efa2acdc6361b40a673ef17a8d109911e6c6a9028610c9fd987e305558e557",
-    "scripts/harmattan-qemu/call-lockscreen-guest.sh": "ca1d573fa250fe18b6239616129170dc6061695d567de4123a11482ec2fd4963"
+    "scripts/harmattan-qemu/call-lockscreen-guest.sh": "ca1d573fa250fe18b6239616129170dc6061695d567de4123a11482ec2fd4963",
+    "scripts/harmattan-qemu/call-border-pixmap-guest.c": "75bed61940ba1fb2ac118b03d90fcab5b4245259d0ca112767317ff70bbac5fe",
+    "scripts/harmattan-qemu/compositor-pixmap-guest.c": "3f4fe298713daf22bf00f2107e1011cf4a058238f7a3a7fb528dc45043b252de",
+    "scripts/harmattan-qemu/tests/call-border-pixmap-host.c": "360e20f519a1f38893ce5833cfaa4e6e07283ecaa3ce0867421f704cbb33c465",
+    "scripts/harmattan-qemu/tests/compositor-pixmap-host.c": "461e2007d0572fe978462f06f061b92a0d3f875528103c5d2ddcde8fcb76622a",
+    "scripts/harmattan-qemu/tests/test_arm64_animations.py": "88e515236637d2dafadae5322f661a8bd437cc0f56c0f46398f34dfe349de01b"
+  },
+  "previous_graphics_failure": {
+    "result": "FAIL at the prior locked-call implementation",
+    "reason": "Unloaded 0x0 software compositor texture; two out-of-bounds slidehint rows",
+    "superseded_by": "Current guarded texture handoff and bounded source-border checks; earlier evidence remains in Git history."
+  },
+  "lockscreen_regression": {
+    "result": "PASS",
+    "diagnostic_exit": 0,
+    "qemu_exit": 0,
+    "clock_wallpaper_unlock": true,
+    "calculator_same_instance_resumed": true,
+    "calculator_pixels_restored": true,
+    "home_returns": 2,
+    "result_sha256": "922b8c8537bb48d6686afe0f140e9c250407f45be23c52869832ecd654ed8631",
+    "gpu_log_sha256": "08e931ef6629260b75dd0c216f4c524e1771cbfc21b298ed4caee71ce46b4cc6"
+  },
+  "border_repair": {
+    "source_image": "meegotouch-lockscreen-slidehint.png",
+    "source_image_sha256": "2ea7c41ea717d797941b6c9b2177afcb90a92332e0bcda084c91ce45d55c4b13",
+    "source_size": [
+      8,
+      8
+    ],
+    "original_top_source_margin": 10,
+    "bounded_top_source_margin": 8,
+    "unchanged_top_target_margin": 10,
+    "original_image_css_and_animation_parameters": "unchanged",
+    "before_regression": "All seven pre-fix banner/motion captures fail the new border check.",
+    "after_regression": "Final banner and six motion frames pass all ten top-border rows.",
+    "review": "Final banner, expanded controls, answered call and cancelled clock captures inspected; no colored top-edge seam."
   }
 }

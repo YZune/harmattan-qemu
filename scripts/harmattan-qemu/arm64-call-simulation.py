@@ -323,7 +323,18 @@ def validate_locked_pixels(ppm):
                for y in range(max(550, top - 190), max(550, top - 5)) for x in range(16, 464))
     if len(green_rows) < 25 or text < 500:
         raise ValueError('Native green lock event or original caller text is absent')
-    return {'green_top': min(green_rows), 'green_rows': len(green_rows), 'caller_text_pixels': text}
+    # The original top shadow has ten horizontally uniform green rows. A
+    # presence-only test misses the two out-of-image raster rows from Qt's
+    # unchecked 10-pixel source border on the 8-pixel slidehint asset.
+    for y in range(top, top + 10):
+        row = pixels[(y * 480 + 16) * 3:(y * 480 + 464) * 3]
+        colours = list(zip(row[0::3], row[1::3], row[2::3]))
+        if (len(colours) != 448 or
+                any(not (g > 90 and g > r * 1.3 and g > b * 1.3) for r, g, b in colours) or
+                any(max(channel) - min(channel) > 2 for channel in zip(*colours))):
+            raise ValueError('Corrupt pixels in native lock banner top border')
+    return {'green_top': top, 'green_rows': len(green_rows), 'caller_text_pixels': text,
+            'top_border_rows_checked': 10}
 
 
 def run_locked_probe(control, qmp, serial, wait_line, capture, drain, output, info, audio):
