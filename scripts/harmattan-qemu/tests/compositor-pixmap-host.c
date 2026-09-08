@@ -7,7 +7,11 @@
 typedef struct { void *vtable; unsigned long drawable; } TexturePrefix;
 extern void _ZN18MTextureFromPixmap6updateEv(TexturePrefix *);
 static TexturePrefix texture = {(void *)1, 99};
-static int mode, reads, updates;
+static int mode, reads, updates, unbinds;
+static bool egl_pixmap;
+extern void _ZN18MTextureFromPixmap6unbindEv(TexturePrefix *);
+static unsigned char inverted(void *self) { assert(self == &texture); return egl_pixmap; }
+static void unbind_original(void *self) { assert(self == &texture); ++unbinds; }
 static bool available;
 static void original(void *self)
 {
@@ -32,6 +36,9 @@ void *dlsym(void *handle, const char *name)
     if (!strcmp(name, "_ZN18MTextureFromPixmap6updateEv")) return original;
     if (!strcmp(name, "_ZN8QX11Info7displayEv")) return display;
     if (!strcmp(name, "XGetGeometry")) return geometry;
+    if (!strcmp(name, "_ZN18MTextureFromPixmap6unbindEv")) return unbind_original;
+    if (!strcmp(name, "_ZNK18MTextureFromPixmap15invertedTextureEv"))
+        return mode == 3 ? 0 : inverted;
     abort();
 }
 int main(int argc, char **argv)
@@ -39,6 +46,11 @@ int main(int argc, char **argv)
     assert(argc == 2);
     mode = atoi(argv[1]);
     if (mode == 2) texture.vtable = 0;
+    if (mode >= 3) {
+        if (mode == 4) texture.vtable = 0;
+        _ZN18MTextureFromPixmap6unbindEv(mode == 5 ? 0 : &texture);
+        abort();
+    }
     _ZN18MTextureFromPixmap6updateEv(&texture);
     assert(reads == 1 && updates == 0 && texture.drawable == 99);
     available = true;
@@ -47,5 +59,14 @@ int main(int argc, char **argv)
     texture.drawable = 0;
     _ZN18MTextureFromPixmap6updateEv(&texture);
     assert(reads == 2 && updates == 1 && texture.drawable == 0);
+    /* Software handoff retains its owned pixels; real EGL images still release. */
+    _ZN18MTextureFromPixmap6unbindEv(&texture);
+    assert(unbinds == 0);
+    egl_pixmap = true;
+    _ZN18MTextureFromPixmap6unbindEv(&texture);
+    assert(unbinds == 1);
+    egl_pixmap = false;
+    _ZN18MTextureFromPixmap6unbindEv(&texture);
+    assert(unbinds == 1);
     return 0;
 }

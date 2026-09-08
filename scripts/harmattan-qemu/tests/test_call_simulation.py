@@ -3,6 +3,7 @@ import array
 import importlib.util
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -12,6 +13,16 @@ SPEC.loader.exec_module(calls)
 
 
 class CallSimulationTests(unittest.TestCase):
+    def test_border_source_bounds_preserve_target_and_original_draw(self):
+        with tempfile.TemporaryDirectory(prefix='harmattan-call-border-') as temporary:
+            binary = str(Path(temporary) / 'border')
+            subprocess.run(['cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+                            str(ROOT / 'scripts/harmattan-qemu/tests/call-border-pixmap-host.c'),
+                            '-o', binary], check=True)
+            for mode in range(2):
+                result = subprocess.run([binary, str(mode)], timeout=5, capture_output=True)
+                self.assertEqual(result.returncode, 0 if mode == 0 else 90)
+
     def test_explicit_scope(self):
         valid = dict(interactive=True, ready=True, profile=None, rotation=270, test=False)
         calls.validate_configuration('on', **valid)
@@ -92,6 +103,20 @@ class CallSimulationTests(unittest.TestCase):
                 calls.validate_pixels(ppm, 'incoming')
             with self.assertRaises(ValueError):
                 calls.validate_locked_pixels(ppm)
+
+    def test_banner_presence_does_not_accept_corrupt_border_rows(self):
+        header = b'P6\n480 864\n255\n'
+        pixels = bytearray(b'\0' * (480 * 864 * 3))
+        pixels[600 * 480 * 3:620 * 480 * 3] = b'\xff' * (20 * 480 * 3)
+        pixels[714 * 480 * 3:] = bytes((100, 175, 45)) * (150 * 480)
+        self.assertEqual(calls.validate_locked_pixels(header + pixels)['top_border_rows_checked'], 10)
+        # Actual failure shape: colored blocks, then an almost uniform pale row.
+        for y, colour in ((722, (100, 175, 253)), (723, (193, 215, 221)),
+                          (722, (90, 150, 40))):
+            broken = bytearray(pixels)
+            broken[(y * 480 + 80) * 3:(y * 480 + 160) * 3] = bytes(colour) * 80
+            with self.subTest(y=y, colour=colour), self.assertRaisesRegex(ValueError, 'top border'):
+                calls.validate_locked_pixels(header + broken)
 
     def test_shell_refuses_profile_and_invalid_modes_before_running(self):
         import os

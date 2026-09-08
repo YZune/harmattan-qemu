@@ -5,7 +5,7 @@
 [启动链输入与 GP 寄存器工作](boot-chain.zh-CN.md)恢复 CONTROL_STATUS，并在私有准备路径中保留 109 个原版非 rootfs 载荷。可选 GP 缓存监控器及 UART 地址修复已使原版冷加载器推进到缺失的 ROM 函数表；完整 ROM/BB5 执行与安全启动仍受阻。
 
 
-显式启用的[来电模拟](call-simulation.zh-CN.md)通过模拟状态驱动原版通话 UI 和铃声，独立于蜂窝仿真，普通启动默认关闭。实际检查见[验证记录](call-simulation-validation.json)。 显式锁屏模式保留原版绿色上滑动画；接听/拒接与恢复锁屏功能检查通过，但严格 GPU 门禁仍失败，见[组合验证](call-lockscreen-validation.json)。
+显式启用的[来电模拟](call-simulation.zh-CN.md)通过模拟状态驱动原版通话 UI 和铃声，独立于蜂窝仿真，普通启动默认关闭。实际检查见[验证记录](call-simulation-validation.json)。显式锁屏模式保留原版绿色上滑动画；本次关闭音频的无窗口回归通过接听/拒接、恢复锁屏、横幅边缘像素与严格 GPU 门禁，见[组合验证](call-lockscreen-validation.json)。
 
 ## 实验性兼容范围
 

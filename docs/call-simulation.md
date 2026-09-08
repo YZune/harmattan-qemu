@@ -27,7 +27,7 @@ The dedicated entry enables private [PulseAudio output](audio.md) by default, in
 
 Wait for `READY` before interacting. Use the green answer button to enter the original call screen, or the red button to reject. The ringtone mute button stops the tune without answering. Hang up with the red button on the active-call screen. Return to Home with the usual edge gesture and open the separate **Simulate call** icon to trigger another call. Repeated requests while a call is pending or active are rejected. Closing the emulator ends the disposable session.
 
-This is a runnable experiment: state and audio checks passed, but the repeated-call diagnostic still emits a GPU texture warning, so full graphics acceptance has not passed. The diagnostic retains its nonzero exit and does not accept the warning as clean.
+The current ordinary and locked-call regressions pass state, pixel and strict GPU checks with audio disabled. Earlier ringtone checks are recorded separately; this graphics fix does not revalidate audio or physical input. See the [current combined validation](call-lockscreen-validation.json).
 
 ## Implementation and limits
 
@@ -37,7 +37,7 @@ The private bus also runs the pinned original GConf daemon with a copied configu
 
 For the effect, the helper receives the original call UI's NGF ringtone requests and plays the user's original `Nokia tune.mp3` through guest GStreamer and the private output server. It loops until mute, answer or call end. This implements the requested simulated feedback; it does not restore the complete original NGF policy or physical sound routing. Active-call audio, microphone mute, speaker routing, DTMF, call waiting, contact matching, missed-call history are outside the accepted scope. The timer represents simulated call state.
 
-The diagnostic checks pinned UI/backend/configuration processes, state transitions, stale-channel and invalid-request rejection, original button pixels, missing-resource markers, and a separate four-context GLES lifecycle. The existing desktop GPU validator is unchanged; faults, rejects, warnings, missing contexts and invalid teardown still fail. Audio-enabled diagnostics record about 32 seconds from the private output monitor and check both the full sample and its tail. This is software output evidence, not an acoustic or physical-input measurement. See the [validation record](call-simulation-validation.json) for the checks actually run.
+The diagnostic checks pinned UI/backend/configuration processes, state transitions, stale-channel and invalid-request rejection, original button pixels, missing-resource markers, and a separate four-context GLES lifecycle. The existing desktop GPU validator is unchanged; faults, rejects, warnings, missing contexts and invalid teardown still fail. Audio-enabled diagnostics record about 32 seconds from the private output monitor and check both the full sample and its tail. This is software output evidence, not an acoustic or physical-input measurement. See the [earlier audio validation](call-simulation-validation.json) and [current graphics regression](call-lockscreen-validation.json) for the checks actually run.
 
 ## Locked incoming calls
 
@@ -47,6 +47,8 @@ Original `call-ui` runs on the private bus and the original lock UI on the deskt
 
 SDK EGL lacks `EGL_KHR_lock_surface2`, required by the original caller banner. The explicit mode therefore loads a scoped adapter in those two original processes: original call-ui QPainter renders into its original X pixmap, and sysuid reads that same content through original Qt image/pixmap constructors. It pins Qt, X11 and application versions and rejects unexpected formats, processes and fences. It neither advertises a missing EGL extension nor redraws the call UI.
 
-The combined diagnostic separates lock state, call state, button pixels and the strict graphics gate, retaining successive animation frames for review. It does not measure animation FPS or replace visible Cocoa input, acoustic or physical-phone acceptance.
+The scoped pixmap adapter also bounds each `qDrawBorderPixmap` source edge to the source image: the original slidehint is 8 pixels high, while its CSS requests a 10-pixel top border. The original target border stays 10 pixels high; Qt scales valid source pixels into it. Original image files, CSS, layout and animation parameters remain unchanged. The compositor separately retains software-readback textures across direct-render handoff until a valid replacement arrives; real EGL-image release and texture-pool cleanup keep their original paths.
 
-See the [locked-call validation record](call-lockscreen-validation.json) for the current combined and ordinary-call regressions. Functional checks passed; the GPU warning and a thin banner-edge seam in an inspected frame remain unresolved. Full graphics acceptance has not passed.
+The combined diagnostic separates lock state, call state, button pixels and the strict graphics gate, retaining successive animation frames for review. It additionally checks all ten top-border rows in the banner and six motion frames, rejecting both non-green and horizontally inconsistent pixels. It does not measure animation FPS or replace visible Cocoa input, acoustic or physical-phone acceptance.
+
+See the [locked-call validation record](call-lockscreen-validation.json) for the current combined, ordinary-call and lock-screen regressions. The unloadable-texture warning and colored banner-edge rows are resolved in these headless checks; the strict GPU validator remains unchanged.

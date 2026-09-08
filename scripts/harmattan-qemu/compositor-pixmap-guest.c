@@ -44,3 +44,27 @@ void _ZN18MTextureFromPixmap6updateEv(TexturePrefix *self)
     }
     original(self);
 }
+
+/* Inverted textures are exactly the original EGL pixmap path. Software
+ * readback owns an ordinary GL image, so there is no EGLImage to release.
+ * Preserve it across direct/redirected rendering until update() can replace
+ * it: a queued transition can still sample it after unbind(). Cleanup still
+ * clears the image in EglTextureManager::closeTexture before pool reuse.
+ */
+void _ZN18MTextureFromPixmap6unbindEv(TexturePrefix *self)
+{
+    typedef unsigned char (*Inverted)(void *);
+    static Update original;
+    static Inverted inverted;
+    if (!original) {
+        original = (Update)dlsym((void *)-1, "_ZN18MTextureFromPixmap6unbindEv");
+        inverted = (Inverted)dlsym((void *)-1, "_ZNK18MTextureFromPixmap15invertedTextureEv");
+    }
+    if (!original || !inverted || !self || !self->vtable) {
+        const char error[] = "N00_COMPOSITOR_PIXMAP_ERROR unsupported unbind ABI\n";
+        write(2, error, sizeof(error) - 1);
+        _exit(128);
+    }
+    if (inverted(self))
+        original(self);
+}

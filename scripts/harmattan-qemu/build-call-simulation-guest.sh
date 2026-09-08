@@ -59,4 +59,5 @@ extract_input libX11.so.6 /usr/lib/libX11.so.6.3.0 4b43c17356976b75b6d05204d03bc
     -fuse-ld=lld -nostdlib -ffreestanding -fno-builtin -fPIC -shared -O2 -Wall -Wextra -Werror \
     -Wl,--build-id=none,--hash-style=sysv,--allow-shlib-undefined -Wl,-z,max-page-size=4096 \
     "$repo_root/scripts/harmattan-qemu/call-livepixmap-guest.c" \
+    "$repo_root/scripts/harmattan-qemu/call-border-pixmap-guest.c" \
     "$link_root/libX11.so.6" "$link_root/libc.so.6" -o "$out/n00-call-livepixmap.so"
