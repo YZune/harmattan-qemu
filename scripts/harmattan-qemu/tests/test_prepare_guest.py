@@ -211,7 +211,8 @@ class GuestPreparationTests(unittest.TestCase):
 
     def test_linux_main_uses_private_stage_beside_output(self):
         with tempfile.TemporaryDirectory(prefix='prepare, test-') as tmp:
-            root = Path(tmp)
+            # Match main()'s canonical path across macOS /var aliases too.
+            root = Path(tmp).resolve()
             tool = root / 'tool'
             tool.write_bytes(b'input or tool')
             tool.chmod(0o755)

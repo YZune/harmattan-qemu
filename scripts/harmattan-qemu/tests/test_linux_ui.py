@@ -203,6 +203,9 @@ report_systemui() {
 
 class LinuxLauncherTests(unittest.TestCase):
     def fixture(self, root):
+        # macOS temporary directories may use /var -> /private/var aliases.
+        # Compare the same canonical paths that the public launcher selects.
+        root = root.resolve()
         build, runtime, prepared = root / 'build', root / 'dgles/objs-x86_64', root / 'prepared'
         for path in (build / 'meson-info', runtime, prepared):
             path.mkdir(parents=True)
