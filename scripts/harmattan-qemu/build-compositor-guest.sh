@@ -49,7 +49,7 @@ extract_input libc.so.6 /lib/libc-2.10.1.so 434c9ee9c201b0a3ae07ca6dbb85430719ed
 extract_input libdl.so.2 /lib/libdl-2.10.1.so 46e89f3e896c176377ee1aca99ce27a33cc6dc3820ed6235403ed0fefe234149
 # Verify the ABI owner even though it is resolved at runtime, not linked here.
 extract_input libmcompositor.so.1.1.3 /usr/lib/libmcompositor.so.1.1.3 e9fcdb50530076abce62aaae65f5116a71badc283c89111a0d5e38f13b4a8c1b
-gles="$repo_root/extracted/pr1.0-qemu-adaptation/usr/lib/libGLESv2.so.1.4.9"
+gles="${HARMATTAN_ADAPTATION_LIBDIR:-$repo_root/extracted/pr1.0-qemu-adaptation/usr/lib}/libGLESv2.so.1.4.9"
 check_sha "$gles" f8d9e4931b395581259766876532c311d2d6d518edc0b48ba2d93744a7fd887e
 "$cc" --target=arm-linux-gnueabihf -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=hard \
     -fuse-ld=lld -nostdlib -ffreestanding -fno-builtin -fPIC -shared -O2 -Wall -Wextra -Werror \

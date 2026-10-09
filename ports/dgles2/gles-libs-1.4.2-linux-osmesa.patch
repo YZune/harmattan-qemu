@@ -1,0 +1,199 @@
+Linux OSMesa additions: Copyright (C) 2026 YZune and contributors.
+SPDX-License-Identifier: MIT
+Apply after gles-libs-1.4.2-cocoa-fbo.patch; retain the original Nokia notices.
+See LICENSES/MIT.txt for the MIT license text.
+
+--- a/dgles2/src/EGL/context.c
++++ b/dgles2/src/EGL/context.c
+@@ -26,14 +26,14 @@
+ #include "surface.h"
+ #include "config.h"
+ 
+-static void deglRefContext(DEGLContext* context)
++void deglRefContext(DEGLContext* context)
+ {
+ 	Dprintf("Make reference counting threadsafe!\n");
+ 	if(context)
+ 		context->bound++;
+ }
+ 
+-static void deglUnrefContext(EGLDisplay dpy, DEGLContext** context)
++void deglUnrefContext(EGLDisplay dpy, DEGLContext** context)
+ {
+ 	if(*context && !--(*context)->bound && (*context)->destroy)
+ 	{
+@@ -515,6 +515,24 @@
+ #	if(CONFIG_OSMESA == 1)
+ 	if(degl_backend == DEGLBackend_osmesa)
+ 	{
++        if(draw_surface != read_surface ||
++           ((context == NULL) != (draw_surface == NULL)))
++        {
++            deglSetError(EGL_BAD_MATCH);
++            return EGL_FALSE;
++        }
++        if(!context)
++        {
++            /* Finish before the client can release the pixel target, then
++             * clear native current state as well as the EGL/TLS state below. */
++            if(old_context && old_context->glesfuncs)
++                (*old_context->glesfuncs->glFinish)();
++            if(!hOSMesa.MakeCurrent(NULL, NULL, GL_UNSIGNED_BYTE, 0, 0))
++            {
++                deglSetError(EGL_BAD_ACCESS);
++                return EGL_FALSE;
++            }
++        }
+ 		GLenum type = GL_UNSIGNED_BYTE;
+ 
+ 		if(draw_surface && draw_surface->bpp == 2)
+@@ -528,9 +546,29 @@
+ #		if(CONFIG_OFFSCREEN == 1)
+ 		if(degl_frontend == DEGLFrontend_offscreen)
+ 		{
++            if(context && draw_surface)
++            {
++                /* Match the maintained offscreen ownership and size boundary.
++                 * Validate before touching host state so failure preserves it. */
++                if(draw_surface != read_surface ||
++                   draw_surface->type != DEGLSurface_offscreen ||
++                   !draw_surface->ddraw || !draw_surface->ddraw->pixels ||
++                   draw_surface->ddraw->width < 1 || draw_surface->ddraw->width > 4096 ||
++                   draw_surface->ddraw->height < 1 || draw_surface->ddraw->height > 4096 ||
++                   draw_surface->ddraw->bpp != 4)
++                {
++                    deglSetError(EGL_BAD_MATCH);
++                    return EGL_FALSE;
++                }
++                if(draw_surface->osmesa_owner && draw_surface->osmesa_owner != context)
++                {
++                    deglSetError(EGL_BAD_ACCESS);
++                    return EGL_FALSE;
++                }
++            }
+ 			if(context && draw_surface && !hOSMesa.MakeCurrent(context->osmesa.ctx,
+ 				draw_surface->ddraw->pixels, type,
+-				draw_surface->width, draw_surface->height))
++				draw_surface->ddraw->width, draw_surface->ddraw->height))
+ 			{
+ 				Dprintf("ctx = %p, bpp = %d, width = %d, height = %d\n",
+ 					context->osmesa.ctx, draw_surface->bpp,
+@@ -539,6 +577,18 @@
+ 				deglSetError(EGL_BAD_ALLOC);
+ 				return EGL_FALSE;
+ 			}
++            if(context && draw_surface)
++            {
++                if(!draw_surface->osmesa_owner)
++                {
++                    draw_surface->osmesa_owner = context;
++                    deglRefContext(context);
++                }
++                draw_surface->width = draw_surface->ddraw->width;
++                draw_surface->height = draw_surface->ddraw->height;
++                draw_surface->depth = draw_surface->ddraw->depth;
++                draw_surface->bpp = draw_surface->ddraw->bpp;
++            }
+ #			if(CONFIG_DEBUG == 1)
+ 			if(draw_surface)
+ 				Dprintf("PIXELS: Bind %p as current!\n", draw_surface->ddraw->pixels);
+--- a/dgles2/src/EGL/context.h
++++ b/dgles2/src/EGL/context.h
+@@ -100,4 +100,7 @@
+ #	endif // (CONFIG_WGL == 1)
+ } DEGLContext;
+ 
++void deglRefContext(DEGLContext *context);
++void deglUnrefContext(EGLDisplay dpy, DEGLContext **context);
++
+ #endif // CONTEXT_H_
+--- a/dgles2/src/EGL/surface.c
++++ b/dgles2/src/EGL/surface.c
+@@ -848,7 +848,8 @@
+ #	if(CONFIG_OSMESA == 1)
+ 	if(degl_backend == DEGLBackend_osmesa)
+ 	{
+-		// nothing to do
++        if(surface->osmesa_owner)
++            deglUnrefContext(dpy, &surface->osmesa_owner);
+ 	}
+ #	endif // CONFIG_OSMESA == 1
+ 
+@@ -990,17 +991,18 @@
+ static EGLBoolean deglResizeOffscreenSurface(DEGLDisplay *display, DEGLContext *context,
+ 	DEGLSurface *surface)
+ {
++#	if(CONFIG_OSMESA == 1)
++	if(degl_backend == DEGLBackend_osmesa)
++	{
++        /* Failed validation must not cache invalid dimensions and turn a
++         * repeated swap into a false success. MakeCurrent commits on success. */
++		return eglMakeCurrent(display, surface, surface, context);
++	}
++#	endif // (CONFIG_OSMESA == 1)
+ 	surface->width = surface->ddraw->width;
+ 	surface->height = surface->ddraw->height;
+ 	surface->depth = surface->ddraw->depth;
+ 	surface->bpp = surface->ddraw->bpp;
+-
+-#	if(CONFIG_OSMESA == 1)
+-	if(degl_backend == DEGLBackend_osmesa)
+-	{
+-		eglMakeCurrent(display, surface, surface, context);
+-	}
+-#	endif // (CONFIG_OSMESA == 1)
+ 
+ #	if(CONFIG_GLX == 1)
+ 	if(degl_backend == DEGLBackend_glx)
+@@ -1132,6 +1134,18 @@
+ 		return EGL_FALSE;
+ 	}
+ 
++#if(CONFIG_OSMESA == 1 && CONFIG_OFFSCREEN == 1)
++    if(degl_backend == DEGLBackend_osmesa && degl_frontend == DEGLFrontend_offscreen &&
++       (surface->type != DEGLSurface_offscreen || !surface->ddraw ||
++        !surface->ddraw->pixels || surface != context->draw ||
++        surface->osmesa_owner != context))
++    {
++        /* A swap must never acquire an unbound/foreign surface through resize. */
++        deglSetError(EGL_BAD_SURFACE);
++        return EGL_FALSE;
++    }
++#endif
++
+ 	(*context->glesfuncs->glFlush)();
+ #	if(TIME_TRANSFERS == 1)
+ 	static struct timeval prev_time;
+@@ -1176,6 +1190,19 @@
+ 		else
+ #		endif // (CONFIG_COCOA == 1)
+ #		if(CONFIG_OSMESA == 1)
++        if(degl_backend == DEGLBackend_osmesa)
++        {
++            if(surface != context->draw || surface->osmesa_owner != context)
++            {
++                deglSetError(EGL_BAD_SURFACE);
++                return EGL_FALSE;
++            }
++            /* OSMesa renders directly to the client pixels. Complete those
++             * writes before publishing the same one-swap notification as FBO. */
++            (*context->glesfuncs->glFinish)();
++            if(surface->ddraw->swap)
++                surface->ddraw->swap(surface->ddraw->userdata);
++        }
+ 		if (degl_backend != DEGLBackend_osmesa)
+ #		endif // (CONFIG_OSMESA == 1)
+ 		{
+--- a/dgles2/src/EGL/surface.h
++++ b/dgles2/src/EGL/surface.h
+@@ -58,6 +58,10 @@
+ 	unsigned depth;  /* color bit depth */
+ 	unsigned bpp;    /* bytes per pixel */
+ 	DEGLConfig *config;
++#if(CONFIG_OSMESA == 1)
++	/* Retain the creating context until this bounded offscreen surface dies. */
++	struct DEGLContext *osmesa_owner;
++#endif
+ 
+ #	if(CONFIG_OFFSCREEN == 1)
+ 	DEGLDrawable* ddraw; /* Offscreen drawable handle. */

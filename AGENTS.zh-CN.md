@@ -14,10 +14,10 @@
 | --- | --- |
 | 文档或发布元数据 | 检查链接、发布内容和差异，无需重建模拟器 |
 | 主机工具、验证器及测试 | Python、C 编译器、Perl；先运行相关 unittest，行为改动再运行主机测试套件 |
-| QEMU/DGLES 补丁 | 原生 ARM64 macOS、宿主工具及固定源码归档；干净源码构建与相关图形检查 |
+| QEMU/DGLES 补丁 | 所选支持的宿主/后端、工具和固定源码归档；干净源码构建与相关图形/生命周期检查 |
 | 客体行为或交互 UI | 上述条件，再加 APFS、macOS 图形会话、支持 ARM 的 LLVM/lld、debugfs 和准备好的客体输入；运行相关客体诊断 |
 
-Linux 可运行可移植主机测试，并跳过 AppKit 测试；完整模拟器运行目前面向 Apple Silicon macOS。`check-environment.py` 是完整构建的前提检查，其中缺少 Mac 或归档的结果不妨碍 Linux 上的纯源码贡献。它只检查文件存在及工具发现，不验证摘要、盘内内容、APFS 行为或编译器能力。
+Linux 可运行可移植主机测试，并跳过 AppKit 测试。[Linux x86_64 离屏指南](docs/linux.zh-CN.md)说明独立的构建与客体路径；原生窗口运行时仍面向 Apple Silicon macOS。`check-environment.py` 是完整构建的前提检查，其中缺少 Mac 或归档的结果不妨碍 Linux 上的纯源码贡献。它只检查文件存在及工具发现，不验证摘要、盘内内容、APFS 行为或编译器能力。
 
 ## 无需镜像的检查
 
@@ -38,7 +38,7 @@ git diff --check
 
 按[构建说明](docs/building.zh-CN.md)准备工具和准确输入布局，[inputs.json](docs/inputs.json)标识归档和客体文件。先运行 `python3 scripts/check-environment.py`，需要客体运行时加 `--guest`。不要通过修改固定版本或摘要来绕过缺失或不匹配的输入。
 
-前提满足后，如需一次完整的原生干净构建：
+Linux 使用 [Linux 指南](docs/linux.zh-CN.md)的显式命令。macOS 前提满足后，如需一次原生干净构建：
 
 ```sh
 mkdir -p extracted

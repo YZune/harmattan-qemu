@@ -8,7 +8,9 @@
 
 Harmattan QEMU brings Nokia's experimental N00 board support forward to QEMU 9.1.3 and connects its legacy graphics protocol to a native macOS backend. It runs original Harmattan ARM software: the Home screen, selected applications, the compositor, and the on-screen keyboard.
 
-This is an experimental preservation project. The host is native ARM64 macOS; the guest remains ARM32 under TCG, using a PR1.0-era emulator kernel and adaptation layer with PR1.3 retail userspace. It is not an official Nokia emulator or a complete N9 hardware model.
+An experimental [Linux x86_64 offscreen source path](docs/linux.md) also runs the original UI with software rendering and QMP input. It does not yet provide a native Linux window or release package.
+
+This is an experimental preservation project. The native windowed host is ARM64 macOS; the guest remains ARM32 under TCG, using a PR1.0-era emulator kernel and adaptation layer with PR1.3 retail userspace. It is not an official Nokia emulator or a complete N9 hardware model.
 
 ## Running Harmattan
 

@@ -7,6 +7,8 @@
 
 显式启用的[来电模拟](call-simulation.zh-CN.md)通过模拟状态驱动原版通话 UI 和铃声，独立于蜂窝仿真，普通启动默认关闭。实际检查见[验证记录](call-simulation-validation.json)。显式锁屏模式保留原版绿色上滑动画；本次关闭音频的无窗口回归通过接听/拒接、恢复锁屏、横幅边缘像素与严格 GPU 门禁，见[组合验证](call-lockscreen-validation.json)。
 
+实验性 [Linux 离屏运行时](linux.zh-CN.md)已取得有界的原版 Home/Notes/Maliit/Calculator 结果。[Linux 验证记录](linux-validation.json)区分原始实验与整理后的检查，不代表原生窗口、实体输入或完整设备服务已支持。
+
 ## 实验性兼容范围
 
 研究基线为 `621c7f7`（2026-09-05）。以下是该工作区的记录结果，不是对其他客体镜像或宿主工具链的保证。
@@ -62,7 +64,7 @@ macOS 预编译预览版另有[验证记录](release-preview-validation.json)，
 
 原生源码构建现已支持显式开启 [SDK 以太网联网](networking.zh-CN.md)。[验证记录](networking-validation.json)覆盖全新 QEMU 构建、259 项宿主测试、客体 DHCP、公网 DNS/HTTP、双向内容校验，以及启用网络的联合无窗口 UI 回归。已经下载的预览应用需要重新构建。
 
-- Linux/Windows 运行时移植、另一台 Mac 独立验证，以及 Developer ID 签名和公证。打包运行时及仍需提供的客体输入见[预编译预览版](releases.zh-CN.md)。
+- Linux 原生窗口/发行包、Windows 运行时移植、另一台 Mac 独立验证，以及 Developer ID 签名和公证。打包运行时及仍需提供的客体输入见[预编译预览版](releases.zh-CN.md)。
 - 新增原始材料准备流程的独立复现、更多介质版本的支持，以及可再分发的客体基线。
 - 完整 EGL/GLES、SGX 仿真及任意 ARMEL 包兼容。
 - 完整 Upstart/Aegis/设备服务、蜂窝、相机、硬件音频路由、Wi-Fi/连接管理器集成和准确物理传感器。

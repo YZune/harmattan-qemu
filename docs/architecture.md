@@ -7,7 +7,7 @@
 | Layer | Ownership | Main source |
 | --- | --- | --- |
 | Host emulator | QEMU 9.1.3 plus forward-ported Nokia N00 devices | `ports/qemu-n00/` |
-| Host graphics | Nokia DGLES source with Cocoa offscreen FBO adaptation | `ports/dgles2/` |
+| Host graphics | Nokia DGLES with Cocoa FBO or Linux OSMesa adaptation | `ports/dgles2/` |
 | Guest kernel and adaptation | User-supplied PR1.0 emulator kernel and graphics ABI | External inputs |
 | Experimental PR1.3 kernel | Original DVD kernel plus QEMU adaptation and build compatibility | `ports/guest-kernel/`, `build-pr13-kernel.sh`; see [kernel](kernel.md) |
 | Guest product software | User-supplied PR1.3 original libraries and applications | External inputs |
@@ -49,6 +49,8 @@ The prefix below is `qemu-9.1.3-n00`. The builder selects only the appropriate o
 | 25 | `-uart-offset.patch` | OMAP UART extended offsets and physical byte fallback |
 
 The normal `--cocoa-interaction` build includes the idle/input activity path and the host view/shutdown code. It does not require artwork. The DGLES patch applies to a different source archive; never apply it to the QEMU tree.
+
+The explicit `--linux-interaction` mode applies the maintained board/graphics stack, then the Linux OSMesa and early-cleanup patches. It disables Cocoa/GTK/SDL/VNC. The DGLES OSMesa patch follows the existing Cocoa patch in the separate DGLES source tree; host selection keeps the backends distinct. See the [Linux design](linux.md#design) for ownership, teardown and transport details.
 
 ## Guest graphics and UI
 

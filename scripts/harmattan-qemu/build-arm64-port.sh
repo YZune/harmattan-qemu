@@ -1,17 +1,20 @@
 #!/bin/sh
-# Build the isolated QEMU 9.1.3 N00 direct-boot experiment on Apple Silicon.
+# Build the isolated QEMU 9.1.3 N00 direct-boot experiment.
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 port_root="$repo_root/ports/qemu-n00"
-work_root=${HARMATTAN_PORT_WORKSPACE:-"$repo_root/extracted/qemu-arm64-port"}
+host=$(uname -s):$(uname -m)
+workspace_name=qemu-arm64-port
+if [ "$host" = Linux:x86_64 ]; then workspace_name=qemu-linux-port; fi
+work_root=${HARMATTAN_PORT_WORKSPACE:-"$repo_root/extracted/$workspace_name"}
 archive=${HARMATTAN_QEMU_TARBALL:-"$repo_root/downloads/tools/qemu-9.1.3.tar.xz"}
 python_bin=${HARMATTAN_PYTHON:-python3}
 ninja_bin=${HARMATTAN_NINJA:-ninja}
 jobs=${HARMATTAN_BUILD_JOBS:-8}
 mode=${1:---headless}
-if [ "$#" -gt 1 ] || { [ "$mode" != --headless ] && [ "$mode" != --gles ] && [ "$mode" != --cocoa ] && [ "$mode" != --cocoa-idle ] && [ "$mode" != --cocoa-profile ] && [ "$mode" != --cocoa-scanout ] && [ "$mode" != --cocoa-activity ] && [ "$mode" != --cocoa-interaction ]; }; then
-    echo "Usage: sh $0 [--headless|--gles|--cocoa|--cocoa-idle|--cocoa-profile|--cocoa-scanout|--cocoa-activity|--cocoa-interaction]" >&2
+if [ "$#" -gt 1 ] || { [ "$mode" != --linux-interaction ] && [ "$mode" != --headless ] && [ "$mode" != --gles ] && [ "$mode" != --cocoa ] && [ "$mode" != --cocoa-idle ] && [ "$mode" != --cocoa-profile ] && [ "$mode" != --cocoa-scanout ] && [ "$mode" != --cocoa-activity ] && [ "$mode" != --cocoa-interaction ]; }; then
+    echo "Usage: sh $0 [--linux-interaction|--headless|--gles|--cocoa|--cocoa-idle|--cocoa-profile|--cocoa-scanout|--cocoa-activity|--cocoa-interaction]" >&2
     exit 2
 fi
 
@@ -21,10 +24,19 @@ ninja_bin=$(command -v "$ninja_bin")
 PATH="$(dirname -- "$ninja_bin"):$PATH"
 export PATH
 
-if [ "$(uname -s):$(uname -m)" != Darwin:arm64 ]; then
-    echo 'Run this build from a native arm64 macOS shell, not Rosetta.' >&2
-    exit 1
-fi
+case "$host:$mode" in
+    Linux:x86_64:--linux-interaction)
+        # Reuse the complete maintained interaction patch stack. Cocoa-only
+        # sources stay dormant; Linux has no native window in this experiment.
+        mode=--cocoa-interaction ;;
+    Darwin:arm64:--linux-interaction)
+        echo '--linux-interaction requires Linux x86_64.' >&2; exit 2 ;;
+    Darwin:arm64:*) ;;
+    Linux:x86_64:*)
+        echo 'Use --linux-interaction for the experimental Linux build.' >&2; exit 2 ;;
+    *)
+        echo 'Use native arm64 macOS or experimental Linux x86_64.' >&2; exit 1 ;;
+esac
 if [ ! -f "$archive" ]; then
     echo "Missing QEMU archive: $archive" >&2
     echo 'Download https://download.qemu.org/qemu-9.1.3.tar.xz or set HARMATTAN_QEMU_TARBALL.' >&2
@@ -66,6 +78,16 @@ fi
 (
     cd "$source_root"
     export GIT_CEILING_DIRECTORIES="$work_root"
+    linux_patch="$port_root/qemu-9.1.3-n00-linux-osmesa.patch"
+    cleanup_patch="$port_root/qemu-9.1.3-n00-linux-cleanup.patch"
+    if [ "$host" = Linux:x86_64 ]; then
+        # Unwind only recognized increments before the historical state checks.
+        for patch_file in "$cleanup_patch" "$linux_patch"; do
+            if git apply --reverse --check "$patch_file" >/dev/null 2>&1; then
+                git apply --reverse "$patch_file"
+            fi
+        done
+    fi
     base_patch="$port_root/qemu-9.1.3-n00.patch"
     display_patch="$port_root/qemu-9.1.3-n00-display.patch"
     gles_patch="$port_root/qemu-9.1.3-n00-gles.patch"
@@ -322,15 +344,32 @@ fi
         git apply --check "$uart_patch"
         git apply "$uart_patch"
     fi
+    if [ "$host" = Linux:x86_64 ]; then
+        git apply --check "$linux_patch"
+        git apply "$linux_patch"
+        git apply --check "$cleanup_patch"
+        git apply "$cleanup_patch"
+    fi
 )
+
+if [ "${HARMATTAN_PREPARE_ONLY:-0}" = 1 ]; then
+    echo "Prepared source: $source_root"
+    exit 0
+fi
 
 build_name=build-arm64-headless
 display_flag=--disable-cocoa
 set --
 if [ "$mode" != --headless ]; then
     dgles_root=${HARMATTAN_DGLES_ROOT:-"$work_root/dgles2-host/gles-libs-1.4.2/dgles2"}
-    for required in include/EGL/egl.h objs-arm64/libEGL.dylib \
-        objs-arm64/libGLES_CM.dylib objs-arm64/libGLESv2.dylib; do
+    library_dir=objs-arm64
+    library_suffix=dylib
+    if [ "$host" = Linux:x86_64 ]; then
+        library_dir=objs-x86_64
+        library_suffix=so
+    fi
+    for required in include/EGL/egl.h "$library_dir/libEGL.$library_suffix" \
+        "$library_dir/libGLES_CM.$library_suffix" "$library_dir/libGLESv2.$library_suffix"; do
         test -f "$dgles_root/$required" || { echo "Missing DGLES file: $dgles_root/$required" >&2; exit 1; }
     done
     dgles_root=$(CDPATH= cd -- "$dgles_root" && pwd)
@@ -360,9 +399,16 @@ if [ "$mode" != --headless ]; then
         display_flag=--enable-cocoa
     fi
     set -- "-Dn00_dgles_dir=$dgles_root"
-    # The legacy dylibs use basename install names. Only affect this command.
-    DYLD_LIBRARY_PATH="$dgles_root/objs-arm64${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-    export DYLD_LIBRARY_PATH
+    if [ "$host" = Linux:x86_64 ]; then
+        build_name=build-linux-interaction
+        display_flag=--disable-cocoa
+        LD_LIBRARY_PATH="$dgles_root/objs-x86_64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH
+    else
+        # The legacy dylibs use basename install names. Only affect this command.
+        DYLD_LIBRARY_PATH="$dgles_root/objs-arm64${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+        export DYLD_LIBRARY_PATH
+    fi
 fi
 mkdir -p "$source_root/$build_name"
 cd "$source_root/$build_name"
@@ -378,7 +424,7 @@ else
     ./pyvenv/bin/meson configure -Dslirp=enabled "$@" .
 fi
 "$ninja_bin" -j "$jobs" qemu-system-arm qemu-img
-if [ "$mode" = --cocoa-interaction ]; then
+if [ "$host" = Darwin:arm64 ] && [ "$mode" = --cocoa-interaction ]; then
     # Give the native runtime a stable macOS application identity. The normal
     # run script supplies the guest/snapshot arguments, as for the plain binary.
     bundle="$PWD/Harmattan N9.app/Contents"

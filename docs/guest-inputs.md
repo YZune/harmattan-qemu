@@ -18,7 +18,7 @@ cd harmattan-qemu
 | [Nokia Qt SDK 1.1.2 archive](https://archive.org/details/nokia-qt-sdk-1.1.2) | [Qt_SDK_Win_offline_v1_1_2_en.exe](https://archive.org/download/nokia-qt-sdk-1.1.2/Qt_SDK_Win_offline_v1_1_2_en.exe) | 1,907,658,896 bytes | PR1.0 emulator kernel, graphics adaptation and original SDK disk layout |
 | [Nokia N9 RM696 archive](https://archive.org/details/RM696) | [DFL61_HARMATTAN_40.2012.21-3_PR_LEGACY_001-OEM1-958_ARM.bin](https://archive.org/download/RM696/DFL61_HARMATTAN_40.2012.21-3_PR_LEGACY_001-OEM1-958_ARM.bin) | 1,248,135,798 bytes | PR1.3 global retail root filesystem |
 
-The Windows installer is used as an archive **on macOS**. Do not execute or install it. No Windows, Wine, historical SDK installation or phone is involved. The firmware is not flashed to a device.
+The Windows installer is used only as an archive **on macOS or Linux**. Do not execute or install it. No Windows, Wine, historical SDK installation or phone is involved. The firmware is not flashed to a device.
 
 Both exact download endpoints returned HTTP 200 with the expected lengths on 2026-09-05. Archive metadata also matched the historical SHA-1 identities; the preparation script verifies the complete files with the SHA-256 values below. Availability can change, so preserve your original downloads and their checksums independently. A mirror is acceptable only when the complete file matches; do not substitute a different region, PR release, SDK version, EMMC image, source ISO or phone/openmode kernel. Archive availability does not grant redistribution rights.
 
@@ -45,7 +45,7 @@ ce16cbd7c99e607f51789d857fe8573852a999053a79af1fa20d645457044e30  Qt_SDK_Win_off
 
 ## 2. Prepare tools once
 
-This preparation route currently targets Apple Silicon macOS 26.0 or newer (the Preview 1 app's requirement) and the system APFS volume. Reserve at least 30 GiB of free space for original media, intermediate files and the sparse output. The disk's logical capacity is 32 GiB; copying it with a tool that expands sparse holes can require much more space.
+The commands below target Apple Silicon macOS 26.0 or newer (the Preview 1 app's requirement) and the system APFS volume. Linux x86_64 uses the same verified media with the [Linux source-build preparation commands](linux.md#4-prepare-the-historical-guest-locally), GNU sparse copying and output-adjacent staging. Reserve at least 30 GiB of free space for original media, intermediate files and the sparse output. The disk's logical capacity is 32 GiB; copying it with a tool that expands sparse holes can require much more space.
 
 Use Python 3.12 or newer, 7-Zip (`7zz`), `debugfs` and liblzo2. Homebrew users can install missing tools:
 
