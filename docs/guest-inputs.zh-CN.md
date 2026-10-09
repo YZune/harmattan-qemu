@@ -18,7 +18,7 @@ cd harmattan-qemu
 | [Nokia Qt SDK 1.1.2 存档](https://archive.org/details/nokia-qt-sdk-1.1.2) | [Qt_SDK_Win_offline_v1_1_2_en.exe](https://archive.org/download/nokia-qt-sdk-1.1.2/Qt_SDK_Win_offline_v1_1_2_en.exe) | 1,907,658,896 字节 | PR1.0 模拟器内核、图形适配层和原始 SDK 磁盘布局 |
 | [Nokia N9 RM696 存档](https://archive.org/details/RM696) | [DFL61_HARMATTAN_40.2012.21-3_PR_LEGACY_001-OEM1-958_ARM.bin](https://archive.org/download/RM696/DFL61_HARMATTAN_40.2012.21-3_PR_LEGACY_001-OEM1-958_ARM.bin) | 1,248,135,798 字节 | PR1.3 全球版量产根文件系统 |
 
-Windows 安装包在 **macOS 上仅作为归档读取**，不要运行或安装它。不需要 Windows、Wine、旧版 SDK 安装环境或手机，也不会把固件刷入设备。
+Windows 安装包在 **macOS 或 Linux 上仅作为归档读取**，不要运行或安装它。不需要 Windows、Wine、旧版 SDK 安装环境或手机，也不会把固件刷入设备。
 
 2026-09-05 检查时，两个精确下载入口均返回 HTTP 200，文件长度符合记录；存档元数据也符合历史 SHA-1 身份。准备脚本还会按下方 SHA-256 验证完整文件。下载站可能变化，请独立保存原始下载物及其校验值。其他镜像站的文件只有完整摘要一致才可替代；不要改用不同地区、PR 版本、SDK 版本、EMMC 镜像、源码 ISO 或手机/openmode 内核。存档可下载不代表获得再分发许可。
 
@@ -45,7 +45,7 @@ ce16cbd7c99e607f51789d857fe8573852a999053a79af1fa20d645457044e30  Qt_SDK_Win_off
 
 ## 2. 一次性准备工具
 
-当前准备流程面向 Apple Silicon macOS 26.0 或更新版本（Preview 1 应用的要求），并使用系统 APFS 卷。建议至少预留 30 GiB 可用空间，用于原始材料、中间文件和稀疏产物。磁盘逻辑容量为 32 GiB；若复制工具展开了稀疏空洞，实际占用可能大幅增加。
+以下命令面向 Apple Silicon macOS 26.0 或更新版本（Preview 1 应用的要求），并使用系统 APFS 卷。Linux x86_64 使用相同的已校验材料，按 [Linux 源码准备命令](linux.zh-CN.md#4-在本地准备历史客体)操作，采用 GNU 稀疏复制及输出相邻的临时目录。建议至少预留 30 GiB 可用空间，用于原始材料、中间文件和稀疏产物。磁盘逻辑容量为 32 GiB；若复制工具展开了稀疏空洞，实际占用可能大幅增加。
 
 需要 Python 3.12 或更新版本、7-Zip（`7zz`）、`debugfs` 和 liblzo2。Homebrew 用户可以安装缺少的工具：
 

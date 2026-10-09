@@ -6,7 +6,7 @@
 
 ## 支持的起点
 
-完整构建和运行路径目前面向 **Apple Silicon 原生 macOS 与 APFS**。Linux 可运行可移植主机测试；Linux 客体运行属于后续移植工作。固定 QEMU 9.1.3 是因为其 OMAP 基础与当前移植匹配，不表示它是最新版本。
+原生窗口构建和运行路径面向 **Apple Silicon 原生 macOS 与 APFS**。实验性的 **Linux x86_64 离屏**路径有独立的[依赖、设计和命令](linux.zh-CN.md)，Linux 用户应使用该指南；本文其余部分描述 macOS 路径。固定 QEMU 9.1.3 是因为其 OMAP 基础与当前移植匹配，不表示它是最新版本。
 
 独立的[实验性 PR1.3 内核构建](kernel.zh-CN.md)使用 Linux 构建环境，并保留原版 Aegis 实现；不改变默认 SDK 内核，也不代表完整设备服务已就绪。
 
@@ -51,7 +51,7 @@ python3 -B -m unittest discover -s scripts/harmattan-qemu/tests -p 'test_*.py'
 | QEMU 9.1.3 发行归档 | `downloads/tools/qemu-9.1.3.tar.xz` | `HARMATTAN_QEMU_TARBALL` |
 | PR1.3 DGLES 源码包 | `downloads/tools/gles-libs_1.4.2-3+0m6.tar.gz` | `HARMATTAN_GLES_TARBALL` |
 
-QEMU 来自[官方发行归档](https://download.qemu.org/qemu-9.1.3.tar.xz)。DGLES 包位于 Harmattan PR1.3 源码 DVD 的 `sources/` 目录。[来源说明](sources.zh-CN.md)与 [inputs.json](inputs.json)记录准确摘要。两个构建脚本均在解包前拒绝不匹配归档。
+QEMU 来自[官方发行归档](https://download.qemu.org/qemu-9.1.3.tar.xz)。DGLES 包位于 Harmattan PR1.3 源码 DVD 的 `sources/` 目录，也包含在项目 Preview 1 源码包中；[准确源码包下载、成员路径和摘要](linux.zh-CN.md#2-获取固定公共源码)提供可复现的获取方法。[来源说明](sources.zh-CN.md)与 [inputs.json](inputs.json)记录准确摘要。两个构建脚本均在解包前拒绝不匹配归档。
 
 ## 3. 原生构建
 

@@ -2,6 +2,7 @@
 """Capture actual PR1.3 shell startup failures; not a desktop acceptance test."""
 import argparse
 from collections import Counter
+from functools import partial
 import hashlib
 import importlib.util
 import json
@@ -12,6 +13,7 @@ import select
 import signal
 import socket
 import subprocess
+import sys
 import time
 
 SPEC = importlib.util.spec_from_file_location("display_smoke", Path(__file__).with_name("smoke-arm64-display.py"))
@@ -81,6 +83,9 @@ LOCK_SPEC.loader.exec_module(lockscreen)
 READINESS_SPEC = importlib.util.spec_from_file_location('readiness', Path(__file__).with_name('arm64-readiness.py'))
 readiness = importlib.util.module_from_spec(READINESS_SPEC)
 READINESS_SPEC.loader.exec_module(readiness)
+LINUX_SPEC = importlib.util.spec_from_file_location('linux_offscreen', Path(__file__).with_name('linux-offscreen.py'))
+linux_offscreen = importlib.util.module_from_spec(LINUX_SPEC)
+LINUX_SPEC.loader.exec_module(linux_offscreen)
 PHASES = ("bootstrap", "theme", "compositor", "home", "settled", "final")
 LIBRARIES = {
     "/usr/bin/mcompositor": "52d29f7f90d03277ded463ebc3c5f33d",
@@ -191,7 +196,7 @@ def validate_scroll(data, home, initial, scrolled, restored):
             'restored': back, 'round_trip_exact': True}
 
 
-def validate_desktop_host(data):
+def validate_desktop_host(data, renderer=None):
     lines = data.strip().split(b"\n")
     if len(lines) != 10:
         raise ValueError("unexpected shell GPU log")
@@ -201,8 +206,8 @@ def validate_desktop_host(data):
     if any(lines[index] != value for index, value in expected.items()):
         raise ValueError("unexpected shell client/worker lifecycle")
     for index, client in ((2, 1), (4, 2)):
-        if not re.fullmatch(f"N00_GLES current client={client} es=2 renderer=Apple ".encode() + rb"[^\n]+", lines[index]):
-            raise ValueError("missing actual Apple GPU context")
+        if not re.fullmatch(f"N00_GLES current client={client} es=2 renderer=".encode() + systemui.renderer_pattern(renderer), lines[index]):
+            raise ValueError("missing the selected renderer context")
     render = re.fullmatch(rb"N00_GLES render compiles=(\d+) links=(\d+) uploads=(\d+) draws=(\d+) rejects=0", lines[8])
     summary = re.fullmatch(rb"N00_GLES summary calls=(\d+) swaps=(\d+) faults=0 workers=joined", lines[9])
     if not render or not summary or not all(int(value) > 0 for value in (*render.groups(), *summary.groups())):
@@ -211,14 +216,14 @@ def validate_desktop_host(data):
                     map(int, (*render.groups(), *summary.groups()))), rejects=0, faults=0, workers_joined=True)
 
 
-def validate_live_host(data):
+def validate_live_host(data, renderer=None):
     lines = data.strip().split(b'\n')
     if len(lines) != 5 or lines[0] != b'N00_GLES connect client=0 abi=1' or \
             lines[1] != b'N00_GLES connect client=1 abi=2' or lines[3] != b'N00_GLES connect client=2 abi=2':
         raise ValueError('unexpected native-window startup log; inspect qemu-stderr.log')
     for index, client in ((2, 1), (4, 2)):
-        if not re.fullmatch(f'N00_GLES current client={client} es=2 renderer=Apple '.encode() + rb'[^\n]+', lines[index]):
-            raise ValueError('missing native GPU context at startup')
+        if not re.fullmatch(f'N00_GLES current client={client} es=2 renderer='.encode() + systemui.renderer_pattern(renderer), lines[index]):
+            raise ValueError('missing the selected renderer context at startup')
     return {'gpu_contexts': 2, 'shutdown_summary_pending': True}
 
 
@@ -236,8 +241,40 @@ def desktop_frame(data):
     return {"rgb_sha256": hashlib.sha256(rgb).hexdigest(), "colors": len(colors), "non_black_pixels": non_black}
 
 
+def validate_host_configuration(args, command):
+    """The Linux experiment is explicit and limited to bounded offline runs."""
+    linux = args.host_backend == 'linux-offscreen'
+    if not linux:
+        if args.host_renderer is not None or args.systemui_attempts != 15:
+            raise ValueError('renderer selection and extended polling require Linux offscreen')
+        return False
+    if sys.platform != 'linux' or args.host_renderer is None:
+        raise ValueError('Linux offscreen requires Linux and an exact llvmpipe renderer')
+    systemui.renderer_pattern(args.host_renderer)
+    if (args.network != 'off' or args.audio != 'off' or args.ca_certificates != 'off' or
+            args.profile or args.boot_animation or args.power != 'off' or
+            args.call_simulation != 'off' or args.lockscreen != 'off' or
+            args.startup_waits != 'ready'):
+        raise ValueError('Linux offscreen supports only offline disposable ready-startup runs')
+    if not ((args.interactive and args.exit_on_ready) or
+            (args.exercise_keyboard and args.exercise_transitions and not args.interactive)):
+        raise ValueError('Linux offscreen requires bounded startup or keyboard/transition regression')
+    if '-snapshot' not in command:
+        raise ValueError('Linux offscreen requires a disposable -snapshot')
+    for flag, expected in (('-display', 'none'), ('-nic', 'none')):
+        if command.count(flag) != 1 or command[command.index(flag) + 1:command.index(flag) + 2] != [expected]:
+            raise ValueError('Linux offscreen requires -display none and -nic none')
+    if any(item in command for item in ('-net', '-netdev', '-qmp', '-serial', '-chardev', '-monitor', '-daemonize')):
+        raise ValueError('Linux offscreen owns QMP stdio and private serial FIFOs')
+    linux_offscreen.require_pillow()
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--host-backend', choices=('cocoa', 'linux-offscreen'), default='cocoa')
+    parser.add_argument('--host-renderer', help='exact independently observed llvmpipe renderer; Linux only')
+    parser.add_argument('--systemui-attempts', type=int, choices=(15, 30), default=15)
     parser.add_argument("--network", choices=("off", "user"), default="off")
     parser.add_argument('--power', choices=('off', 'sdk-bme'), default='off')
     parser.add_argument('--audio', choices=('off', 'pulse'), default='off')
@@ -277,6 +314,11 @@ def main():
     parser.add_argument("--measure-performance", action="store_true", help="bounded CPU and guest framebuffer observations using the Calculator workflow; not FPS")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    try:
+        linux_on = validate_host_configuration(args, command)
+    except (ValueError, RuntimeError) as error:
+        parser.error(str(error))
     if args.browser_mode == 'basic' and args.network != 'user':
         parser.error('basic browser mode requires --network user')
     if args.exit_on_ready and (not args.interactive or args.profile or args.boot_animation):
@@ -346,7 +388,8 @@ def main():
         parser.error('animation adaptation requires System UI and a separate non-performance regression')
     if systemui_on and args.measure_performance:
         parser.error('System UI requires its own non-performance regression; historical performance baselines are unchanged')
-    host_validator = systemui.validate_host if systemui_on else validate_desktop_host
+    host_validator = partial(systemui.validate_host if systemui_on else validate_desktop_host,
+                             renderer=args.host_renderer)
     ui_service = {'enabled': systemui_on}
     if systemui_on:
         ui_service['validator_sha256'] = hashlib.sha256(Path(systemui.__file__).read_bytes()).hexdigest()
@@ -365,6 +408,9 @@ def main():
     ui_power.validate_configuration(args.power, system_ui=systemui_on,
         profile=args.profile, environment=os.environ, command=command)
     power_on = args.power == 'sdk-bme'
+    # Software rendering needs real compositor ownership before System UI, then
+    # real Home before the unchanged root-ConfigureNotify/animation guard.
+    early_home = power_on or linux_on
     if power_on and args.startup_waits != 'ready':
         parser.error('SDK BME requires ready startup checks')
     power_info = {'enabled': power_on, 'mode': args.power, 'full_services': False}
@@ -414,7 +460,7 @@ def main():
         for name in ('N00X11.pm', 'wait-shell-ready-guest.pl'):
             helper_payloads[name] = Path(__file__).with_name(name).read_bytes()
     out = args.output.resolve()
-    out.mkdir(parents=True, exist_ok=False)
+    out.mkdir(mode=0o700, parents=True, exist_ok=False)
     boot_info = {'enabled': False}
     boot_environment = {}
     lock_control = lockscreen.Control(out) if args.lockscreen == 'on' else None
@@ -433,7 +479,10 @@ def main():
     measurements = None
     started = time.monotonic()
     deadline = started + args.timeout
-    serial, child = socket.socketpair()
+    if linux_on:
+        serial, child = linux_offscreen.PipeSerial(out / 'serial-pipe', deadline), None
+    else:
+        serial, child = socket.socketpair()
     process = None
     profile_session = None
     profile_synced = False
@@ -441,7 +490,8 @@ def main():
     shutdown_request = out / 'storage-shutdown.request'
     phases = {}
     control = []
-    if args.interactive or args.measure_performance:
+    control_path = None
+    if not linux_on and (args.interactive or args.measure_performance):
         control_path = str(out / 'control.sock')
         if len(os.fsencode(control_path)) >= 104:
             parser.error('workspace path too long for the local QMP socket')
@@ -469,12 +519,15 @@ def main():
             command = storage.persistent_command(command, profile_session.disk)
             boot_environment['N00_COCOA_STORAGE_SHUTDOWN'] = str(shutdown_request)
         with (out / "serial.log").open("xb") as log, (out / "qemu-stderr.log").open("xb") as errors:
+            chardev = (f'pipe,id=n00serial,path={serial.path}' if linux_on
+                       else f'socket,id=n00serial,fd={child.fileno()}')
             process = subprocess.Popen(command + control + ["-qmp", "stdio", "-chardev",
-                f"socket,id=n00serial,fd={child.fileno()}", "-serial", "chardev:n00serial", "-monitor", "none"],
+                chardev, "-serial", "chardev:n00serial", "-monitor", "none"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors,
                 env=display.qemu_environment() | boot_environment,
-                pass_fds=(child.fileno(),) + ((profile_session.fd,) if profile_session else ()), bufsize=0)
-            child.close()
+                pass_fds=((child.fileno(),) if child else ()) + ((profile_session.fd,) if profile_session else ()), bufsize=0)
+            if child:
+                child.close()
             qmp = display.QMP(process, deadline)
 
             def drain(seconds):
@@ -499,8 +552,10 @@ def main():
                 # captures remains live; this does not repair MMC concurrency.
                 qmp.call('stop')
                 try:
-                    for ext in ('ppm', 'png'):
+                    for ext in (('ppm',) if linux_on else ('ppm', 'png')):
                         qmp.call('screendump', {'filename': str(out / f'{name}.{ext}'), 'format': ext})
+                    if linux_on:
+                        linux_offscreen.export_png(out / f'{name}.ppm', out / f'{name}.png')
                 finally:
                     qmp.call('cont')
 
@@ -573,6 +628,8 @@ def main():
                 serial.sendall(b'export N00_UI_READY_WAITS=1\n')
             if systemui_on:
                 serial.sendall(b'export N00_UI_SYSTEMUI=1\n')
+                if linux_on:
+                    serial.sendall(f'export N00_UI_SYSTEMUI_ATTEMPTS={args.systemui_attempts}\n'.encode())
             if keyboard_on:
                 serial.sendall(b'export N00_UI_KEYBOARD=1\n')
             if animations_on:
@@ -596,14 +653,14 @@ def main():
                 if phase == 'home' and args.boot_animation:
                     boot_animation.signal(out / 'boot', 'play')
                 phase_command = phase
-                if phase == 'compositor' and power_on:
-                    # With battery state ready, no early System UI window is
-                    # guaranteed. Map the real Home before requiring the root
+                if phase == 'compositor' and early_home:
+                    # SDK power and Linux rendering have no guaranteed early
+                    # System UI window. Map real Home before requiring the root
                     # ConfigureNotify guard; retain the complete animation gate.
                     start_home()
                     phase_command = 'compositor-report'
                 if phase == 'home' and args.startup_waits == 'ready':
-                    if not power_on:
+                    if not early_home:
                         start_home()
                     def observe_home():
                         capture('home-readiness')
@@ -661,11 +718,11 @@ def main():
                     pose['startup'] = orientation.validate_provider(
                         orientation.block((out / 'serial.log').read_bytes(), 'startup'), edge, pose['helper_md5'])
                 if phase == 'theme' and systemui_on:
-                    if power_on:
+                    if early_home:
                         serial.sendall(b"printf '\\n'; sh /tmp/n00-shell-guest.sh compositor-start; printf '\\nN00_POWER_COMPOSITOR_START_EXIT_%s\\nN00_POWER_COMPOSITOR_START_DONE\\n' $?\n")
                         wait_line(b'N00_POWER_COMPOSITOR_START_DONE')
                         if re.findall(rb'^N00_POWER_COMPOSITOR_START_EXIT_(\d+)$', (out / 'serial.log').read_bytes().replace(b'\r', b''), re.M) != [b'0']:
-                            raise ValueError('compositor did not acquire ownership before battery-enabled System UI')
+                            raise ValueError('compositor did not acquire ownership before System UI')
                     serial.sendall(b"printf '\\nN00_SYSTEMUI_START_BEGIN\\n'; sh /tmp/n00-shell-guest.sh systemui; "
                                    b"printf '\\nN00_SYSTEMUI_START_EXIT_%s\\n' $?; printf '\\nN00_SYSTEMUI_START_DONE\\n'\n")
                     wait_line(b'N00_SYSTEMUI_START_DONE')
@@ -748,8 +805,8 @@ def main():
                         additional_phases=app_clock_phases)
             if args.interactive:
                 guest_result = validate_desktop_serial((out / 'serial.log').read_bytes(), with_input=True)
-                host_startup = (systemui.validate_host((out / 'qemu-stderr.log').read_bytes(), live=True) if systemui_on
-                                else validate_live_host((out / 'qemu-stderr.log').read_bytes()))
+                host_startup = (systemui.validate_host((out / 'qemu-stderr.log').read_bytes(), live=True, renderer=args.host_renderer) if systemui_on
+                                else validate_live_host((out / 'qemu-stderr.log').read_bytes(), renderer=args.host_renderer))
                 first_raw, settled_raw = raw_frame('home'), raw_frame('settled')
                 first, settled = desktop_frame(first_raw), desktop_frame(settled_raw)
                 home_frames = guest_clock.compare_home_frames(first_raw, settled_raw, systemui_on and clock_on)
@@ -799,10 +856,15 @@ def main():
                     'host_startup': host_startup,
                     'startup_wall_seconds': round(time.monotonic() - started, 3)}
                 ready.update(startup_waits=args.startup_waits, startup_observations=timings, phases=phases)
+                if linux_on:
+                    ready.update(host_backend=args.host_backend, host_renderer=args.host_renderer,
+                                 transport='QMP stdio; serial private FIFOs',
+                                 linux_systemui_polling_budget=args.systemui_attempts)
                 (out / 'ready.json').write_text(json.dumps(ready, indent=2) + '\n')
                 print(f'READY: original Home; input enabled. Evidence: {out}', flush=True)
-                print('Left-button drag to scroll; close QEMU or Ctrl-C to stop. ' +
-                      ('Saved files persist in the private profile.' if profile_session else 'Snapshot writes are discarded.'), flush=True)
+                if not linux_on:
+                    print('Left-button drag to scroll; close QEMU or Ctrl-C to stop. ' +
+                          ('Saved files persist in the private profile.' if profile_session else 'Snapshot writes are discarded.'), flush=True)
                 # Keep serial/QMP pipes drained while Cocoa owns user interaction.
                 # This is the launcher lifecycle, not a background monitoring task.
                 def interrupt(signum, frame):
@@ -1051,7 +1113,9 @@ def main():
     finally:
         if lock_control:
             lock_control.close()
-        serial.close(); child.close()
+        serial.close()
+        if child:
+            child.close()
         if process is not None:
             if process.poll() is None:
                 process.terminate()

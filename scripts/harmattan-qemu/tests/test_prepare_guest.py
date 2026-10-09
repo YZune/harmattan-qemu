@@ -1,8 +1,12 @@
 import hashlib
 import importlib.util
 import io
+import json
+import os
 from pathlib import Path
+import platform
 import struct
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -91,6 +95,148 @@ class GuestPreparationTests(unittest.TestCase):
             with patch.object(prep.subprocess, 'run', side_effect=run):
                 with self.assertRaises(ValueError):
                     prep.debugfs(Path('debugfs'), Path('image'), ['write src /target'], log, write=True)
+
+    def test_qemu_environment_preserves_macos_framework_requirement(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(prep.platform, 'system', return_value='Darwin'):
+            root = Path(tmp)
+            qemu = root / 'MacOS/qemu-system-arm'
+            with self.assertRaisesRegex(ValueError, 'complete prebuilt application'):
+                prep.qemu_environment(qemu)
+            frameworks = root / 'Frameworks'
+            frameworks.mkdir()
+            (frameworks / 'libEGL.1.dylib').touch()
+            env = prep.qemu_environment(qemu)
+            self.assertEqual(env['DYLD_LIBRARY_PATH'], str(frameworks))
+            self.assertEqual(env['HARMATTAN_DGLES_RUNTIME_DIR'], str(frameworks))
+
+    def test_linux_qemu_environment_needs_no_macos_frameworks(self):
+        with patch.object(prep.platform, 'system', return_value='Linux'), \
+                patch.object(prep.platform, 'machine', return_value='x86_64'), \
+                patch.dict(os.environ, {'PATH': '/usr/bin', 'LD_LIBRARY_PATH': '/toolchain/lib',
+                                       'HARMATTAN_TEST': 'discard', 'N00_TEST': 'discard',
+                                       'DYLD_LIBRARY_PATH': 'discard', 'PYTHONPATH': 'discard'}, clear=True):
+            self.assertEqual(prep.qemu_environment(Path('/unused/qemu-system-arm')),
+                             {'PATH': '/usr/bin', 'LD_LIBRARY_PATH': '/toolchain/lib'})
+
+    def test_unsupported_host_rejected(self):
+        for system, machine in [('Linux', 'aarch64'), ('Windows', 'AMD64')]:
+            with self.subTest(system=system, machine=machine), \
+                    patch.object(prep.platform, 'system', return_value=system), \
+                    patch.object(prep.platform, 'machine', return_value=machine):
+                with self.assertRaisesRegex(ValueError, 'macOS or Linux x86_64'):
+                    prep.preparation_host()
+
+    def test_macos_clone_keeps_apfs_command(self):
+        with patch.object(prep.platform, 'system', return_value='Darwin'), \
+                patch.object(prep.subprocess, 'run') as run:
+            prep.clone_rootfs(Path('/source'), Path('/target'))
+            run.assert_called_once_with(['/bin/cp', '-c', '/source', '/target'], check=True)
+
+    @unittest.skipUnless(platform.system() == 'Linux' and platform.machine() == 'x86_64',
+                         'requires Linux x86_64 GNU cp')
+    def test_linux_clone_preserves_sparse_holes_and_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / 'source', Path(tmp) / 'target'
+            with source.open('wb') as output:
+                output.write(b'original')
+                output.seek(64 * 1024**2 - 4)
+                output.write(b'end\n')
+            original_hash = prep.sha(source)
+            prep.clone_rootfs(source, target)
+            self.assertEqual(target.stat().st_size, source.stat().st_size)
+            self.assertLess(target.stat().st_blocks * 512, target.stat().st_size // 4)
+            self.assertEqual(prep.sha(target), original_hash)
+            with target.open('r+b') as output:
+                output.write(b'changed!')
+            self.assertEqual(prep.sha(source), original_hash)
+
+    def run_mock_boot(self, work, chunks, *, exit_code=0, forced_kill=False, already_exited=False):
+        process = Mock()
+        process.returncode = exit_code if already_exited else None
+        process.poll.side_effect = lambda: process.returncode
+
+        def wait(timeout=None):
+            if forced_kill and timeout is not None:
+                raise subprocess.TimeoutExpired('qemu-system-arm', timeout)
+            process.returncode = exit_code
+            return exit_code
+
+        process.wait.side_effect = wait
+        with patch.object(prep, 'qemu_environment', return_value={}), \
+                patch.object(prep.subprocess, 'Popen', return_value=process) as popen, \
+                patch.object(prep.select, 'select', return_value=([process.stdout], [], [])), \
+                patch.object(prep.os, 'read', side_effect=[*chunks, b'']):
+            try:
+                prep.prepare_boot(Path('/qemu-system-arm'), work / 'guest.raw', work / 'kernel', work)
+            finally:
+                process.stdout.close.assert_called_once()
+                self.assertEqual(popen.call_args.kwargs['cwd'], work)
+                args = popen.call_args.args[0]
+                self.assertEqual(args[args.index('-drive') + 1], 'if=sd,format=raw,file=guest.raw')
+                if not already_exited:
+                    process.terminate.assert_called_once()
+                self.assertEqual(process.kill.called, forced_kill)
+
+    def test_completion_requires_clean_qemu_exit_without_force_kill(self):
+        cases = [(0, False, False), (23, False, True), (-15, False, True),
+                 (-9, True, True), (0, True, True)]
+        for exit_code, forced_kill, rejected in cases:
+            with self.subTest(exit_code=exit_code, forced_kill=forced_kill), \
+                    tempfile.TemporaryDirectory(prefix='prepare, test-') as tmp:
+                work = Path(tmp)
+                chunks = [b'boot log\nHARMATTAN_PREPARE_', b'COMPLETE\r\n']
+                if rejected:
+                    with self.assertRaisesRegex(ValueError, 'did not exit cleanly'):
+                        self.run_mock_boot(work, chunks, exit_code=exit_code, forced_kill=forced_kill)
+                else:
+                    self.run_mock_boot(work, chunks)
+                self.assertEqual(json.loads((work / 'prepare-exit.json').read_text()),
+                                 {'qemu_exit': exit_code, 'forced_kill': forced_kill})
+                self.assertEqual((work / 'prepare-serial.log').read_bytes(), b''.join(chunks))
+
+    def test_clean_exit_without_completion_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            with self.assertRaisesRegex(ValueError, 'did not finish'):
+                self.run_mock_boot(work, [b'boot stopped\n'], already_exited=True)
+            self.assertEqual(json.loads((work / 'prepare-exit.json').read_text()),
+                             {'qemu_exit': 0, 'forced_kill': False})
+
+    def test_kernel_panic_with_completion_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            with self.assertRaisesRegex(ValueError, 'kernel panic'):
+                self.run_mock_boot(work, [b'\nHARMATTAN_PREPARE_COMPLETE\nKernel panic\n'])
+            self.assertEqual(json.loads((work / 'prepare-exit.json').read_text())['qemu_exit'], 0)
+
+    def test_linux_main_uses_private_stage_beside_output(self):
+        with tempfile.TemporaryDirectory(prefix='prepare, test-') as tmp:
+            # Match main()'s canonical path across macOS /var aliases too.
+            root = Path(tmp).resolve()
+            tool = root / 'tool'
+            tool.write_bytes(b'input or tool')
+            tool.chmod(0o755)
+            output = root / 'new parent' / 'prepared'
+            argv = ['prepare-guest.py']
+            for option in ('sdk-exe', 'firmware', 'sevenzip', 'debugfs', 'lzo-library', 'qemu-img', 'qemu-system-arm'):
+                argv.extend(['--' + option, str(tool)])
+            argv.extend(['--output', str(output)])
+
+            def prepare(args, work):
+                self.assertEqual(work.parent, output.parent)
+                self.assertEqual(work.stat().st_mode & 0o777, 0o700)
+                self.assertFalse(output.exists())
+                (work / 'result').write_text('complete')
+
+            with patch('sys.argv', argv), patch.object(prep, 'verify') as verify, \
+                    patch.object(prep.platform, 'system', return_value='Linux'), \
+                    patch.object(prep.platform, 'machine', return_value='x86_64'), \
+                    patch.object(prep, 'prepare', side_effect=prepare):
+                prep.main()
+            self.assertEqual(verify.call_count, 2)
+            self.assertEqual((output / 'result').read_text(), 'complete')
+            self.assertEqual(list(output.parent.iterdir()), [output])
+            self.assertEqual(tool.read_bytes(), b'input or tool')
 
     def test_existing_output_refused_before_verification(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -4,6 +4,15 @@ import re
 SYSUID_MD5 = '6e6ca0153aea0bf3b4556c08d68f934f'
 
 
+def renderer_pattern(renderer=None):
+    """Keep Apple as the default; Linux explicitly pins an observed llvmpipe."""
+    if renderer is None:
+        return rb'Apple [^\n]+'
+    if not re.fullmatch(r'llvmpipe \([ -~]+\)', renderer, flags=re.ASCII):
+        raise ValueError('Linux offscreen requires the exact observed llvmpipe renderer')
+    return re.escape(renderer.encode('ascii'))
+
+
 def enabled(mode, interactive):
     if mode not in (None, 'on', 'off'):
         raise ValueError('invalid System UI mode')
@@ -65,13 +74,14 @@ def validate_serial(data, minimum_reports=3):
             'scope': 'original statusbar provider only; unavailable device services are not simulated'}
 
 
-def validate_host(data, live=False):
+def validate_host(data, live=False, renderer=None):
     """Explicit three-client profile; the historical two-client gate is intact.
 
     Original guest EGL double-terminate is already independently demonstrated
     by the public API probe. Preserve the release/NULL rejection pair as a
     known guest API defect, not an OpenGL warning and never an arbitrary error.
     """
+    expected_renderer = renderer_pattern(renderer)
     lines = data.strip().split(b'\n')
     connected, current, disconnected, terminations = set(), set(), [], []
     render = summary = None
@@ -84,7 +94,7 @@ def validate_host(data, live=False):
             if client in connected or abi != (1 if client == 0 else 2) or client != len(connected) or disconnected:
                 raise ValueError('invalid System UI GPU client creation')
             connected.add(client)
-        elif match := re.fullmatch(rb'N00_GLES current client=([1-3]) es=2 renderer=Apple [^\n]+', line):
+        elif match := re.fullmatch(rb'N00_GLES current client=([1-3]) es=2 renderer=' + expected_renderer, line):
             client = int(match[1])
             if client not in connected or client in current or disconnected:
                 raise ValueError('missing/duplicate System UI GPU context')

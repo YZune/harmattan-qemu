@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "scope": "Experimental Linux x86_64 offscreen runtime; issue #3",
+  "historical_experiment": {
+    "tested_at_utc": "2026-10-08",
+    "base_commit": "982a7fbb092a521dc609ea70e8df77fc4fb9aff0",
+    "code_state": "Local experimental patches preceding this integration; not a test of the final PR commit",
+    "host": {
+      "os": "Debian 13.6",
+      "architecture": "x86_64",
+      "python": "3.12.14",
+      "gcc": "14.2.0",
+      "clang_lld": "19.1.7",
+      "ninja": "1.12.1",
+      "mesa": "25.0.7",
+      "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)"
+    },
+    "source_kit": {
+      "url": "https://github.com/YZune/harmattan-qemu/releases/download/v0.1.0-preview.1/Harmattan-QEMU-0.1.0-preview.1-sources.tar.gz",
+      "bytes": 394025490,
+      "sha256": "c9e3eb01f9b828169d00570dfb17b24d5375cce6bee739874149dce19ed4edcc",
+      "verified_dgles_member": "harmattan-qemu-sources/project/downloads/tools/gles-libs_1.4.2-3+0m6.tar.gz"
+    },
+    "startup": {
+      "passed": true,
+      "startup_waits": "ready",
+      "startup_wall_seconds": 103.314,
+      "host": {
+        "clean": true,
+        "warnings": [],
+        "gpu_contexts": 3,
+        "known_guest_api_defects": [
+          "client 2: original eglTerminate repeats with NULL, correctly rejected"
+        ],
+        "compiles": 9,
+        "links": 6,
+        "uploads": 46,
+        "draws": 8,
+        "calls": 874,
+        "swaps": 12,
+        "rejects": 0,
+        "faults": 0,
+        "workers_joined": true
+      },
+      "qemu_exit": 0,
+      "scope": "bounded interactive startup gates and clean exit; no physical input or display latency"
+    },
+    "usability": {
+      "passed": true,
+      "functional_checks_passed": true,
+      "host_graphics_clean": true,
+      "qemu_exit": 0,
+      "total_wall_seconds": 240.456,
+      "host": {
+        "clean": true,
+        "warnings": [],
+        "gpu_contexts": 3,
+        "known_guest_api_defects": [
+          "client 2: original eglTerminate repeats with NULL, correctly rejected"
+        ],
+        "compiles": 9,
+        "links": 6,
+        "uploads": 151,
+        "draws": 593,
+        "calls": 15890,
+        "swaps": 174,
+        "rejects": 0,
+        "faults": 0,
+        "workers_joined": true
+      },
+      "keyboard_passed": true,
+      "notes_saved_text": "Qemu",
+      "calculator": "2+3=5; edge return; same-instance resume"
+    },
+    "input_preservation": "Complete SHA-256 of prepared raw disk, SDK kernel and exported rootfs matched before and after all UI runs",
+    "media_verification": "Both exact documented SDK/firmware files matched sizes and SHA-256 in guest-media.json; installer extracted only",
+    "board_probe": {
+      "idle_register_checks": 52,
+      "passed": true,
+      "tcg": "ARM MOV r0,#42; B ., executed twice; QMP lifecycle and exit0"
+    },
+    "host_suite": {
+      "tests": 371,
+      "failures": 9,
+      "errors": 4,
+      "skipped": 7,
+      "status": "failed",
+      "reason": "Unix socket and LeakSanitizer runtime restrictions; after missing Clang dependency was restored"
+    },
+    "prior_failures": "Readiness15-poll timeouts and late process-exit cleanup SIGSEGV were retained; subsequent explicit30-poll budget and early cleanup passed without weakening readiness/fault gates"
+  },
+  "integration": {
+    "date_utc": "2026-10-09",
+    "status": "source build and focused regressions passed; full local host suite blocked",
+    "fresh_and_repeated_qemu_build": "passed; identical binary SHA-256 across first build and repeated patch application/build",
+    "qemu_sha256": "96d7f851604f6f43f4e44658edd3fa38454a3e2d208ddca50f65f9a974a73553",
+    "fresh_and_repeated_dgles_build": "passed",
+    "dgles_llvmpipe": {
+      "passed": true,
+      "cases": 12,
+      "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "coverage": "GLES1/GLES2, two runs of context-first/surface-first/early-cleanup; pixels, bounds, ownership, native unbind, protected retired pixel memory and joins"
+    },
+    "dgles_softpipe": {
+      "passed": true,
+      "cases": 6,
+      "renderer": "softpipe",
+      "scope": "host graphics diagnostic only; guest launcher remains exact llvmpipe"
+    },
+    "qemu_cleanup": {
+      "passed": true,
+      "states": [
+        "prelaunch",
+        "running",
+        "paused"
+      ],
+      "scope": "synthetic ARM worker, no guest OS or Mesa context; single teardown before main returns; unknown stderr rejected"
+    },
+    "focused_tests": {
+      "preparation": 18,
+      "launcher_and_original_controller": 54,
+      "dgles_and_cleanup_validators": 21,
+      "existing_graphics_smoke_suite": 108,
+      "status": "passed; groups overlap and must not be added as a unique total"
+    },
+    "full_host_suite": {
+      "tests": 406,
+      "failures": 9,
+      "errors": 4,
+      "skipped": 7,
+      "status": "failed",
+      "reason": "Nine pre-existing SSI cases hit LeakSanitizer ptrace restrictions; two pre-existing splash test methods produce four Unix-socket permission error events; seven AppKit tests skipped. No checks disabled."
+    },
+    "publication_check": {
+      "files": 354,
+      "errors": 0
+    },
+    "shell_syntax": "passed",
+    "diff_check": "passed",
+    "independent_review": "No unresolved code blockers; added and passed a SIGTERM-ignoring descendant cleanup regression",
+    "guest_rerun": false,
+    "macos_runtime_rerun": false,
+    "note": "Original runtime inputs were not retained in the source/evidence archive. This integration rebuilt maintained sources and ran firmware-free regression checks. CI results belong to the exact PR commit and are reported by GitHub.",
+    "source_sha256": {
+      "NOTICE": "33a9e7de5475a349744fe54dbb62709b0f6cf9042b423d5a29c535430501e761",
+      "ports/dgles2/gles-libs-1.4.2-linux-osmesa.patch": "28aecbd22356fe27fb52a68a8ec1c1f441eed67a1a8c781d22857e5436e7aa0f",
+      "ports/qemu-n00/qemu-9.1.3-n00-linux-osmesa.patch": "2194cd5cc104f8589b3cb25bbd18ef393ed14a1b697e91cc52989595db51046b",
+      "ports/qemu-n00/qemu-9.1.3-n00-linux-cleanup.patch": "31660c222014484c81d147d666ac49ec43e48d06123bb5f5ff767b795e478928",
+      "scripts/harmattan-qemu/build-arm64-port.sh": "a7ad972bc33bdded2834273fc4d4c29ed301d0dec59334ede4065de77e59ad8d",
+      "scripts/harmattan-qemu/build-dgles2-host.sh": "9bf602feec481186254d5ea5b8725eb128c9c5e8ccfc1fdd3b77600fdcfd77f6",
+      "scripts/harmattan-qemu/smoke-dgles-host.py": "4f7a7ab88901ee4a105d5ffa63f4be43795f293268bec7da22f56e3760ee0ce9",
+      "scripts/harmattan-qemu/smoke-dgles2-host.c": "592f94f600d1ee29a2937ea9536739d978eda56e0a06c9ecf38b64b7a4fd14a3",
+      "scripts/harmattan-qemu/smoke-qemu-linux-cleanup.py": "6fd8c02919055fccee22ea5e80f0a4ec20265a71c6af3c3f240d09158db0d84f",
+      "scripts/harmattan-qemu/tests/test_dgles_host_smoke.py": "c8cc9e821c2ec2ed2ec5925cc2f16b1b9772aefe86924b8ae1fd214ecd0f0af4",
+      "scripts/harmattan-qemu/tests/test_qemu_linux_cleanup.py": "117f79416a5479660afa6775aa3a14a47ed55efed31aff8f0fc21f62ffbd8a88",
+      "scripts/harmattan-qemu/tests/qemu-main-return-marker.c": "1a93925e0901011001051c44e88a78cf34a89e97b3371ebe2ccb8b79319bd565"
+    }
+  },
+  "limitations": [
+    "No Linux native interactive window/installer/package validation; -display none screenshots are actual framebuffer exports",
+    "No full retail service graph, cellular/audio/network/browser/camera/security acceptance",
+    "No all-app, long-session, FPS or physical-input acceptance; this is an experimental source port",
+    "No macOS runtime rerun for this Linux port",
+    "Capture sampling is not display FPS"
+  ],
+  "publication": "Only source patches, tools, documentation and sanitized summaries; no SDK, firmware, kernel, raw disk, rootfs, fonts or third-party binaries"
+}

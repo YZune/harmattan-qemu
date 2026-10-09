@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import select
 import shutil
@@ -26,6 +27,31 @@ ROOT = Path(__file__).resolve().parents[1]
 MEDIA = json.loads((ROOT / 'docs/guest-media.json').read_text())
 CHUNK = 4 * 1024**2
 DISK_BYTES = 32 * 1024**3
+
+
+def preparation_host():
+    system = platform.system()
+    if system == 'Darwin' or (system == 'Linux' and platform.machine() == 'x86_64'):
+        return system
+    raise ValueError('Guest preparation requires macOS or Linux x86_64')
+
+
+def qemu_environment(qemu):
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('N00_', 'HARMATTAN_', 'DYLD_', 'PYTHON'))}
+    if preparation_host() == 'Darwin':
+        frameworks = qemu.parent.parent / 'Frameworks'
+        if not (frameworks / 'libEGL.1.dylib').is_file():
+            raise ValueError('Use qemu-system-arm inside the complete prebuilt application')
+        env['DYLD_LIBRARY_PATH'] = str(frameworks)
+        env['HARMATTAN_DGLES_RUNTIME_DIR'] = str(frameworks)
+    return env
+
+
+def clone_rootfs(source, target):
+    # GNU cp preserves holes even when the filesystem cannot reflink. Never
+    # fall back to a byte-for-byte copy of these large sparse images.
+    flags = ['-c'] if preparation_host() == 'Darwin' else ['--reflink=auto', '--sparse=always']
+    subprocess.run(['/bin/cp', *flags, str(source), str(target)], check=True)
 
 
 def sha(path):
@@ -240,20 +266,19 @@ while :; do sleep 60; done
 
 def prepare_boot(qemu, disk, kernel, work):
     log = work / 'prepare-serial.log'
-    env = {k: v for k, v in os.environ.items() if not k.startswith(('N00_', 'HARMATTAN_', 'DYLD_', 'PYTHON'))}
-    frameworks = qemu.parent.parent / 'Frameworks'
-    if not (frameworks / 'libEGL.1.dylib').is_file():
-        raise ValueError('Use qemu-system-arm inside the complete prebuilt application')
-    env['DYLD_LIBRARY_PATH'] = str(frameworks)
-    env['HARMATTAN_DGLES_RUNTIME_DIR'] = str(frameworks)
+    env = qemu_environment(qemu)
+    # The private disk lives in work. A relative name also avoids interpreting
+    # commas in the output's parent directory as QEMU drive options.
+    disk_name = disk.relative_to(work)
     args = [str(qemu), '-M', 'n00-port-spike', '-kernel', str(kernel),
             '-append', 'init=/harmattan-prepare.sh root=0xB302 rootfstype=ext4 rw rootdelay=2 console=ttyS0,115200n8 omap3_die_id',
-            '-drive', f'if=sd,format=raw,file={disk}', '-display', 'none',
+            '-drive', f'if=sd,format=raw,file={disk_name}', '-display', 'none',
             '-serial', 'stdio', '-monitor', 'none', '-nic', 'none', '-no-reboot']
     with log.open('wb') as output:
         process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, env=env)
+                                   stderr=subprocess.STDOUT, env=env, cwd=work)
         seen = b''
+        complete = False
         deadline = time.monotonic() + 240
         try:
             while time.monotonic() < deadline:
@@ -267,18 +292,27 @@ def prepare_boot(qemu, disk, kernel, work):
                     if b'Kernel panic' in seen:
                         raise ValueError(f'Guest kernel panic; inspect {log.name}')
                     if b'\nHARMATTAN_PREPARE_COMPLETE\r\n' in seen or b'\nHARMATTAN_PREPARE_COMPLETE\n' in seen:
-                        return
+                        complete = True
+                        break
                 if process.poll() is not None:
                     break
-            raise ValueError(f'Guest preparation did not finish; inspect {log.name}')
         finally:
+            forced_kill = False
             if process.poll() is None:
                 process.terminate()
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
+                    forced_kill = True
                     process.kill()
                     process.wait()
+            process.stdout.close()
+            (work / 'prepare-exit.json').write_text(json.dumps(
+                {'qemu_exit': process.returncode, 'forced_kill': forced_kill}, indent=2) + '\n')
+        if not complete:
+            raise ValueError(f'Guest preparation did not finish; inspect {log.name}')
+        if forced_kill or process.returncode != 0:
+            raise ValueError(f'Guest preparation QEMU did not exit cleanly; inspect {log.name} and prepare-exit.json')
 
 
 def prepare(args, work):
@@ -309,7 +343,7 @@ def prepare(args, work):
     retail = work / 'retail-rootfs.ext4'
     decompress_rootfs(payload, work / 'rootfs.stream', retail, args.lzo_library)
     derived = work / 'pr1.3-rootfs-qemu-rescue.ext4'
-    subprocess.run(['/bin/cp', '-c', str(retail), str(derived)], check=True)
+    clone_rootfs(retail, derived)
     shutil.copyfile(ROOT / 'scripts/harmattan-qemu/preinit-rescue.sh', work / 'preinit')
     shutil.copyfile(ROOT / 'scripts/harmattan-qemu/apply-pr13-ui-overlay.sh', work / 'apply.sh')
     (work / 'prepare-init').write_text(PREPARE_INIT)
@@ -359,7 +393,8 @@ def main():
     parser.add_argument('--debugfs', type=Path, required=True)
     parser.add_argument('--lzo-library', type=Path, required=True)
     parser.add_argument('--qemu-img', type=Path, required=True)
-    parser.add_argument('--qemu-system-arm', type=Path, required=True, help='Harmattan native QEMU from the app')
+    parser.add_argument('--qemu-system-arm', type=Path, required=True,
+                        help='Harmattan QEMU from the macOS app or a Linux x86_64 headless build')
     args = parser.parse_args()
     if args.output.expanduser().is_symlink():
         raise ValueError('Output is a symlink / 输出路径是符号链接，拒绝覆盖')
@@ -372,14 +407,15 @@ def main():
             raise ValueError(f'Missing executable: {name}')
     if not args.lzo_library.is_file():
         raise ValueError('Missing liblzo2')
-    if not (args.qemu_system_arm.parent.parent / 'Frameworks/libEGL.1.dylib').is_file():
-        raise ValueError('Use qemu-system-arm inside the complete prebuilt application')
+    qemu_environment(args.qemu_system_arm)
     print('Checking complete original media / 校验完整原始材料', flush=True)
     verify(args.sdk_exe, MEDIA['sdk'])
     verify(args.firmware, MEDIA['firmware'])
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    # Neutral, short staging names also keep debugfs and QEMU option parsing simple.
-    work = Path(tempfile.mkdtemp(prefix='harmattan-prepare-', dir='/private/tmp'))
+    # Keep macOS's system-APFS default. Linux stages privately beside output so
+    # the final rename stays on the same filesystem and cannot expand holes.
+    stage_parent = '/private/tmp' if preparation_host() == 'Darwin' else args.output.parent
+    work = Path(tempfile.mkdtemp(prefix='harmattan-prepare-', dir=stage_parent))
     try:
         prepare(args, work)
         # Refuse cross-volume moves instead of unexpectedly copying many GiB.

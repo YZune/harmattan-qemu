@@ -7,7 +7,7 @@
 | 层 | 归属 | 主要源码 |
 | --- | --- | --- |
 | 宿主模拟器 | QEMU 9.1.3 与前向移植的 Nokia N00 设备 | `ports/qemu-n00/` |
-| 宿主图形 | Nokia DGLES 与 Cocoa 离屏 FBO 适配 | `ports/dgles2/` |
+| 宿主图形 | Nokia DGLES 与 Cocoa FBO 或 Linux OSMesa 适配 | `ports/dgles2/` |
 | 客体内核及适配层 | 自行提供的 PR1.0 模拟器内核和图形 ABI | 外部输入 |
 | 实验性 PR1.3 内核 | 原版 DVD 内核、QEMU 适配和构建兼容 | `ports/guest-kernel/`、`build-pr13-kernel.sh`，见[内核](kernel.zh-CN.md) |
 | 客体产品软件 | 自行提供的 PR1.3 原版库及应用 | 外部输入 |
@@ -49,6 +49,8 @@
 | 25 | `-uart-offset.patch` | OMAP UART 扩展地址及物理字节回退 |
 
 正常 `--cocoa-interaction` 构建包含 idle、输入活动及宿主视图和退出代码，无需素材文件。DGLES 补丁属于另一份源码归档，不应应用到 QEMU 树中。
+
+显式 `--linux-interaction` 模式应用受维护的板级/图形补丁，然后应用 Linux OSMesa 与提前清理补丁，关闭 Cocoa/GTK/SDL/VNC。DGLES OSMesa 补丁在独立的 DGLES 源码树中接在现有 Cocoa 补丁之后，宿主选择保留各后端边界。所有权、退出及传输设计见 [Linux 设计](linux.zh-CN.md#设计)。
 
 ## 客体图形与 UI
 

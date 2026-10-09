@@ -329,7 +329,13 @@ case ${1:-} in
         # texture, fabricated indicators, library patch or global DBus edit.
         su user -c "$user_env $sysuid_env sysuid -local-theme -graphicssystem raster >/tmp/n00-shell-sysuid.log 2>&1 &"
         ready=0
-        for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        # The explicit Linux software renderer allows a bounded latency budget;
+        # every original identity/D-Bus/pixmap check and failure gate remains.
+        systemui_attempts=${N00_UI_SYSTEMUI_ATTEMPTS:-15}
+        case "$systemui_attempts" in 15|30) ;; *) exit 2 ;; esac
+        attempt=0
+        while [ "$attempt" -lt "$systemui_attempts" ]; do
+            attempt=$((attempt + 1))
             if report_systemui > /tmp/n00-systemui-ready.log 2>&1; then
                 if [ "$(grep -c 'uint32 [1-9][0-9]*' /tmp/n00-systemui-ready.log)" = 2 ]; then ready=1; break; fi
             fi
@@ -337,6 +343,7 @@ case ${1:-} in
         done
         cat /tmp/n00-systemui-ready.log
         test "$ready" = 1
+        printf 'N00_SYSTEMUI_READY_ATTEMPTS used=%s budget=%s\n' "$attempt" "$systemui_attempts"
         ;;
     compositor|compositor-start|compositor-report)
         if [ "$1" != compositor-report ]; then

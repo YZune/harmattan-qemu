@@ -14,10 +14,10 @@ This is the repository-wide agent entry point. `AGENTS.zh-CN.md` is its Chinese 
 | --- | --- |
 | Documentation or publication metadata | Check links/publication contents and the diff; no emulator rebuild |
 | Host tools, validators, tests | Python, C compiler and Perl; run the relevant unittest cases, then the host suite for behavior changes |
-| QEMU/DGLES patches | Native ARM64 macOS, required host tools and pinned source archives; fresh source build and affected graphics checks |
+| QEMU/DGLES patches | The selected supported host/backend, required tools and pinned archives; fresh source build and affected graphics/lifecycle checks |
 | Guest behavior or interactive UI | Above, plus APFS, a macOS graphics session, ARM-capable LLVM/lld, debugfs and prepared guest inputs; run affected guest diagnostics |
 
-Linux runs portable host tests and skips AppKit tests; the complete emulator runtime currently targets Apple Silicon macOS. `check-environment.py` is a full-build prerequisite probe: its missing Mac/archive checks do not prevent source-only contribution on Linux. It checks presence/tool discovery, not hashes, guest contents, APFS behavior or compiler capabilities.
+Linux runs portable host tests and skips AppKit tests. The [Linux x86_64 offscreen guide](docs/linux.md) documents its separate build/guest path; native windowed runtime remains Apple Silicon macOS. `check-environment.py` is a full-build prerequisite probe: its missing Mac/archive checks do not prevent source-only contribution on Linux. It checks presence/tool discovery, not hashes, guest contents, APFS behavior or compiler capabilities.
 
 ## Source-only checks
 
@@ -38,7 +38,7 @@ The publication check uses Git-listed paths and reads their current worktree con
 
 Follow [building.md](docs/building.md) for tools and exact input layout. [inputs.json](docs/inputs.json) identifies the archives and guest files. Diagnose first with `python3 scripts/check-environment.py`, adding `--guest` when guest execution is needed. Do not change pinned versions or hashes to work around a missing/mismatched input.
 
-For a fresh full native build, after the prerequisites are available:
+For Linux use the explicit commands in [the Linux guide](docs/linux.md). For a fresh macOS native build, after the prerequisites are available:
 
 ```sh
 mkdir -p extracted

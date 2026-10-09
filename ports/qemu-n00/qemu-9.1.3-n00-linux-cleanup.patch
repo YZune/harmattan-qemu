@@ -1,0 +1,108 @@
+--- a/include/sysemu/sysemu.h
++++ b/include/sysemu/sysemu.h
+@@ -14,6 +14,9 @@
+ extern bool qemu_uuid_set;
+ 
+ const char *qemu_get_vm_name(void);
++
++/* Normal process teardown after vCPUs stop, before libc atexit handlers. */
++void qemu_add_cleanup_notifier(Notifier *notify);
+ 
+ void qemu_add_exit_notifier(Notifier *notify);
+ void qemu_remove_exit_notifier(Notifier *notify);
+--- a/system/runstate.c
++++ b/system/runstate.c
+@@ -60,6 +60,9 @@
+ #include "sysemu/tpm.h"
+ #include "trace.h"
+ 
++static NotifierList cleanup_notifiers =
++    NOTIFIER_LIST_INITIALIZER(cleanup_notifiers);
++
+ static NotifierList exit_notifiers =
+     NOTIFIER_LIST_INITIALIZER(exit_notifiers);
+ 
+@@ -829,6 +832,11 @@
+     return status;
+ }
+ 
++void qemu_add_cleanup_notifier(Notifier *notify)
++{
++    notifier_list_add(&cleanup_notifiers, notify);
++}
++
+ void qemu_add_exit_notifier(Notifier *notify)
+ {
+     notifier_list_add(&exit_notifiers, notify);
+@@ -899,6 +907,8 @@
+ 
+     /* No more vcpu or device emulation activity beyond this point */
+     vm_shutdown();
++    /* Also runs for paused/prelaunch VMs, which emit no vm-state change. */
++    notifier_list_notify(&cleanup_notifiers, NULL);
+     replay_finish();
+ 
+     /*
+--- a/hw/arm/n00_gles_port.c
++++ b/hw/arm/n00_gles_port.c
+@@ -81,7 +81,8 @@
+     MemoryRegion mmio;
+     ARMCPU *cpu;
+     EGLDisplay display;
+-    Notifier exit;
++    Notifier cleanup, exit;
++    bool shut_down;
+     N00Client *clients[N00_GLES_CLIENTS + 1]; /* slot 0: contextless EGL */
+     N00Handle handles[MAX_HANDLES];
+     N00GL gl[2];
+@@ -807,15 +808,21 @@
+     .valid.max_access_size = 4,
+ };
+ 
+-static void n00_gles_exit(Notifier *notify, void *data)
+-{
+-    N00GLES *s = container_of(notify, N00GLES, exit);
++static void n00_gles_shutdown(N00GLES *s)
++{
++    /* Normal cleanup runs before Mesa's process atexit handlers. Retain the
++     * original atexit notifier for abnormal paths, without double teardown. */
++    if (s->shut_down) {
++        return;
++    }
++    s->shut_down = true;
+     for (unsigned i = 1; i <= N00_GLES_CLIENTS; i++) {
+         drop_client(s, i);
+     }
+     drop_client(s, 0);
+     if (s->display) {
+         eglTerminate(s->display);
++        s->display = EGL_NO_DISPLAY;
+     }
+     if (s->shader_compiles || s->draws || s->render_rejects) {
+         fprintf(stderr,
+@@ -828,6 +835,16 @@
+             "N00_GLES summary calls=%" PRIu64 " swaps=%" PRIu64 " faults=%" PRIu64
+             " workers=joined\n",
+             s->calls, s->swaps, s->faults);
++}
++
++static void n00_gles_cleanup(Notifier *notify, void *data)
++{
++    n00_gles_shutdown(container_of(notify, N00GLES, cleanup));
++}
++
++static void n00_gles_exit(Notifier *notify, void *data)
++{
++    n00_gles_shutdown(container_of(notify, N00GLES, exit));
+ }
+ 
+ void n00_gles_init(ARMCPU *cpu)
+@@ -874,6 +891,8 @@
+     }
+     memory_region_init_io(&s->mmio, NULL, &n00_gles_ops, s, "n00-gles", 0x100000);
+     memory_region_add_subregion(get_system_memory(), N00_GLES_BASE, &s->mmio);
++    s->cleanup.notify = n00_gles_cleanup;
++    qemu_add_cleanup_notifier(&s->cleanup);
+     s->exit.notify = n00_gles_exit;
+     qemu_add_exit_notifier(&s->exit);
+ }

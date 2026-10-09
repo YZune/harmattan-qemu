@@ -6,7 +6,7 @@ Original retail boot/modem payload preparation is a separate [boot-chain input s
 
 ## Supported starting point
 
-The complete build/run path currently targets native **Apple Silicon macOS on APFS**. Linux can run portable host tests; Linux guest execution is an open porting task. QEMU 9.1.3 is pinned because its OMAP foundations match this port, not because it is the newest QEMU release.
+The native windowed build/run path targets **Apple Silicon macOS on APFS**. An experimental **Linux x86_64 offscreen** path has separate [dependencies, design and commands](linux.md); use that guide on Linux. The remainder of this page describes the macOS path. QEMU 9.1.3 is pinned because its OMAP foundations match this port, not because it is the newest QEMU release.
 
 The separate [experimental PR1.3 kernel build](kernel.md) uses a Linux build environment and preserves the original Aegis implementation. It does not change the default SDK kernel or establish full device-service readiness.
 
@@ -51,7 +51,7 @@ Place these files under the ignored `downloads/tools/` directory, or use the nam
 | QEMU 9.1.3 release archive | `downloads/tools/qemu-9.1.3.tar.xz` | `HARMATTAN_QEMU_TARBALL` |
 | PR1.3 DGLES source package | `downloads/tools/gles-libs_1.4.2-3+0m6.tar.gz` | `HARMATTAN_GLES_TARBALL` |
 
-Obtain QEMU from its [official release archive](https://download.qemu.org/qemu-9.1.3.tar.xz). The DGLES package is in the Harmattan PR1.3 source DVD's `sources/` directory. [sources.md](sources.md) and [inputs.json](inputs.json) provide the exact checksums. Both build scripts reject mismatched archives before extraction.
+Obtain QEMU from its [official release archive](https://download.qemu.org/qemu-9.1.3.tar.xz). The DGLES package is in the Harmattan PR1.3 source DVD's `sources/` directory and the project's Preview 1 source kit; the [exact source-kit download, member and hash](linux.md#2-obtain-the-pinned-public-sources) provide a reproducible acquisition route. [sources.md](sources.md) and [inputs.json](inputs.json) provide the exact checksums. Both build scripts reject mismatched archives before extraction.
 
 ## 3. Native build
 
