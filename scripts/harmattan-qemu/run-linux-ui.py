@@ -94,6 +94,7 @@ def main(argv=None):
     parser.add_argument('--timeout', type=float, default=600)
     parser.add_argument('--live-session', type=Path, help='fresh private native frontend file bridge; live mode only')
     parser.add_argument('--frontend', help='Godot executable to launch and supervise; live mode only; session defaults under the run output')
+    parser.add_argument('--compositor-fbo-fix', action='store_true', help='enable one SHA/ABI-pinned original compositor FBO callsite correction')
     parser.add_argument('--metrics', action='store_true', help='record private performance timings; live mode only')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--prepare-only', action='store_true', help='validate inputs and build guest helpers; do not launch QEMU')
@@ -165,7 +166,7 @@ def main(argv=None):
     if args.prepare_only:
         before = {str(path): fingerprint(path) for path in (raw, kernel, rootfs)}
         try:
-            for script, options in (('build-orientation-guest.sh', []), ('build-compositor-guest.sh', ['--handoff']),
+            for script, options in (('build-orientation-guest.sh', []), ('build-compositor-guest.sh', ['--handoff-fbo' if args.compositor_fbo_fix else '--handoff']),
                                     ('build-keyboard-probe.sh', [])):
                 subprocess.run(['sh', str(SCRIPTS / script), *options], check=True, env=env, timeout=300)
         finally:
@@ -206,6 +207,8 @@ def main(argv=None):
                   '--browser-mode', 'original', '--power', 'off', '--call-simulation', 'off', '--lockscreen', 'off',
                   '--system-ui', 'on', '--clock', 'host', '--input-method', 'on', '--device-orientation', 'display',
                   '--compositor-animations', 'on', '--splash', 'off', '--display-handoff', 'on']
+    if args.compositor_fbo_fix:
+        controller += ['--compositor-fbo-fix']
     if args.mode == 'live':
         controller += ['--interactive', '--linux-live-session', str(session)]
         if args.metrics:
@@ -216,6 +219,7 @@ def main(argv=None):
     record = {'scope': 'Linux headless software-rendered original Home; no physical GPU/Cocoa/retail service graph acceptance',
               'mode': args.mode, 'command': command, 'host_renderer': args.renderer, 'network': 'off',
               'linux_systemui_polling_budget': 30,
+              'compositor_fbo_fix': args.compositor_fbo_fix,
               'transport': 'QMP stdio and private serial FIFOs; no socket/listener',
               'guest_backing_open': 'read-only qcow2 backing; disposable qcow2 plus -snapshot',
               'base_before': base_before, 'qemu_sha256': hashlib.sha256(qemu.read_bytes()).hexdigest(),

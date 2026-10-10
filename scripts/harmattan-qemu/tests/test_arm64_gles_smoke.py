@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest import mock
+import tempfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / "smoke-arm64-gles.py"
 SPEC = importlib.util.spec_from_file_location("gles_smoke", SCRIPT)
@@ -33,7 +35,94 @@ def render_host_log(negative=False):
                    f"N00_GLES summary calls={122 if negative else 104} swaps=4 faults={1 if negative else 0} workers=joined\n").encode()
 
 
+def fbo_host_log(negative=False):
+    data = render_host_log().replace(b"calls=104", b"calls=271" if negative else b"calls=177").replace(
+        b"uploads=3", b"uploads=4")
+    if negative:
+        faults = b"".join(f"qemu-system-arm: N00_GLES rejected guest memory client=1 api=2 call={call}\n".encode()
+                          for call in (51, 52, 29, 31, 62, 66, 63))
+        data = data.replace(b"N00_GLES disconnect", faults + b"N00_GLES disconnect").replace(
+            b"faults=0", b"faults=7").replace(b"rejects=0", b"rejects=16")
+    return data
+
+
 class GLESGateTests(unittest.TestCase):
+    def test_fbo_markers_require_pixel_proof_recovery_and_exact_profile(self):
+        base = b"\n".join(SMOKE.RENDER_MARKERS) + b"\n"
+        positive = base + b"N00_GLES_FBO_API_OK pixels=24\n"
+        negative = positive + b"N00_GLES_FBO_NEGATIVE_OK rejections=23 faults=7\n"
+        SMOKE.validate_serial(positive, render=True, fbo_api=True)
+        SMOKE.validate_serial(negative, negative=True, render=True, fbo_api=True)
+        for data, profile in ((base, True), (positive, False), (negative, False),
+                              (positive.replace(b"pixels=24", b"pixels=23"), True),
+                              (positive + b"N00_GLES_FBO_API_OK pixels=24\n", True),
+                              (positive + b"N00_GLES_FAIL: fbo guard", True),
+                              (positive + b"N00_PROBE_EXIT_2\n", True),
+                              (positive + b"N00_GLES_RENDER_NEGATIVE_OK rejections=7\n", True)):
+            with self.subTest(data=data[-100:]), self.assertRaises(ValueError):
+                SMOKE.validate_serial(data, render=True, fbo_api=profile)
+        with self.assertRaises(ValueError):
+            SMOKE.validate_serial(positive, fbo_api=True)
+        for marker in (b"N00_GLES_FBO_API_OK pixels=24", b"N00_GLES_FBO_NEGATIVE_OK rejections=23 faults=7"):
+            for data in (negative.replace(marker + b"\n", b"") + marker,
+                         negative.replace(marker, b"echo " + marker)):
+                with self.assertRaises(ValueError):
+                    SMOKE.validate_serial(data, negative=True, render=True, fbo_api=True)
+
+    def test_fbo_host_requires_exact_calls_faults_and_parameter_rejections(self):
+        for negative, calls in ((False, 177), (True, 271)):
+            data = fbo_host_log(negative)
+            result = SMOKE.validate_host(data, negative=negative, render=True, fbo_api=True)
+            self.assertEqual(result["calls"], calls)
+            changes = [(f"calls={calls}".encode(), b"calls=1"), (b"swaps=4", b"swaps=3"),
+                       (b"uploads=4", b"uploads=3"), (b"draws=4", b"draws=0"),
+                       (b"faults=7" if negative else b"faults=0", b"faults=9"),
+                       (b"rejects=16" if negative else b"rejects=0", b"rejects=9")]
+            if negative:
+                changes.extend((f"call={call}\n".encode(), b"call=0\n") for call in (51, 52, 29, 31, 62, 66, 63))
+            for old, new in changes:
+                with self.subTest(old=old), self.assertRaises(ValueError):
+                    SMOKE.validate_host(data.replace(old, new), negative=negative, render=True, fbo_api=True)
+            with self.assertRaises(ValueError):
+                SMOKE.validate_host(data, negative=negative, render=True)
+        with self.assertRaises(ValueError):
+            SMOKE.validate_host(fbo_host_log(), fbo_api=True)
+
+    def test_linux_renderer_is_explicit_and_exact_for_fbo_probe(self):
+        renderer = "llvmpipe (LLVM 19.1.7, 256 bits)"
+        data = fbo_host_log().replace(b"Apple M5 Max", renderer.encode())
+        SMOKE.validate_host(data, render=True, fbo_api=True, renderer=renderer)
+        for expected in ("Apple", "llvmpipe", "llvmpipe (LLVM 18.1.8, 256 bits)", "software renderer"):
+            with self.assertRaises(ValueError):
+                SMOKE.validate_host(data, render=True, fbo_api=True, renderer=expected)
+        with self.assertRaises(ValueError):
+            SMOKE.validate_host(data.replace(renderer.encode(), renderer.encode() + b" unexpected"),
+                                render=True, fbo_api=True, renderer=renderer)
+        for invalid in ("llvmpipe ()", "llvmpipe (x\n)", "llvmpipe (x\x00)", "llvmpipe (é)"):
+            with self.subTest(renderer=invalid), self.assertRaises(ValueError):
+                SMOKE.validate_renderer(invalid.encode(), invalid)
+
+    def test_linux_probe_selects_private_fifo_without_opening_socket(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp) / "probe"
+            probe.write_bytes(b"\x7fELF\x01\x01" + b"\0" * 12 + b"\x28\0")
+            alias = Path(tmp) / "alias"
+            alias.symlink_to(Path(tmp), target_is_directory=True)
+            # macOS temp paths may already traverse /var -> /private/var.
+            # Exercise normalization on every host, including an explicit alias.
+            for output in (Path(tmp) / "out", alias / "out-alias"):
+                argv = [str(SCRIPT), "--probe", str(probe), "--output", str(output),
+                        "--render", "--fbo-api", "--renderer", "llvmpipe (LLVM 19.1.7, 256 bits)",
+                        "--", "qemu-system-arm", "-snapshot"]
+                with self.subTest(output=output), mock.patch("sys.argv", argv), \
+                        mock.patch.object(SMOKE.socket, "socketpair") as sockets, \
+                        mock.patch.object(SMOKE.linux_offscreen, "require_pillow"), \
+                        mock.patch.object(SMOKE.linux_offscreen, "PipeSerial", side_effect=RuntimeError("test transport boundary")) as pipes:
+                    with self.assertRaisesRegex(RuntimeError, "test transport boundary"):
+                        SMOKE.main()
+                    sockets.assert_not_called()
+                    self.assertEqual(pipes.call_args.args[0], output.resolve() / "serial-pipe")
+
     def test_complete_guest_markers(self):
         SMOKE.validate_serial(b"\r\n".join(SMOKE.MARKERS) + b"\r\n")
 

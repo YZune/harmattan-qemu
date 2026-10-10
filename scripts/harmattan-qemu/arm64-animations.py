@@ -7,6 +7,7 @@ import subprocess
 
 LIBRARY = '/usr/lib/libmcompositor.so.1.1.3'
 LIBRARY_MD5 = '49985bb59bf13ae22d20075feb11818a'
+LIBRARY_SHA256 = 'e9fcdb50530076abce62aaae65f5116a71badc283c89111a0d5e38f13b4a8c1b'
 HELPER = '/tmp/n00-compositor-matrices.so'
 
 
@@ -16,13 +17,15 @@ def enabled(mode, interactive):
     return interactive if mode is None else mode == 'on'
 
 
-def prepare(splash=False, handoff=False):
-    if not isinstance(splash, bool) or not isinstance(handoff, bool):
+def prepare(splash=False, handoff=False, fbo=False):
+    if not all(isinstance(value, bool) for value in (splash, handoff, fbo)):
         raise ValueError('compositor build selectors must be bools')
+    if fbo and (not handoff or splash):
+        raise ValueError('FBO caller correction requires handoff with splash off')
     if splash and handoff:
         raise ValueError('display handoff is currently validated only with splash off')
     scripts = Path(__file__).resolve().parent
-    variant = 'handoff' if handoff else ('splash' if splash else 'matrices')
+    variant = 'handoff-fbo' if fbo else ('handoff' if handoff else ('splash' if splash else 'matrices'))
     subprocess.run(['sh', str(scripts / 'build-compositor-guest.sh'), *([] if variant == 'matrices' else [f'--{variant}'])], check=True)
     work = Path(os.environ.get('HARMATTAN_PREBUILT_HELPERS') or os.environ.get('HARMATTAN_PORT_WORKSPACE', scripts.parents[1] / 'extracted/qemu-arm64-port'))
     binary = (work / f'compositor-guest/n00-compositor-{variant}.so').read_bytes()
@@ -43,6 +46,12 @@ def prepare(splash=False, handoff=False):
     if handoff:
         info['handoff_source_sha256'] = hashlib.sha256((scripts / 'compositor-handoff-guest.c').read_bytes()).hexdigest()
         info['input_handoff_source_sha256'] = hashlib.sha256((scripts / 'compositor-input-handoff-guest.c').read_bytes()).hexdigest()
+    if fbo:
+        info['fbo_target_correction'] = {
+            'enabled': True, 'source_sha256': hashlib.sha256((scripts / 'compositor-fbo-guest.c').read_bytes()).hexdigest(),
+            'original_library_sha256': LIBRARY_SHA256,
+            'symbol': '_ZN21MCompositeWindowGroup4initEv', 'return_offset': '0x74',
+            'scope': 'correct one pinned compositor callsite; GLES target validation stays strict'}
     return binary, info
 
 
@@ -130,7 +139,7 @@ def validate_serial(data, helper_md5, minimum_reports=3, require_root_guard=Fals
                 b'N00_COMPOSITOR_PROJECTION_APPLIED' not in record.splitlines() or
                 b'N00_ANIMATIONS_PROCESS_SCOPE_OK' not in record.splitlines()):
             raise ValueError('adaptation did not run or leaked into another process')
-        if any(marker in record for marker in (b'N00_COMPOSITOR_MATRICES_ERROR', b'N00_COMPOSITOR_RESTACKER_ERROR', b'N00_COMPOSITOR_PIXMAP_ERROR', b'N00_COMPOSITOR_INPUT_HANDOFF_ERROR')):
+        if any(marker in record for marker in (b'N00_COMPOSITOR_MATRICES_ERROR', b'N00_COMPOSITOR_RESTACKER_ERROR', b'N00_COMPOSITOR_PIXMAP_ERROR', b'N00_COMPOSITOR_INPUT_HANDOFF_ERROR', b'N00_COMPOSITOR_FBO_TARGET_ERROR')):
             raise ValueError('compositor adaptation failed')
         if require_root_guard and record.splitlines().count(b'N00_COMPOSITOR_ROOT_CONFIGURE_IGNORED') != 1:
             raise ValueError('root ConfigureNotify was not excluded from child stacking')
@@ -141,3 +150,28 @@ def validate_serial(data, helper_md5, minimum_reports=3, require_root_guard=Fals
             'root_configure_guard_observed': all(b'N00_COMPOSITOR_ROOT_CONFIGURE_IGNORED' in r.splitlines() for r in records),
             'unavailable_pixmap_observations': len(re.findall(rb'^N00_COMPOSITOR_PIXMAP_PENDING drawable=[0-9a-f]+$', records[-1], re.M)),
             'scope': 'runtime activation only; intermediate frames require the separate transition probe'}
+
+
+def validate_fbo_correction(data):
+    """Activation evidence is separate from unchanged host graphics acceptance."""
+    data = data.replace(b'\r', b'')
+    if b'N00_COMPOSITOR_FBO_TARGET_ERROR' in data:
+        raise ValueError('compositor FBO callsite guard failed')
+    expected = b'N00_COMPOSITOR_FBO_LIBRARY_SHA256 ' + LIBRARY_SHA256.encode()
+    identities = [line for line in data.splitlines() if line.startswith(b'N00_COMPOSITOR_FBO_LIBRARY_SHA256 ')]
+    if identities != [expected]:
+        raise ValueError('missing or changed original compositor SHA256')
+    records = re.findall(rb'(?:^|\n)N00_ANIMATIONS_BEGIN\n(.*?)\nN00_ANIMATIONS_END\n', data, re.S)
+    if not records:
+        raise ValueError('missing compositor FBO runtime report')
+    ready = b'N00_COMPOSITOR_FBO_TARGET_GUARD_READY'
+    fixed = b'N00_COMPOSITOR_FBO_TARGET_FIXED site=init+0x74'
+    previous = []
+    for record in records:
+        events = [line for line in record.splitlines() if line.startswith(b'N00_COMPOSITOR_FBO_TARGET_')]
+        if events not in ([], [ready], [ready, fixed]) or events[:len(previous)] != previous:
+            raise ValueError('invalid compositor FBO callsite history')
+        previous = events
+    return {'original_library_sha256': LIBRARY_SHA256, 'guard_observed': ready in previous,
+            'callsite_fix_observed': fixed in previous,
+            'scope': 'one original compositor callsite only; host graphics gates remain independent'}

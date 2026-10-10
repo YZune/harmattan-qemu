@@ -1,5 +1,5 @@
 diff --git a/hw/arm/n00_gles_port.c b/hw/arm/n00_gles_port.c
-index 220f35e..5693801 100644
+index 220f35e..a9a87b3 100644
 --- a/hw/arm/n00_gles_port.c
 +++ b/hw/arm/n00_gles_port.c
 @@ -24,6 +24,8 @@ enum { MAX_HANDLES = 1024, MAX_TRANSFER = 64 * 1024 * 1024 };
@@ -30,15 +30,32 @@ index 220f35e..5693801 100644
  } N00Handle;
  
  struct N00Client {
-@@ -76,6 +83,7 @@ struct N00GLES {
+@@ -74,8 +81,9 @@ struct N00GLES {
+     N00Client *clients[N00_GLES_CLIENTS + 1]; /* slot 0: contextless EGL */
+     N00Handle handles[MAX_HANDLES];
      N00GL gl[2];
-     bool trace;
+-    bool trace;
++    bool trace, trace_rejects;
      uint64_t calls, faults, swaps;
 +    uint64_t shader_compiles, program_links, texture_uploads, draws, render_rejects;
  };
  
  void n00_gles_init(ARMCPU *cpu);
-@@ -173,7 +181,8 @@ static uint32_t make_handle(N00GLES *s, void *object, enum HandleKind kind,
+@@ -149,7 +157,12 @@ static uint32_t arg(N00Client *c, unsigned n)
+         return c->regs[n];
+     }
+     /* Nokia's assembly gateway pushes exactly two words before STR. */
+-    return guest_word(c, c->regs[13] + 8 + (n - 4) * 4);
++    uint64_t address = (uint64_t)c->regs[13] + 8 + (uint64_t)(n - 4) * 4;
++    if (address > UINT32_MAX) {
++        c->bad_memory = true;
++        return 0;
++    }
++    return guest_word(c, address);
+ }
+ 
+ static float float_arg(N00Client *c, unsigned n)
+@@ -173,7 +186,8 @@ static uint32_t make_handle(N00GLES *s, void *object, enum HandleKind kind,
      }
      for (unsigned i = 0; i < MAX_HANDLES; i++) {
          if (s->handles[i].kind == H_FREE) {
@@ -48,7 +65,20 @@ index 220f35e..5693801 100644
              return 0xcafe0000u | i;
          }
      }
-@@ -328,6 +337,11 @@ static void call_egl(N00Client *c)
+@@ -221,8 +235,10 @@ static void unsupported(N00Client *c)
+     c->s->faults++;
+     c->egl_error = EGL_BAD_PARAMETER;
+     c->gl_error = GL_INVALID_OPERATION;
+-    error_report("N00_GLES unsupported/invalid api=%u call=%u client=%u", c->api,
+-                 c->call, c->nr);
++    error_report("N00_GLES unsupported/invalid api=%u call=%u client=%u "
++                 "context=%s context-api=%u", c->api, c->call, c->nr,
++                 c->current ? "current" : "none",
++                 c->current ? c->current->version : 0);
+ }
+ 
+ static void call_egl(N00Client *c);
+@@ -328,6 +344,11 @@ static void call_egl(N00Client *c)
          if (arg(c, 2) && !(share = handle(c, arg(c, 2), H_CONTEXT))) {
              break;
          }
@@ -60,7 +90,7 @@ index 220f35e..5693801 100644
          for (unsigned i = 0; list[i] != EGL_NONE; i += 2) {
              if (list[i] == EGL_CONTEXT_CLIENT_VERSION) {
                  version = list[i + 1];
-@@ -457,6 +471,7 @@ static void call_egl(N00Client *c)
+@@ -457,6 +478,7 @@ static void call_egl(N00Client *c)
          if (h && c->current != h) {
              c->result = eglDestroyContext(display, h->object);
              if (c->result) {
@@ -68,7 +98,7 @@ index 220f35e..5693801 100644
                  memset(h, 0, sizeof(*h));
              }
          } else {
-@@ -469,6 +484,8 @@ static void call_egl(N00Client *c)
+@@ -469,6 +491,8 @@ static void call_egl(N00Client *c)
      }
  }
  
@@ -77,7 +107,7 @@ index 220f35e..5693801 100644
  static void call_gl(N00Client *c)
  {
      if (!c->current || c->current->version != c->api) {
-@@ -476,6 +493,9 @@ static void call_gl(N00Client *c)
+@@ -476,6 +500,9 @@ static void call_gl(N00Client *c)
          return;
      }
      N00GL *gl = &c->s->gl[c->api - 1];
@@ -87,7 +117,7 @@ index 220f35e..5693801 100644
      unsigned nr = c->call;
      uint32_t a[7];
      /* The common subset has different call numbers in the two ABIs. */
-@@ -513,8 +533,21 @@ static void call_gl(N00Client *c)
+@@ -513,8 +540,21 @@ static void call_gl(N00Client *c)
              c->gl_error = GL_INVALID_VALUE;
              return;
          }
@@ -111,7 +141,7 @@ index 220f35e..5693801 100644
          gl->ReadPixels(a[0], a[1], a[2], a[3], a[4], a[5], pixels);
          guest_copy(c, a[6], pixels, bytes, true);
          g_free(pixels);
-@@ -544,6 +577,7 @@ static void cleanup_client(N00Client *c)
+@@ -544,6 +584,7 @@ static void cleanup_client(N00Client *c)
                  g_free(surf);
              } else {
                  eglDestroyContext(display, h->object);
@@ -119,7 +149,7 @@ index 220f35e..5693801 100644
              }
              memset(h, 0, sizeof(*h));
          }
-@@ -570,11 +604,12 @@ static void *worker(void *opaque)
+@@ -570,11 +611,12 @@ static void *worker(void *opaque)
          }
          if (c->bad_memory) {
              c->s->faults++;
@@ -134,7 +164,7 @@ index 220f35e..5693801 100644
              }
              error_report("N00_GLES rejected guest memory client=%u api=%u call=%u",
                           c->nr, c->api, c->call);
-@@ -727,6 +762,13 @@ static void n00_gles_exit(Notifier *notify, void *data)
+@@ -727,6 +769,13 @@ static void n00_gles_exit(Notifier *notify, void *data)
      if (s->display) {
          eglTerminate(s->display);
      }
@@ -148,7 +178,15 @@ index 220f35e..5693801 100644
      fprintf(stderr,
              "N00_GLES summary calls=%" PRIu64 " swaps=%" PRIu64 " faults=%" PRIu64
              " workers=joined\n",
-@@ -768,6 +810,12 @@ void n00_gles_init(ARMCPU *cpu)
+@@ -736,6 +785,7 @@ static void n00_gles_exit(Notifier *notify, void *data)
+ void n00_gles_init(ARMCPU *cpu)
+ {
+     N00GLES *s = g_new0(N00GLES, 1);
++    s->trace_rejects = getenv("N00_GLES_TRACE_REJECTS") != NULL;
+     s->cpu = cpu;
+     s->trace = getenv("N00_GLES_TRACE") != NULL;
+     setenv("DGLES2_FRONTEND", "offscreen", 1);
+@@ -768,6 +818,12 @@ void n00_gles_init(ARMCPU *cpu)
          LOAD(GetError);
          LOAD(GetString);
          LOAD(ReadPixels);
@@ -163,10 +201,10 @@ index 220f35e..5693801 100644
      memory_region_init_io(&s->mmio, NULL, &n00_gles_ops, s, "n00-gles", 0x100000);
 diff --git a/hw/arm/n00_gles_render.inc b/hw/arm/n00_gles_render.inc
 new file mode 100644
-index 0000000..7ba98b5
+index 0000000..f4d576e
 --- /dev/null
 +++ b/hw/arm/n00_gles_render.inc
-@@ -0,0 +1,667 @@
+@@ -0,0 +1,683 @@
 +/* Bounded GLES2 marshalling for the N00 porting experiment.
 + * SPDX-License-Identifier: GPL-2.0-or-later
 + * Included by n00_gles_port.c. Guest addresses are always copied; only
@@ -195,6 +233,7 @@ index 0000000..7ba98b5
 +    void *copy;
 +} N00Attrib;
 +struct N00RenderState {
++    struct N00FBOState *fbo;
 +    GLuint array, element;
 +    N00Buffer buffers[R_BUFFERS];
 +    N00Attrib attrs[R_ATTRS];
@@ -212,6 +251,7 @@ index 0000000..7ba98b5
 +    for (unsigned i = 0; i < R_ATTRS; i++) {
 +        g_free(r->attrs[i].copy);
 +    }
++    g_free(r->fbo);
 +    g_free(r);
 +}
 +
@@ -223,6 +263,8 @@ index 0000000..7ba98b5
 +    c->s->render_rejects++;
 +    return false;
 +}
++
++#include "n00_gles_fbo.inc"
 +
 +static N00Buffer *render_buffer(N00RenderState *r, GLuint name, bool create)
 +{
@@ -483,6 +525,9 @@ index 0000000..7ba98b5
 +    N00RenderState *r = c->current->render;
 +    if (!r) {
 +        r = c->current->render = g_new0(N00RenderState, 1);
++    }
++    if (call_fbo(c, gl, &r->fbo)) {
++        return true;
 +    }
 +    uint32_t a[9] = {0};
 +    /* Decode only the words used by this call, not arbitrary guest stack. */
@@ -812,14 +857,23 @@ index 0000000..7ba98b5
 +            case GL_ACTIVE_TEXTURE:
 +            case GL_MAX_TEXTURE_SIZE:
 +            case GL_MAX_VERTEX_ATTRIBS:
++            case GL_FRAMEBUFFER_BINDING:
++            case GL_RENDERBUFFER_BINDING:
++            case GL_MAX_RENDERBUFFER_SIZE:
 +                break;
 +            default:
 +                render_error(c, GL_INVALID_ENUM);
 +                return true;
 +            }
 +            gl->GetIntegerv(a[0], values);
++            if (a[0] == GL_FRAMEBUFFER_BINDING || a[0] == GL_RENDERBUFFER_BINDING) {
++                values[0] = fbo_guest_binding(r->fbo, a[0], values[0]);
++            }
 +            if (a[0] == GL_MAX_VERTEX_ATTRIBS) {
 +                values[0] = MIN(values[0], R_ATTRS);
++            }
++            if (a[0] == GL_MAX_RENDERBUFFER_SIZE) {
++                values[0] = MIN(values[0], R_RENDERBUFFER_DIMENSION);
 +            }
 +            for (unsigned i = 0; i < n; i++) {
 +                values[i] = cpu_to_le32(values[i]);
@@ -836,10 +890,10 @@ index 0000000..7ba98b5
 +}
 diff --git a/hw/arm/n00_gles_render_api.def b/hw/arm/n00_gles_render_api.def
 new file mode 100644
-index 0000000..bbcf046
+index 0000000..58113bf
 --- /dev/null
 +++ b/hw/arm/n00_gles_render_api.def
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,52 @@
 +/* GLES2-only host symbols; included with N00_GL defined by the caller. */
 +N00_GL(ActiveTexture)
 +N00_GL(GenTextures)
@@ -849,6 +903,20 @@ index 0000000..bbcf046
 +N00_GL(TexParameteri)
 +N00_GL(DeleteTextures)
 +N00_GL(PixelStorei)
++N00_GL(GenFramebuffers)
++N00_GL(DeleteFramebuffers)
++N00_GL(GenRenderbuffers)
++N00_GL(DeleteRenderbuffers)
++N00_GL(BindFramebuffer)
++N00_GL(BindRenderbuffer)
++N00_GL(FramebufferTexture2D)
++N00_GL(FramebufferRenderbuffer)
++N00_GL(CheckFramebufferStatus)
++N00_GL(RenderbufferStorage)
++N00_GL(IsFramebuffer)
++N00_GL(IsRenderbuffer)
++N00_GL(GetFramebufferAttachmentParameteriv)
++N00_GL(GetRenderbufferParameteriv)
 +N00_GL(GenBuffers)
 +N00_GL(BindBuffer)
 +N00_GL(BufferData)
@@ -878,3 +946,452 @@ index 0000000..bbcf046
 +N00_GL(VertexAttribPointer)
 +N00_GL(DrawArrays)
 +N00_GL(DrawElements)
+diff --git a/hw/arm/n00_gles_fbo.inc b/hw/arm/n00_gles_fbo.inc
+new file mode 100644
+index 0000000..2a139e9
+--- /dev/null
++++ b/hw/arm/n00_gles_fbo.inc
+@@ -0,0 +1,443 @@
++/* Bounded GLES2 framebuffer marshalling. Included by n00_gles_render.inc.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ * Guest names are distinct from DGLES names, including its private default FBO.
++ * Deleted renderbuffers can remain alive in non-current FBO attachments.
++ */
++enum { R_FBO_NAMES = 128, R_FBO_ATTACHMENTS = 3,
++       R_RBO_OBJECTS = R_FBO_NAMES * (R_FBO_ATTACHMENTS + 1),
++       R_RENDERBUFFER_DIMENSION = 4096 };
++typedef struct N00FBOObject {
++    GLuint name, host;
++    bool live;
++    size_t bytes;
++    unsigned references;
++    struct N00FBOObject *attachments[R_FBO_ATTACHMENTS];
++} N00FBOObject;
++struct N00FBOState {
++    N00FBOObject framebuffers[R_FBO_NAMES], renderbuffers[R_RBO_OBJECTS];
++    size_t bytes;
++    GLuint next_framebuffer, next_renderbuffer;
++};
++
++static unsigned fbo_count(bool framebuffer)
++{
++    return framebuffer ? R_FBO_NAMES : R_RBO_OBJECTS;
++}
++
++static N00FBOObject *fbo_object(struct N00FBOState *r, bool framebuffer, GLuint name,
++                              bool host)
++{
++    N00FBOObject *objects = framebuffer ? r->framebuffers : r->renderbuffers;
++    for (unsigned i = 0; i < fbo_count(framebuffer); i++) {
++        if (name ? (objects[i].live &&
++                    (host ? objects[i].host : objects[i].name) == name) :
++                   !objects[i].host) {
++            return &objects[i];
++        }
++    }
++    return NULL;
++}
++
++static unsigned fbo_live(struct N00FBOState *r, bool framebuffer)
++{
++    N00FBOObject *objects = framebuffer ? r->framebuffers : r->renderbuffers;
++    unsigned count = 0;
++    for (unsigned i = 0; i < fbo_count(framebuffer); i++) {
++        count += objects[i].live;
++    }
++    return count;
++}
++
++static GLint fbo_guest_binding(struct N00FBOState *r, GLenum pname, GLint host)
++{
++    N00FBOObject *o = r && host ?
++        fbo_object(r, pname == GL_FRAMEBUFFER_BINDING, host, true) : NULL;
++    return o ? o->name : 0;
++}
++
++static N00FBOObject *fbo_current(N00GL *gl, struct N00FBOState *r, bool framebuffer)
++{
++    GLint host = 0;
++    gl->GetIntegerv(framebuffer ? GL_FRAMEBUFFER_BINDING : GL_RENDERBUFFER_BINDING,
++                   &host);
++    return host ? fbo_object(r, framebuffer, host, true) : NULL;
++}
++
++static int fbo_attachment(GLenum attachment)
++{
++    switch (attachment) {
++    case GL_COLOR_ATTACHMENT0: return 0;
++    case GL_DEPTH_ATTACHMENT: return 1;
++    case GL_STENCIL_ATTACHMENT: return 2;
++    default: return -1;
++    }
++}
++
++static void fbo_release(N00GL *gl, struct N00FBOState *r, N00FBOObject *o)
++{
++    if (o && o->host && !o->live && !o->references) {
++        gl->DeleteRenderbuffers(1, &o->host);
++        r->bytes -= o->bytes;
++        memset(o, 0, sizeof(*o));
++    }
++}
++
++static void fbo_replace_attachment(N00GL *gl, struct N00FBOState *r, N00FBOObject *fbo,
++                                   unsigned attachment, N00FBOObject *rbo)
++{
++    N00FBOObject *old = fbo->attachments[attachment];
++    if (old == rbo) {
++        return;
++    }
++    if (rbo) {
++        rbo->references++;
++    }
++    fbo->attachments[attachment] = rbo;
++    if (old) {
++        old->references--;
++        fbo_release(gl, r, old);
++    }
++}
++
++static void fbo_names(N00Client *c, N00GL *gl, struct N00FBOState *r,
++                      uint32_t count, uint32_t address, bool framebuffer, bool gen)
++{
++    if (count > R_FBO_NAMES) {
++        render_error(c, GL_INVALID_VALUE);
++        return;
++    }
++    GLuint names[R_FBO_NAMES] = {0}, wire[R_FBO_NAMES], guests[R_FBO_NAMES];
++    /* Preflight the entire output before allocating host names. */
++    if (!guest_copy(c, address, wire, count * sizeof(*wire), false)) {
++        return;
++    }
++    if (gen) {
++        if (count > R_FBO_NAMES - fbo_live(r, framebuffer)) {
++            render_error(c, GL_OUT_OF_MEMORY);
++            return;
++        }
++        if (framebuffer) {
++            gl->GenFramebuffers(count, names);
++        } else {
++            gl->GenRenderbuffers(count, names);
++        }
++        GLuint *next = framebuffer ? &r->next_framebuffer : &r->next_renderbuffer;
++        for (unsigned i = 0; i < count; i++) {
++            if (!names[i]) {
++                goto rollback;
++            }
++            do { ++*next; } while (!*next || fbo_object(r, framebuffer, *next, false));
++            guests[i] = *next;
++            wire[i] = cpu_to_le32(guests[i]);
++        }
++        if (!guest_copy(c, address, wire, count * sizeof(*wire), true)) {
++            goto rollback;
++        }
++        for (unsigned i = 0; i < count; i++) {
++            N00FBOObject *o = fbo_object(r, framebuffer, 0, false);
++            /* At most 128 live names plus 384 retained attachment objects. */
++            assert(o);
++            *o = (N00FBOObject){.name = guests[i], .host = names[i], .live = true};
++        }
++        return;
++rollback:
++        /* Preserve the output on backend allocation failure, and roll back a
++         * successful allocation if the subsequent guest write fails. */
++        if (framebuffer) {
++            gl->DeleteFramebuffers(count, names);
++        } else {
++            gl->DeleteRenderbuffers(count, names);
++        }
++    } else {
++        for (unsigned i = 0; i < count; i++) {
++            GLuint name = le32_to_cpu(wire[i]);
++            N00FBOObject *o = name ? fbo_object(r, framebuffer, name, false) : NULL;
++            if (!o) {
++                continue;
++            }
++            if (framebuffer) {
++                gl->DeleteFramebuffers(1, &o->host);
++                for (unsigned j = 0; j < R_FBO_ATTACHMENTS; j++) {
++                    fbo_replace_attachment(gl, r, o, j, NULL);
++                }
++                memset(o, 0, sizeof(*o));
++            } else {
++                N00FBOObject *current = fbo_current(gl, r, true);
++                if (fbo_current(gl, r, false) == o) {
++                    gl->BindRenderbuffer(GL_RENDERBUFFER, 0);
++                }
++                o->live = false;
++                /* GLES2 automatically detaches only from the current FBO. */
++                for (unsigned j = 0; current && j < R_FBO_ATTACHMENTS; j++) {
++                    if (current->attachments[j] == o) {
++                        static const GLenum attachments[] = {
++                            GL_COLOR_ATTACHMENT0, GL_DEPTH_ATTACHMENT, GL_STENCIL_ATTACHMENT
++                        };
++                        gl->FramebufferRenderbuffer(GL_FRAMEBUFFER, attachments[j],
++                                                    GL_RENDERBUFFER, 0);
++                        GLint type = GL_RENDERBUFFER;
++                        gl->GetFramebufferAttachmentParameteriv(
++                            GL_FRAMEBUFFER, attachments[j],
++                            GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);
++                        if (type == GL_NONE) {
++                            fbo_replace_attachment(gl, r, current, j, NULL);
++                        }
++                    }
++                }
++                /* Retain the host name until the last non-current attachment
++                 * disappears, so it cannot alias a new object with a reused name. */
++                fbo_release(gl, r, o);
++            }
++        }
++    }
++}
++
++static void fbo_storage(N00Client *c, N00GL *gl, struct N00FBOState *r, uint32_t *a)
++{
++    if (a[0] != GL_RENDERBUFFER) {
++        render_error(c, GL_INVALID_ENUM);
++        return;
++    }
++    switch (a[1]) {
++    case GL_RGBA4: case GL_RGB5_A1: case GL_RGB565:
++    case GL_DEPTH_COMPONENT16: case GL_STENCIL_INDEX8:
++        break;
++    default:
++        render_error(c, GL_INVALID_ENUM);
++        return;
++    }
++    GLint maximum = 0;
++    gl->GetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maximum);
++    if (a[2] > R_RENDERBUFFER_DIMENSION || a[3] > R_RENDERBUFFER_DIMENSION ||
++        maximum < 0 || a[2] > (unsigned)maximum || a[3] > (unsigned)maximum) {
++        render_error(c, GL_INVALID_VALUE);
++        return;
++    }
++    N00FBOObject *o = fbo_current(gl, r, false);
++    if (!o) {
++        render_error(c, GL_INVALID_OPERATION);
++        return;
++    }
++    /* Logical reservation policy, not a measurement of backend allocation:
++     * charge four bytes per pixel, excluding driver metadata and padding. */
++    size_t bytes = (size_t)a[2] * a[3] * 4;
++    if (bytes > MAX_TRANSFER - (r->bytes - o->bytes)) {
++        render_error(c, GL_OUT_OF_MEMORY);
++        return;
++    }
++    gl->RenderbufferStorage(a[0], a[1], a[2], a[3]);
++    /* Preserve pending GL errors. Failed resizing leaves old dimensions/storage. */
++    GLint width = -1, height = -1;
++    gl->GetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &width);
++    gl->GetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &height);
++    if (width == (GLint)a[2] && height == (GLint)a[3]) {
++        r->bytes = r->bytes - o->bytes + bytes;
++        o->bytes = bytes;
++    }
++}
++
++static void fbo_attach(N00Client *c, N00GL *gl, struct N00FBOState *r, uint32_t *a,
++                       bool texture)
++{
++    int attachment = fbo_attachment(a[1]);
++    if (a[0] != GL_FRAMEBUFFER || attachment < 0 ||
++        (a[3] && a[2] != (texture ? GL_TEXTURE_2D : GL_RENDERBUFFER))) {
++        render_error(c, GL_INVALID_ENUM);
++        return;
++    }
++    if (texture && a[3] && a[4]) {
++        render_error(c, GL_INVALID_VALUE);
++        return;
++    }
++    N00FBOObject *fbo = fbo_current(gl, r, true);
++    N00FBOObject *rbo = !texture && a[3] ? fbo_object(r, false, a[3], false) : NULL;
++    if (!fbo || (!texture && a[3] && (!rbo || !gl->IsRenderbuffer(rbo->host)))) {
++        render_error(c, GL_INVALID_OPERATION);
++        return;
++    }
++    if (texture) {
++        /* Target and level are ignored by GLES2 when detaching name zero. */
++        gl->FramebufferTexture2D(a[0], a[1], GL_TEXTURE_2D, a[3], 0);
++    } else {
++        gl->FramebufferRenderbuffer(a[0], a[1], GL_RENDERBUFFER, rbo ? rbo->host : 0);
++    }
++    /* A failed attachment must not release the old renderbuffer's reservation. */
++    GLint type = GL_NONE, name = 0;
++    gl->GetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, a[1],
++                                           GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);
++    if (type != GL_NONE) {
++        gl->GetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, a[1],
++                                               GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &name);
++    }
++    if ((!a[3] && type == GL_NONE) ||
++        (texture && type == GL_TEXTURE && (GLuint)name == a[3]) ||
++        (!texture && rbo && type == GL_RENDERBUFFER && (GLuint)name == rbo->host)) {
++        fbo_replace_attachment(gl, r, fbo, attachment, rbo);
++    }
++}
++
++static bool call_fbo(N00Client *c, N00GL *gl, struct N00FBOState **state)
++{
++#define FBO_CASE(name) case N00_es20_gl##name
++    switch (c->call) {
++    FBO_CASE(GenFramebuffers): FBO_CASE(DeleteFramebuffers):
++    FBO_CASE(GenRenderbuffers): FBO_CASE(DeleteRenderbuffers):
++    FBO_CASE(BindFramebuffer): FBO_CASE(BindRenderbuffer):
++    FBO_CASE(FramebufferTexture2D): FBO_CASE(FramebufferRenderbuffer):
++    FBO_CASE(CheckFramebufferStatus): FBO_CASE(RenderbufferStorage):
++    FBO_CASE(IsFramebuffer): FBO_CASE(IsRenderbuffer):
++    FBO_CASE(GetFramebufferAttachmentParameteriv): FBO_CASE(GetRenderbufferParameteriv):
++        break;
++    default:
++        return false;
++    }
++    if (!*state) {
++        *state = g_new0(struct N00FBOState, 1);
++    }
++    struct N00FBOState *r = *state;
++    uint32_t a[5] = {0};
++#define FBO_ARGS(n) \
++    do { \
++        for (unsigned i = 0; i < (n); i++) { a[i] = arg(c, i); } \
++        if (c->bad_memory) { return true; } \
++    } while (0)
++    switch (c->call) {
++    FBO_CASE(GenFramebuffers): FBO_CASE(DeleteFramebuffers):
++    FBO_CASE(GenRenderbuffers): FBO_CASE(DeleteRenderbuffers):
++        FBO_ARGS(2);
++        fbo_names(c, gl, r, a[0], a[1],
++                  c->call == N00_es20_glGenFramebuffers ||
++                      c->call == N00_es20_glDeleteFramebuffers,
++                  c->call == N00_es20_glGenFramebuffers ||
++                      c->call == N00_es20_glGenRenderbuffers);
++        break;
++    FBO_CASE(BindFramebuffer): FBO_CASE(BindRenderbuffer):
++    {
++        FBO_ARGS(2);
++        bool framebuffer = c->call == N00_es20_glBindFramebuffer;
++        if (a[0] != (framebuffer ? GL_FRAMEBUFFER : GL_RENDERBUFFER)) {
++            render_error(c, GL_INVALID_ENUM);
++            break;
++        }
++        N00FBOObject *o = a[1] ? fbo_object(r, framebuffer, a[1], false) : NULL;
++        bool create = a[1] && !o;
++        GLuint host = o ? o->host : 0;
++        if (create) {
++            if (fbo_live(r, framebuffer) == R_FBO_NAMES) {
++                render_error(c, GL_OUT_OF_MEMORY);
++                break;
++            }
++            o = fbo_object(r, framebuffer, 0, false);
++            assert(o);
++            if (framebuffer) { gl->GenFramebuffers(1, &host); }
++            else { gl->GenRenderbuffers(1, &host); }
++            if (!host) { break; }
++        }
++        if (framebuffer) { gl->BindFramebuffer(a[0], host); }
++        else { gl->BindRenderbuffer(a[0], host); }
++        if (create) {
++            GLint binding = 0;
++            gl->GetIntegerv(framebuffer ? GL_FRAMEBUFFER_BINDING :
++                                         GL_RENDERBUFFER_BINDING, &binding);
++            if ((GLuint)binding == host) {
++                *o = (N00FBOObject){.name = a[1], .host = host, .live = true};
++            } else if (framebuffer) { gl->DeleteFramebuffers(1, &host); }
++            else { gl->DeleteRenderbuffers(1, &host); }
++        }
++        break;
++    }
++    FBO_CASE(RenderbufferStorage):
++        FBO_ARGS(4);
++        fbo_storage(c, gl, r, a);
++        break;
++    FBO_CASE(FramebufferTexture2D): FBO_CASE(FramebufferRenderbuffer):
++    {
++        bool texture = c->call == N00_es20_glFramebufferTexture2D;
++        FBO_ARGS(texture ? 5 : 4);
++        fbo_attach(c, gl, r, a, texture);
++        break;
++    }
++    FBO_CASE(CheckFramebufferStatus):
++        c->returned = true;
++        c->result = 0;
++        FBO_ARGS(1);
++        if (a[0] != GL_FRAMEBUFFER) {
++            render_error(c, GL_INVALID_ENUM);
++            break;
++        }
++        c->result = gl->CheckFramebufferStatus(a[0]);
++        break;
++    FBO_CASE(IsFramebuffer): FBO_CASE(IsRenderbuffer):
++    {
++        c->returned = true;
++        c->result = 0;
++        FBO_ARGS(1);
++        bool framebuffer = c->call == N00_es20_glIsFramebuffer;
++        N00FBOObject *o = a[0] ? fbo_object(r, framebuffer, a[0], false) : NULL;
++        if (o) {
++            c->result = framebuffer ? !!gl->IsFramebuffer(o->host) : !!gl->IsRenderbuffer(o->host);
++        }
++        break;
++    }
++    FBO_CASE(GetFramebufferAttachmentParameteriv): FBO_CASE(GetRenderbufferParameteriv):
++    {
++        bool framebuffer = c->call == N00_es20_glGetFramebufferAttachmentParameteriv;
++        FBO_ARGS(framebuffer ? 4 : 3);
++        int attachment = framebuffer ? fbo_attachment(a[1]) : 0;
++        if (a[0] != (framebuffer ? GL_FRAMEBUFFER : GL_RENDERBUFFER) || attachment < 0) {
++            render_error(c, GL_INVALID_ENUM);
++            break;
++        }
++        GLenum pname = a[framebuffer ? 2 : 1];
++        switch (pname) {
++        case GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE:
++        case GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME:
++        case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL:
++        case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE:
++            if (framebuffer) { break; }
++            render_error(c, GL_INVALID_ENUM);
++            return true;
++        case GL_RENDERBUFFER_WIDTH: case GL_RENDERBUFFER_HEIGHT:
++        case GL_RENDERBUFFER_INTERNAL_FORMAT: case GL_RENDERBUFFER_RED_SIZE:
++        case GL_RENDERBUFFER_GREEN_SIZE: case GL_RENDERBUFFER_BLUE_SIZE:
++        case GL_RENDERBUFFER_ALPHA_SIZE: case GL_RENDERBUFFER_DEPTH_SIZE:
++        case GL_RENDERBUFFER_STENCIL_SIZE:
++            if (!framebuffer) { break; }
++            /* fall through */
++        default:
++            render_error(c, GL_INVALID_ENUM);
++            return true;
++        }
++        GLint value = 0;
++        uint32_t address = a[framebuffer ? 3 : 2];
++        if (!guest_copy(c, address, &value, sizeof(value), false)) { break; }
++        N00FBOObject *o = fbo_current(gl, r, framebuffer);
++        if (!o) { render_error(c, GL_INVALID_OPERATION); break; }
++        value = le32_to_cpu(value);
++        if (framebuffer) {
++            GLint type = GL_NONE;
++            gl->GetFramebufferAttachmentParameteriv(a[0], a[1],
++                                                   GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);
++            if (pname != GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE &&
++                (type == GL_NONE || (type == GL_RENDERBUFFER &&
++                                    pname != GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME))) {
++                render_error(c, GL_INVALID_ENUM);
++                break;
++            }
++            if (pname == GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME && type == GL_RENDERBUFFER &&
++                o->attachments[attachment]) {
++                value = o->attachments[attachment]->name;
++            } else {
++                gl->GetFramebufferAttachmentParameteriv(a[0], a[1], pname, &value);
++            }
++        } else {
++            gl->GetRenderbufferParameteriv(a[0], pname, &value);
++        }
++        put_word(c, address, value);
++        break;
++    }
++    }
++#undef FBO_ARGS
++#undef FBO_CASE
++    return true;
++}

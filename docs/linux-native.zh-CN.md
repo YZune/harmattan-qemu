@@ -31,6 +31,8 @@ python3 -B scripts/harmattan-qemu/run-linux-ui.py \
   --mode live --frontend "$(command -v godot)" --timeout 1800
 ```
 
+要使用扩展的 Notes 新建／取消／重新打开及返回 Home 路径，请在此 Python 命令中添加 `--compositor-fbo-fix`。[帧缓冲指南](gles-framebuffers.zh-CN.md)说明了有界 FBO 实现，以及此 Linux 专用、显式启用选项选择的独立原始合成器修正；该修正受哈希和调用点保护。
+
 启动器在本次输出目录中选择新的会话路径，检查控制器创建的会话和启动状态后打开原生窗口。窗口可在 Home 就绪前显示启动状态，输入仍受原有客体检查约束。只需添加一次 `--metrics` 即可同时开启控制器和前端计时；可用 `--live-session` 指定其他新路径。桌面不可用或前端启动失败都会报错，不会自动切换显示方式。
 
 启动器同时管理前端与控制器。单纯窗口退出不能把未完成或失败的客体运行变成成功。任一端失败时，启动器会在有界时间内清理自己启动的进程并保留诊断结果。正常 Quit 仍等待控制器原有的客体和图形退出检查。

@@ -125,6 +125,12 @@ static void verify_pixels(Display *xdpy, Window window, unsigned frame)
 #ifdef N00_SHELL_API_PROBE
 #include "smoke-gles-shell-api.inc"
 #endif
+#ifdef N00_FBO_API_PROBE
+#define FBO_CALL(name, ...) name(__VA_ARGS__)
+#define FBO_PTR(value) (value)
+#define FBO_COLOR(red, green, blue, alpha) glClearColor(red, green, blue, alpha)
+#include "smoke-gles-fbo-api.inc"
+#endif
 
 int main(void)
 {
@@ -191,6 +197,11 @@ int main(void)
             "public surface query");
 #ifdef N00_SHELL_API_PROBE
     verify_shell_api();
+#endif
+#ifdef N00_FBO_API_PROBE
+    verify_fbo_api();
+    printf("\nN00_PUBLIC_FBO_API_OK pixels=24\n");
+    fflush(NULL);
 #endif
     glViewport(0, 0, W, H);
     const char *vs_source[] = {

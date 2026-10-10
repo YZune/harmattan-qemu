@@ -5,14 +5,14 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 work_root=${HARMATTAN_PORT_WORKSPACE:-"$repo_root/extracted/qemu-arm64-port"}
 cc=$(command -v "${HARMATTAN_ARMEL_CLANG:-clang}")
 link_root="$work_root/public-api-link-inputs"
-adaptation="$repo_root/extracted/pr1.0-qemu-adaptation/usr/lib"
+adaptation=${HARMATTAN_ADAPTATION_LIBDIR:-"$repo_root/extracted/pr1.0-qemu-adaptation/usr/lib"}
 dgles_root=${HARMATTAN_DGLES_ROOT:-"$work_root/dgles2-host/gles-libs-1.4.2/dgles2"}
 rootfs=${HARMATTAN_PUBLIC_ROOTFS:-"$repo_root/extracted/hybrid-pr1.3-qemu/pr1.3-rootfs-qemu-rescue.ext4"}
 debugfs_bin=${HARMATTAN_DEBUGFS:-debugfs}
 out="$work_root/guest-probes"
 variant=${1:---public}
-if [ "$#" -gt 1 ] || { [ "$variant" != --public ] && [ "$variant" != --shell-api ]; }; then
-    echo "Usage: sh $0 [--public|--shell-api]" >&2
+if [ "$#" -gt 1 ] || { [ "$variant" != --public ] && [ "$variant" != --shell-api ] && [ "$variant" != --fbo-api ]; }; then
+    echo "Usage: sh $0 [--public|--shell-api|--fbo-api]" >&2
     exit 2
 fi
 probe_name=smoke-gles-public-guest
@@ -20,6 +20,10 @@ set --
 if [ "$variant" = --shell-api ]; then
     probe_name=smoke-gles-shell-api-guest
     set -- -DN00_SHELL_API_PROBE
+fi
+if [ "$variant" = --fbo-api ]; then
+    probe_name=smoke-gles-fbo-api-guest
+    set -- -DN00_FBO_API_PROBE
 fi
 for required in "$adaptation/libEGL.so.1.3.0" "$adaptation/libGLESv2.so.1.4.9" \
     "$dgles_root/include/EGL/egl.h" "$dgles_root/include/GLES2/gl2.h"; do

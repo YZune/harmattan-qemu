@@ -16,6 +16,9 @@ SPEC.loader.exec_module(display)
 XORG_SPEC = importlib.util.spec_from_file_location("xorg_smoke", Path(__file__).with_name("smoke-arm64-xorg.py"))
 xorg = importlib.util.module_from_spec(XORG_SPEC)
 XORG_SPEC.loader.exec_module(xorg)
+GLES_SPEC = importlib.util.spec_from_file_location("gles_smoke", Path(__file__).with_name("smoke-arm64-gles.py"))
+gles = importlib.util.module_from_spec(GLES_SPEC)
+GLES_SPEC.loader.exec_module(gles)
 LIBRARIES = {
     "/usr/lib/libEGL.so.1": "2d33b733564f1adf8d2978f6e74efde2",
     "/usr/lib/libGLESv2.so.1": "061a075a2191fd79abd43640851c60b2",
@@ -41,7 +44,9 @@ def checkpoint(data, marker):
     return marker in lines
 
 
-def validate_serial(data, noxshm, shell_api=False):
+def validate_serial(data, noxshm, shell_api=False, fbo_api=False):
+    if shell_api and fbo_api:
+        raise ValueError("shell and FBO API probes use distinct verification profiles")
     data = data.replace(b"\r", b"")
     lines = data.split(b"\n")[:-1]
     required = MARKERS + (f"N00_PUBLIC_START noxshm={noxshm}".encode(),)
@@ -49,6 +54,10 @@ def validate_serial(data, noxshm, shell_api=False):
         required += (b"N00_SHELL_API_OK pixels=30 rejects=2",)
     elif b"N00_SHELL_API_OK" in data:
         raise ValueError("shell API probe requires its own verification profile")
+    if fbo_api:
+        required += (b"N00_PUBLIC_FBO_API_OK pixels=24",)
+    elif b"N00_PUBLIC_FBO_API_OK" in data:
+        raise ValueError("FBO API probe requires its own verification profile")
     if not all(lines.count(marker) == 1 for marker in required):
         raise ValueError("missing single complete public API checkpoints")
     checkpoint(data, b"N00_PUBLIC_EXIT_0")
@@ -81,9 +90,13 @@ def validate_serial(data, noxshm, shell_api=False):
             "known_guest_library_defect": "eglTerminate repeats with NULL: EGL_FALSE / EGL_BAD_DISPLAY"}
 
 
-def validate_host(data, shell_api=False):
+def validate_host(data, shell_api=False, fbo_api=False, renderer="Apple"):
+    if shell_api and fbo_api:
+        raise ValueError("shell and FBO API probes use distinct verification profiles")
     lines = data.strip().split(b"\n")
     calls, compiles, links, uploads, draws, rejects = (177, 4, 2, 3, 11, 2) if shell_api else (69, 2, 1, 2, 2, 0)
+    if fbo_api:
+        calls, uploads = 142, 3
     expected = [b"N00_GLES connect client=0 abi=1", b"N00_GLES connect client=1 abi=2", None,
                 b"N00_GLES terminate client=1 released=1 backend=retained",
                 b"N00_GLES terminate client=1 rejected=bad-display",
@@ -95,8 +108,10 @@ def validate_host(data, shell_api=False):
     for actual, wanted in zip(lines, expected):
         if wanted is not None and actual != wanted:
             raise ValueError("unexpected call counts, termination or worker exit")
-    if not re.fullmatch(rb"N00_GLES current client=1 es=2 renderer=Apple [^\n]+", lines[2]):
-        raise ValueError("missing actual Apple GPU renderer")
+    match = re.fullmatch(rb"N00_GLES current client=1 es=2 renderer=([^\r\n]+)", lines[2])
+    if not match:
+        raise ValueError("missing actual graphics renderer")
+    gles.validate_renderer(match[1], renderer)
     result = {"calls": calls, "swaps": 2, "faults": 0, "workers_joined": True,
               "compiles": compiles, "links": links, "uploads": uploads, "draws": draws}
     if shell_api:
@@ -119,10 +134,20 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--probe", required=True, type=Path)
     parser.add_argument("--noxshm", choices=("0", "1"), default="0")
-    parser.add_argument("--shell-api", action="store_true", help="also require RGB565 and shell GL state pixel checks")
+    profiles = parser.add_mutually_exclusive_group()
+    profiles.add_argument("--shell-api", action="store_true", help="also require RGB565 and shell GL state pixel checks")
+    profiles.add_argument("--fbo-api", action="store_true", help="also require FBO/RBO object, query and pixel checks")
+    parser.add_argument("--renderer", default="Apple", help="Apple, or exact Linux renderer from the DGLES host smoke; Linux uses private serial FIFOs")
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    try:
+        gles.validate_renderer(b"Apple probe" if args.renderer == "Apple" else args.renderer.encode(), args.renderer)
+    except ValueError as error:
+        parser.error(str(error))
+    linux_on = args.renderer != "Apple"
+    if linux_on:
+        gles.linux_offscreen.require_pillow()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command or "-snapshot" not in command or args.timeout <= 0:
         parser.error("QEMU command must include -snapshot and a positive timeout")
@@ -136,14 +161,19 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     deadline = started + args.timeout
-    serial, child = socket.socketpair()
+    serial, child = ((gles.linux_offscreen.PipeSerial(out / "serial-pipe", deadline), None)
+                     if linux_on else socket.socketpair())
     process = None
     try:
         with (out / "serial.log").open("xb") as log, (out / "qemu-stderr.log").open("xb") as errors:
+            chardev = (f"pipe,id=n00serial,path={serial.path}" if linux_on else
+                       f"socket,id=n00serial,fd={child.fileno()}")
             process = subprocess.Popen(command + ["-qmp", "stdio", "-chardev",
-                f"socket,id=n00serial,fd={child.fileno()}", "-serial", "chardev:n00serial", "-monitor", "none"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors, pass_fds=(child.fileno(),), bufsize=0)
-            child.close()
+                chardev, "-serial", "chardev:n00serial", "-monitor", "none"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors,
+                pass_fds=() if child is None else (child.fileno(),), bufsize=0)
+            if child is not None:
+                child.close()
             qmp = display.QMP(process, deadline)
 
             def wait(marker):
@@ -177,8 +207,10 @@ def main():
             frame_hashes = []
             for frame in range(2):
                 wait(f"N00_PUBLIC_FRAME_{frame}_OK pixels=829440".encode())
-                for ext in ("ppm", "png"):
+                for ext in (("ppm",) if linux_on else ("ppm", "png")):
                     qmp.call("screendump", {"filename": str(out / f"public-frame-{frame}.{ext}"), "format": ext})
+                if linux_on:
+                    gles.linux_offscreen.export_png(out / f"public-frame-{frame}.ppm", out / f"public-frame-{frame}.png")
                 frame_hashes.append(verify_frame((out / f"public-frame-{frame}.ppm").read_bytes(), frame))
                 serial.sendall(b"c\n")
             wait(b"N00_PUBLIC_EXIT_0")
@@ -188,8 +220,8 @@ def main():
             process.wait(timeout=5)
             if process.returncode != 0:
                 raise RuntimeError("QEMU did not exit cleanly")
-            guest = validate_serial((out / "serial.log").read_bytes(), args.noxshm, args.shell_api)
-            host = validate_host((out / "qemu-stderr.log").read_bytes(), args.shell_api)
+            guest = validate_serial((out / "serial.log").read_bytes(), args.noxshm, args.shell_api, args.fbo_api)
+            host = validate_host((out / "qemu-stderr.log").read_bytes(), args.shell_api, args.fbo_api, args.renderer)
             result = {"passed": True, "scope": "original guest libraries + Xorg window rendering; known legacy termination defect; not UI shell/input",
                 "command": command, "noxshm": args.noxshm, "frame_rgb_sha256": frame_hashes,
                 "guest": guest, "host": host, "guest_rgb_pixels_checked": 1658880,
@@ -200,9 +232,13 @@ def main():
                 "total_wall_seconds": round(time.monotonic() - started, 3)}
             if args.shell_api:
                 result["shell_api_rgb_checks"] = 30
+            if args.fbo_api:
+                result["fbo_api_rgba_pixels_checked"] = 24
             (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     finally:
-        serial.close(); child.close()
+        serial.close()
+        if child is not None:
+            child.close()
         if process is not None:
             if process.poll() is None:
                 process.terminate()
@@ -211,7 +247,7 @@ def main():
                 except subprocess.TimeoutExpired:
                     process.kill(); process.wait(timeout=5)
             process.stdin.close(); process.stdout.close()
-    print(f"PASS: original guest EGL/GLES, two X11 frames, noxshm={args.noxshm}, shell_api={args.shell_api}; evidence: {out}")
+    print(f"PASS: original guest EGL/GLES, two X11 frames, noxshm={args.noxshm}, shell_api={args.shell_api}, fbo_api={args.fbo_api}; evidence: {out}")
 
 
 if __name__ == "__main__":
