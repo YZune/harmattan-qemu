@@ -137,7 +137,8 @@ class ProfileTests(unittest.TestCase):
         for failing_source in (self.source, self.profile / 'disk.qcow2'):
             with self.subTest(failing_source=failing_source.name):
                 def fail_copy(command, **kwargs):
-                    if command[0] == '/bin/cp' and Path(command[-2]) == failing_source:
+                    # Profile resolves its directory; macOS temp paths can be aliases.
+                    if command[0] == '/bin/cp' and Path(command[-2]).resolve() == failing_source.resolve():
                         Path(command[-1]).write_bytes(b'partial copy')
                         raise subprocess.CalledProcessError(1, command)
                     return self.run_disk_tool(command, **kwargs)
