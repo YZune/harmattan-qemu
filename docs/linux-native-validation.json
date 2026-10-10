@@ -173,7 +173,7 @@
   },
   "public_integration": {
     "date_utc": "2026-10-10",
-    "status": "Local source checks complete; exact-commit CI tracked by the pull request",
+    "status": "Implementation source verified by independent review and Linux/macOS/Godot CI; guest/native rerun limits remain below",
     "host_suite": {
       "status": "failed in restricted local environment",
       "tests": 455,
@@ -211,13 +211,29 @@
     "shell_syntax": "passed for interim tree",
     "diff_check": "passed for interim tree",
     "ci": {
-      "status": "pending publication",
-      "required_jobs": [
-        "host-tests (ubuntu-24.04)",
-        "host-tests (macos-15)",
-        "native-frontend"
-      ],
-      "workflow": ".github/workflows/host-tests.yml"
+      "status": "passed for implementation commit",
+      "commit": "22ad7d40e435388ac810413d323bc5d657de31a7",
+      "pull_request": "https://github.com/YZune/harmattan-qemu/pull/30",
+      "run": "https://github.com/YZune/harmattan-qemu/actions/runs/38032681606",
+      "jobs": {
+        "host-tests (ubuntu-24.04)": {
+          "status": "passed",
+          "tests": 448,
+          "skipped": 8
+        },
+        "host-tests (macos-15)": {
+          "status": "passed",
+          "tests": 448,
+          "skipped": 4
+        },
+        "native-frontend": {
+          "status": "passed",
+          "tests": 7,
+          "godot": "4.6.3"
+        }
+      },
+      "initial_failure": "The first macOS run exposed a test-only assumption that /proc exists. A deterministic proc-stat/sysconf fixture fixed the test and checks exact CPU/RSS values; production code was unchanged.",
+      "scope": "Host/source checks and synthetic frontend protocol; no guest media or native desktop interaction in CI. The documentation-only evidence commit is checked separately by the PR workflow."
     },
     "focused_checks": {
       "bridge_tests_passed": 31,
