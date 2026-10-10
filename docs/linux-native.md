@@ -31,6 +31,8 @@ python3 -B scripts/harmattan-qemu/run-linux-ui.py \
   --mode live --frontend "$(command -v godot)" --timeout 1800
 ```
 
+For the extended Notes new/cancel/reopen and Home-return path, add `--compositor-fbo-fix` to this Python command. The [framebuffer guide](gles-framebuffers.md) documents the bounded FBO implementation and the separate hash/call-site-guarded original-compositor correction selected by this Linux-only, opt-in flag.
+
 The launcher selects a fresh session below its run output and opens the native window after checking the controller-created session and startup status. The window can show startup progress before Home is ready; input remains gated by the existing guest validation. Add `--metrics` once to enable both controller and frontend timing. `--live-session` may override the fresh path. An unavailable desktop or failed frontend is an error; there is no automatic display fallback.
 
 The launcher supervises the frontend and controller together. A window exit alone cannot turn an incomplete or failed guest run into success. If either side fails, the launcher bounds cleanup of the processes it started and preserves its diagnostics. Normal Quit still waits for the controller's original guest/graphics shutdown checks.

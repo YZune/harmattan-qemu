@@ -7,6 +7,7 @@ typedef unsigned char u8;
 typedef unsigned short u16;
 extern long linux_call(long, long, long, long, long, long, long);
 extern u32 n00_render_call(void *, u32, const u32 *);
+extern u32 n00_float_call(void *, u32, const u32 *, u32);
 enum { W = 864, H = 480, BYTES = W * H * 4 };
 static u8 swapped[BYTES + 32] __attribute__((aligned(4096)));
 static u8 readback[BYTES + 32] __attribute__((aligned(4096)));
@@ -43,6 +44,105 @@ static void require(int ok, const char *message)
         linux_call(1, 1, 0, 0, 0, 0, 0);
     }
 }
+#ifdef N00_FBO_API_PROBE
+static u32 float_word(float value)
+{
+    union { float f; u32 u; } bits = {.f = value};
+    return bits.u;
+}
+static void fbo_color(float red, float green, float blue, float alpha)
+{
+    const u32 args[8] = {float_word(red), float_word(green), float_word(blue),
+                         float_word(alpha), 0, 0, 0, 0};
+    /* The kernel transport selects ABI 2 even for this softfp executable.
+     * Use VFP arguments and poison core registers, as the existing clear probe
+     * does, so a stale/misread float argument channel cannot accidentally pass.
+     */
+    n00_float_call(gl, N00_es20_glClearColor, args, 2);
+}
+#define FBO_CALL(name, ...) G(name, __VA_ARGS__)
+#define FBO_PTR(value) P(value)
+#define FBO_COLOR(red, green, blue, alpha) fbo_color(red, green, blue, alpha)
+#include "smoke-gles-fbo-api.inc"
+
+#ifdef N00_FBO_NEGATIVE
+static void reject_fbo_inputs(void)
+{
+    u32 guarded[130];
+    for (unsigned i = 0; i < 130; i++) {
+        guarded[i] = 0x5a5a5a5a;
+    }
+    /* Each rejection must return exactly one error and then recover. */
+#define BAD_FBO(name, error, ...) do { \
+    G(name, __VA_ARGS__); \
+    require(G(glGetError, 0) == error, "FBO invalid input error"); \
+    require(!G(glGetError, 0), "FBO error drains exactly once"); \
+} while (0)
+    BAD_FBO(glGenFramebuffers, 0x502, 1, 0);
+    BAD_FBO(glGenRenderbuffers, 0x502, 1, 0xdead0000);
+    BAD_FBO(glDeleteFramebuffers, 0x502, 1, 0xdead0000);
+    BAD_FBO(glDeleteRenderbuffers, 0x502, 1, 0xfffffffe);
+    BAD_FBO(glGenFramebuffers, 0x501, 0xffffffff, P(guarded + 1));
+    BAD_FBO(glGenRenderbuffers, 0x501, 129, P(guarded + 1));
+    BAD_FBO(glDeleteFramebuffers, 0x501, 129, P(guarded + 1));
+    BAD_FBO(glDeleteRenderbuffers, 0x501, 0xffffffff, P(guarded + 1));
+    for (unsigned i = 0; i < 130; i++) {
+        require(guarded[i] == 0x5a5a5a5a, "invalid FBO count leaves output unchanged");
+    }
+    G(glGenFramebuffers, 0, 0);
+    G(glGenRenderbuffers, 0, 0);
+    G(glDeleteFramebuffers, 0, 0);
+    G(glDeleteRenderbuffers, 0, 0);
+    require(!G(glGetError, 0), "zero FBO counts require no memory");
+    /* The invalid generation pointers above must not leak reserved names. */
+    G(glGenFramebuffers, 128, P(guarded + 1));
+    require(!G(glGetError, 0), "full FBO name capacity after bad output pointer");
+    BAD_FBO(glGenFramebuffers, 0x505, 1, P(guarded));
+    require(guarded[0] == 0x5a5a5a5a && guarded[129] == 0x5a5a5a5a,
+            "FBO generation capacity guards");
+    G(glDeleteFramebuffers, 128, P(guarded + 1));
+    G(glGenRenderbuffers, 128, P(guarded + 1));
+    require(!G(glGetError, 0), "full RBO name capacity after bad output pointer");
+    BAD_FBO(glGenRenderbuffers, 0x505, 1, P(guarded));
+    require(guarded[0] == 0x5a5a5a5a && guarded[129] == 0x5a5a5a5a,
+            "RBO generation capacity guards");
+    G(glDeleteRenderbuffers, 128, P(guarded + 1));
+    u32 framebuffer = 0, renderbuffer = 0, texture = 0;
+    G(glGenFramebuffers, 1, P(&framebuffer));
+    G(glGenRenderbuffers, 1, P(&renderbuffer));
+    G(glBindFramebuffer, FB_TARGET, framebuffer);
+    G(glBindRenderbuffer, FB_RENDERBUFFER, renderbuffer);
+    /* The original compositor's wrong-target call must remain invalid at the
+     * wire boundary, independently of any pinned application adaptation. */
+    BAD_FBO(glBindFramebuffer, 0x500, FB_RENDERBUFFER, framebuffer);
+    fbo_query(0, 0x8ca6, 0, framebuffer);
+    fbo_query(0, 0x8ca7, 0, renderbuffer);
+    BAD_FBO(glBindRenderbuffer, 0x500, FB_TARGET, renderbuffer);
+    fbo_query(0, 0x8ca6, 0, framebuffer);
+    fbo_query(0, 0x8ca7, 0, renderbuffer);
+    G(glGenTextures, 1, P(&texture));
+    G(glBindTexture, FB_TEXTURE_2D, texture);
+    BAD_FBO(glGetFramebufferAttachmentParameteriv, 0x502, FB_TARGET, FB_COLOR,
+            0x8cd0, 0xdead0000);
+    BAD_FBO(glGetRenderbufferParameteriv, 0x502, FB_RENDERBUFFER, 0x8d42, 0);
+    BAD_FBO(glGetIntegerv, 0x502, 0x8ca6, 0xfffffffe);
+    BAD_FBO(glRenderbufferStorage, 0x501, FB_RENDERBUFFER, 0x8056, 0xffffffff, 3);
+    BAD_FBO(glRenderbufferStorage, 0x501, FB_RENDERBUFFER, 0x8056, 4, 4097);
+    BAD_FBO(glRenderbufferStorage, 0x500, FB_RENDERBUFFER, FB_RGBA, 4, 3);
+    BAD_FBO(glRenderbufferStorage, 0x500, FB_TARGET, 0x8056, 4, 3);
+    BAD_FBO(glFramebufferTexture2D, 0x501, FB_TARGET, FB_COLOR, FB_TEXTURE_2D, texture, 1);
+    BAD_FBO(glFramebufferTexture2D, 0x500, FB_TARGET, FB_COLOR, 0, texture, 0);
+    BAD_FBO(glFramebufferRenderbuffer, 0x500, FB_TARGET, 0, FB_RENDERBUFFER, renderbuffer);
+    BAD_FBO(glCheckFramebufferStatus, 0x500, FB_RENDERBUFFER);
+    G(glDeleteFramebuffers, 1, P(&framebuffer));
+    G(glDeleteRenderbuffers, 1, P(&renderbuffer));
+    G(glDeleteTextures, 1, P(&texture));
+    require(!G(glGetError, 0), "FBO rejection cleanup");
+#undef BAD_FBO
+    say("\nN00_GLES_FBO_NEGATIVE_OK rejections=23 faults=7\n");
+}
+#endif
+#endif
 static u32 shader(u32 type, const char **strings, const int *lengths, unsigned count)
 {
     u32 object = G(glCreateShader, type);
@@ -150,6 +250,13 @@ int guest_main(void)
     u32 surface = E(eglCreateWindowSurface, display, config, P(drawable), 0);
     require(context && surface && E(eglMakeCurrent, display, surface, surface, context),
             "make render context current");
+#ifdef N00_FBO_API_PROBE
+#ifdef N00_FBO_NEGATIVE
+    reject_fbo_inputs();
+#endif
+    verify_fbo_api();
+    say("\nN00_GLES_FBO_API_OK pixels=24\n");
+#endif
     G(glViewport, 0, 0, W, H);
     const char vertex_a[] = "attribute vec2 pos; attribute vec2 uv; varying vec2 tc;";
     const char vertex_b[] =

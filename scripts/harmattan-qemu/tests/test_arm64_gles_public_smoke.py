@@ -39,6 +39,35 @@ def host_log():
 
 
 class PublicAPIGateTests(unittest.TestCase):
+    def test_fbo_profile_requires_exact_pixels_and_original_library_evidence(self):
+        data = serial_log() + b"N00_PUBLIC_FBO_API_OK pixels=24\n"
+        SMOKE.validate_serial(data, "0", fbo_api=True)
+        for candidate, profile in ((data, False), (serial_log(), True),
+                                   (data.replace(b"pixels=24", b"pixels=23"), True),
+                                   (data + b"N00_PUBLIC_FBO_API_OK pixels=24\n", True),
+                                   (data + b"N00_PUBLIC_FAIL: FBO query guard\n", True),
+                                   (data + b"N00_PUBLIC_EXIT_139\n", True),
+                                   (data.replace(b"libGLESv2.so.1.4.9", b"libGLESv2.so.fake"), True)):
+            with self.assertRaises(ValueError):
+                SMOKE.validate_serial(candidate, "0", fbo_api=profile)
+        with self.assertRaises(ValueError):
+            SMOKE.validate_serial(data, "0", shell_api=True, fbo_api=True)
+
+    def test_fbo_host_counts_and_linux_renderer_remain_strict(self):
+        renderer = "llvmpipe (LLVM 19.1.7, 256 bits)"
+        data = host_log().replace(b"calls=69", b"calls=142").replace(
+            b"uploads=2", b"uploads=3").replace(b"Apple Test GPU", renderer.encode())
+        self.assertEqual(SMOKE.validate_host(data, fbo_api=True, renderer=renderer)["calls"], 142)
+        for old, new in ((b"calls=142", b"calls=141"), (b"uploads=3", b"uploads=2"),
+                         (b"faults=0", b"faults=1"), (b"rejects=0", b"rejects=1"),
+                         (b"draws=2", b"draws=1"), (b"LLVM 19.1.7", b"LLVM 18.1.8")):
+            with self.assertRaises(ValueError):
+                SMOKE.validate_host(data.replace(old, new), fbo_api=True, renderer=renderer)
+        for kwargs in ({}, {"renderer": renderer}, {"fbo_api": True},
+                       {"shell_api": True, "fbo_api": True, "renderer": renderer}):
+            with self.assertRaises(ValueError):
+                SMOKE.validate_host(data, **kwargs)
+
     def test_shell_api_marker_and_profiles_cannot_be_mixed(self):
         data = serial_log() + b"N00_SHELL_API_OK pixels=30 rejects=2\n"
         SMOKE.validate_serial(data, "0", shell_api=True)

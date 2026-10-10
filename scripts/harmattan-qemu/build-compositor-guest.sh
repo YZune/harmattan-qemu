@@ -19,10 +19,16 @@ variant=matrices
 if [ "$#" -eq 1 ] && [ "$1" = --splash ]; then
     variant=splash
     set -- "$repo_root/scripts/harmattan-qemu/compositor-splash-guest.c"
-elif [ "$#" -eq 1 ] && [ "$1" = --handoff ]; then
+elif [ "$#" -eq 1 ] && { [ "$1" = --handoff ] || [ "$1" = --handoff-fbo ]; }; then
+    fbo=0
+    if [ "$1" = --handoff-fbo ]; then fbo=1; fi
     variant=handoff
     set -- "$repo_root/scripts/harmattan-qemu/compositor-handoff-guest.c" \
         "$repo_root/scripts/harmattan-qemu/compositor-input-handoff-guest.c"
+    if [ "$fbo" = 1 ]; then
+        variant=handoff-fbo
+        set -- "$@" "$repo_root/scripts/harmattan-qemu/compositor-fbo-guest.c"
+    fi
 else
     test "$#" -eq 0 || exit 2
 fi

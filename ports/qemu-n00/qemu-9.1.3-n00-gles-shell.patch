@@ -25,18 +25,26 @@ diff --git a/hw/arm/n00_gles_render.inc b/hw/arm/n00_gles_render.inc
 index 7ba98b5..965319b 100644
 --- a/hw/arm/n00_gles_render.inc
 +++ b/hw/arm/n00_gles_render.inc
-@@ -52,6 +52,10 @@ static bool render_error(N00Client *c, GLenum error)
+@@ -52,6 +52,18 @@ static bool render_error(N00Client *c, GLenum error)
          c->gl_error = error;
      }
      c->s->render_rejects++;
-+    if (c->s->trace) {
-+        fprintf(stderr, "N00_GLES render-reject client=%u call=%u error=%04x r0=%08x\n",
-+                c->nr, c->call, error, c->regs[0]);
++    /* Error-only tracing is bounded and never decodes guest pointers or stack. */
++    if (c->s->trace || c->s->trace_rejects) {
++        if (c->s->render_rejects <= 64) {
++            fprintf(stderr,
++                    "N00_GLES render-reject client=%u api=%u abi=%u call=%u "
++                    "error=%04x r0=%08x r1=%08x r2=%08x r3=%08x\n",
++                    c->nr, c->api, c->abi, c->call, error,
++                    c->regs[0], c->regs[1], c->regs[2], c->regs[3]);
++        } else if (c->s->render_rejects == 65) {
++            fprintf(stderr, "N00_GLES render-reject limit=64 further=suppressed\n");
++        }
 +    }
      return false;
  }
  
-@@ -276,9 +280,19 @@ static void render_texture(N00Client *c, N00GL *gl, uint32_t *a, bool sub)
+@@ -276,9 +288,19 @@ static void render_texture(N00Client *c, N00GL *gl, uint32_t *a, bool sub)
          render_error(c, GL_INVALID_ENUM);
          return;
      }
@@ -57,7 +65,7 @@ index 7ba98b5..965319b 100644
          render_error(c, GL_INVALID_VALUE);
          return;
      }
-@@ -416,19 +430,26 @@ static bool call_render(N00Client *c)
+@@ -416,19 +438,26 @@ static bool call_render(N00Client *c)
          }
          CASE(Uniform1i) : gl->Uniform1i(arg(c, 0), arg(c, 1));
          break;
@@ -86,7 +94,7 @@ index 7ba98b5..965319b 100644
                  } else {
                      gl->Uniform4fv(a[0], a[1], values);
                  }
-@@ -607,6 +628,23 @@ static bool call_render(N00Client *c)
+@@ -607,6 +636,23 @@ static bool call_render(N00Client *c)
          break;
          CASE(TexParameteri) : gl->TexParameteri(arg(c, 0), arg(c, 1), arg(c, 2));
          break;

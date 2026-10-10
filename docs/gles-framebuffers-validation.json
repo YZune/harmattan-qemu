@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-10-10",
+  "scope": "Bounded GLES2 FBO/RBO wire marshalling and an explicit Linux original-compositor call-site correction; raw, original-library and scoped native-window validation",
+  "environment": {
+    "host": "Linux x86_64",
+    "qemu": "9.1.3",
+    "qemu_sha256": "3665576d27bf70b63cf94864f67e59ea246cbed8b76c6d01762e15f30bc6853e",
+    "guest": "Original Harmattan libraries and applications in disposable snapshots",
+    "probe_transport": "QMP stdio and private mode-0600 serial FIFOs",
+    "network": "off"
+  },
+  "implementation_bounds": {
+    "wire_methods": 14,
+    "framebuffer_names_per_context": 128,
+    "renderbuffer_names_per_context": 128,
+    "renderbuffer_max_dimension": 4096,
+    "logical_renderbuffer_reservation_bytes_per_context": 67108864,
+    "reservation_bytes_per_pixel": 4,
+    "reservation_is_physical_memory_cap": false,
+    "deleted_attached_renderbuffers": "Host objects and reservations remain until their last retained attachment is removed; reused guest names refer to distinct objects"
+  },
+  "host_checks": {
+    "marshaller_cases_passed": 8,
+    "compositor_correction_cases_passed": 6,
+    "independent_review": "passed",
+    "arm_helper_return_address_codegen": "verified",
+    "sanitizers": {
+      "address": true,
+      "undefined_behavior": true,
+      "leaks": false,
+      "local_exception": "ASAN_OPTIONS=detect_leaks=0 was required by the local ptrace restriction"
+    },
+    "full_suite": {
+      "status": "failed in restricted local environment",
+      "tests": 512,
+      "assertion_failures": 0,
+      "errors": 4,
+      "skipped": 7,
+      "error_cause": "All four test_arm64_splash errors were AF_UNIX socket creation denied by the cloud sandbox"
+    }
+  },
+  "guest_probes": [
+    {
+      "profile": "raw FBO",
+      "passed": true,
+      "calls": 177,
+      "swaps": 4,
+      "faults": 0,
+      "render_rejections": 0
+    },
+    {
+      "profile": "raw FBO negative",
+      "passed": true,
+      "calls": 271,
+      "swaps": 4,
+      "expected_guest_memory_faults": 7,
+      "expected_parameter_rejections": 16,
+      "expected_failures_total": 23,
+      "swapped_bind_targets_rejected": true,
+      "bindings_preserved_after_rejection": true
+    },
+    {
+      "profile": "original libraries, XShm",
+      "passed": true,
+      "noxshm": 0,
+      "calls": 142,
+      "swaps": 2,
+      "faults": 0,
+      "render_rejections": 0
+    },
+    {
+      "profile": "original libraries, XImage",
+      "passed": true,
+      "noxshm": 1,
+      "calls": 142,
+      "swaps": 2,
+      "faults": 0,
+      "render_rejections": 0
+    }
+  ],
+  "all_probe_checks": {
+    "fbo_rgba_pixels_per_profile": 24,
+    "existing_display_pixel_checks": "passed",
+    "workers": "joined",
+    "public_library_identity_and_exchange_mode": "passed",
+    "known_public_library_termination_defect": "Repeated eglTerminate(NULL) returns EGL_FALSE / EGL_BAD_DISPLAY; preserved as a separate expected legacy defect"
+  },
+  "original_compositor_correction": {
+    "enabled_by": "--compositor-fbo-fix",
+    "default": "off",
+    "platform": "Linux only",
+    "original_library": "libmcompositor.so.1.1.3",
+    "original_library_sha256": "e9fcdb50530076abce62aaae65f5116a71badc283c89111a0d5e38f13b4a8c1b",
+    "symbol": "MCompositeWindowGroup::init",
+    "wrong_target_load_offset": "0x64",
+    "glBindFramebuffer_call_offset": "0x70",
+    "guarded_return_offset": "0x74",
+    "correction": "GL_RENDERBUFFER to GL_FRAMEBUFFER for the one guarded call site",
+    "guards": "Full library SHA256 at build and guest startup, loaded function entry/call-site bytes, exact return address and wrong target",
+    "original_binary_modified": false,
+    "strict_wrong_target_bridge_validation_preserved": true,
+    "unguarded_native_run": {
+      "passed": false,
+      "render_rejections": 1,
+      "faults": 0,
+      "workers": "joined",
+      "result": "Strict Quit gate rejected the original compositor's invalid target"
+    }
+  },
+  "guarded_native_run": {
+    "passed": true,
+    "input_source": "OS desktop mouse and keyboard events through the actual Godot window and guest-input bridge",
+    "guard_observed": true,
+    "callsite_fix_observed": true,
+    "observed_actions": [
+      "Notes entered and saved Linux works AaZz",
+      "Notes new, cancel, new and Fbo works entry",
+      "Escape to Home, draft reopen and saving both notes",
+      "Native mouse edge returns to Home",
+      "Calculator 2+3=5",
+      "Native Quit"
+    ],
+    "audit": {
+      "total": 103,
+      "accepted": 102,
+      "cancelled": 1,
+      "cancellation": "Automatic release cancelled by native Quit priority; not a typing failure"
+    },
+    "graphics": {
+      "calls": 14116,
+      "swaps": 161,
+      "shader_compiles": 9,
+      "program_links": 6,
+      "texture_uploads": 179,
+      "draws": 524,
+      "faults": 0,
+      "render_rejections": 0,
+      "workers": "joined"
+    },
+    "lifecycle": {
+      "qemu_exit": 0,
+      "controller_exit": 0,
+      "frontend_exit": 0,
+      "frontend_stop": "natural"
+    },
+    "base_preservation": {
+      "metadata_unchanged": true,
+      "full_sha256_recomputed": false
+    }
+  },
+  "limitations": [
+    "Full local host suite did not pass; focused and guest successes do not replace that result",
+    "No CI or macOS runtime acceptance for this change",
+    "No physical input-latency, display-FPS or performance-comparison claim",
+    "No complete GLES2, SGX, cube-map attachments, nonzero texture levels, extension formats, multisampling or shared-context acceptance",
+    "No arbitrary-application, long-session, persistent-storage or release-package acceptance",
+    "No firmware, guest binaries, raw logs or private machine paths included"
+  ]
+}

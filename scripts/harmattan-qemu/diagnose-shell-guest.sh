@@ -32,6 +32,11 @@ case ${N00_UI_ANIMATIONS:-0} in
     1) compositor_env='LD_PRELOAD=/tmp/n00-compositor-matrices.so' ;;
     *) echo 'Invalid compositor animation mode' >&2; exit 2 ;;
 esac
+case ${N00_UI_COMPOSITOR_FBO_FIX:-0} in
+    0) ;;
+    1) test "${N00_UI_ANIMATIONS:-0}" = 1 ;;
+    *) echo 'Invalid compositor FBO correction mode' >&2; exit 2 ;;
+esac
 case ${N00_UI_TOP_EDGE:-disabled} in
     disabled) ;;
     top|left|bottom|right) user_env="$user_env CONTEXT_PROVIDERS=/tmp/n00-qemu-orientation/providers" ;;
@@ -378,6 +383,17 @@ case ${1:-} in
                 test "$(md5sum /usr/lib/libmcompositor.so.1.1.3 | cut -d ' ' -f 1)" = 49985bb59bf13ae22d20075feb11818a
                 test -s /tmp/n00-compositor-matrices.so
                 chmod 0644 /tmp/n00-compositor-matrices.so
+            fi
+            if [ "${N00_UI_COMPOSITOR_FBO_FIX:-0}" = 1 ]; then
+                # Original guest Digest::SHA; fail before preload on any mismatch.
+                perl -MDigest::SHA -e '
+                    my $sha = Digest::SHA->new(256);
+                    $sha->addfile("/usr/lib/libmcompositor.so.1.1.3", "b");
+                    my $hex = $sha->hexdigest;
+                    die "N00_COMPOSITOR_FBO_TARGET_ERROR library SHA256 mismatch\n"
+                        unless $hex eq "e9fcdb50530076abce62aaae65f5116a71badc283c89111a0d5e38f13b4a8c1b";
+                    print "N00_COMPOSITOR_FBO_LIBRARY_SHA256 $hex\n";
+                '
             fi
             su user -c "$user_env $compositor_env mcompositor -nohung >/tmp/n00-shell-compositor.log 2>&1 &"
         fi

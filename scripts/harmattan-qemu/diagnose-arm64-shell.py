@@ -316,6 +316,7 @@ def main():
     parser.add_argument('--input-method', choices=('on', 'off'), help='original Maliit keyboard; defaults on for interactive use')
     parser.add_argument('--exercise-keyboard', action='store_true', help='original Notes typing, deletion, symbol layout, save and reopen before Calculator regression')
     parser.add_argument("--compositor-animations", choices=('on', 'off'), help="process-local matrix correction; on by default for interactive use, off in historical diagnostics")
+    parser.add_argument('--compositor-fbo-fix', action='store_true', help='Linux-only correction for one pinned original compositor framebuffer callsite')
     parser.add_argument('--display-handoff', choices=('on', 'off'), help='opt-in real-pixel overlay handoff; currently requires splash off')
     parser.add_argument("--splash", choices=('on', 'off'), help="experimental original launch-splash protocol; off by default pending compositor regression")
     parser.add_argument("--exercise-startup-input", action="store_true", help="discard early MXT clicks, then run normal Calculator input after startup release")
@@ -412,6 +413,8 @@ def run_session(args, command, linux_on, live_bridge, parser):
     animations_on = animations.enabled(args.compositor_animations, args.interactive)
     splash_on = splash.enabled(args.splash, args.interactive)
     handoff_on = args.display_handoff == 'on'
+    if args.compositor_fbo_fix and (not linux_on or not animations_on or not handoff_on or splash_on):
+        parser.error('compositor FBO correction requires Linux, animations, handoff and splash off')
     if handoff_on and (not animations_on or splash_on):
         parser.error('display handoff requires compositor animations on and splash off')
     if splash_on and (not animations_on or args.measure_performance):
@@ -455,7 +458,7 @@ def run_session(args, command, linux_on, live_bridge, parser):
     animation_info = {'enabled': animations_on}
     if animations_on:
         checkpoint()
-        animation_binary, metadata = animations.prepare(splash=splash_on, handoff=handoff_on)
+        animation_binary, metadata = animations.prepare(splash=splash_on, handoff=handoff_on, fbo=args.compositor_fbo_fix)
         animation_info.update(metadata)
     splash_info = {'enabled': splash_on}
     helper_payloads = {}
@@ -705,6 +708,8 @@ def run_session(args, command, linux_on, live_bridge, parser):
             if animations_on:
                 upload(animation_binary, animations.HELPER, 'N00_ANIMATION_BINARY')
                 serial.sendall(b'export N00_UI_ANIMATIONS=1\n')
+                if args.compositor_fbo_fix:
+                    serial.sendall(b'export N00_UI_COMPOSITOR_FBO_FIX=1\n')
             if edge is not None:
                 upload(pose_binary, '/tmp/n00-orientation-provider', 'N00_POSE_BINARY')
                 upload(pose_script, '/tmp/n00-orientation-guest.sh', 'N00_POSE_SCRIPT')
@@ -899,6 +904,8 @@ def run_session(args, command, linux_on, live_bridge, parser):
                 clock_info['startup_frames'] = home_frames
                 if animations_on:
                     animation_info['runtime'] = animations.validate_serial((out / 'serial.log').read_bytes(), animation_info['helper_md5'], require_root_guard=True)
+                    if args.compositor_fbo_fix:
+                        animation_info['fbo_target_runtime'] = animations.validate_fbo_correction((out / 'serial.log').read_bytes())
                     if handoff_on:
                         animation_info['handoff_runtime'] = animations.validate_handoff((out / 'serial.log').read_bytes())
                 if splash_on:
@@ -968,6 +975,13 @@ def run_session(args, command, linux_on, live_bridge, parser):
                     if power_on:
                         ui_power.run_phase(serial, wait_line, out, "stop", power_info)
                     qmp.deadline = time.monotonic() + 40
+                    if args.compositor_fbo_fix:
+                        serial.sendall(b"printf '\\n'; sh /tmp/n00-shell-guest.sh compositor-report; printf '\\nN00_FBO_FINAL_EXIT_%s\\nN00_FBO_FINAL_DONE\\n' $?\n")
+                        wait_line(b'N00_FBO_FINAL_DONE')
+                        serial_data = (out / 'serial.log').read_bytes()
+                        if b'N00_FBO_FINAL_EXIT_0' not in serial_data.replace(b'\r', b'').splitlines():
+                            raise ValueError('final compositor FBO report failed')
+                        animation_info['fbo_target_runtime'] = animations.validate_fbo_correction(serial_data)
                     if profile_session:
                         storage.sync_guest(serial, process, log, display)
                         profile_synced = True
@@ -1044,6 +1058,7 @@ def run_session(args, command, linux_on, live_bridge, parser):
                         'startup_wall_seconds': ready['startup_wall_seconds'],
                         'startup_observations': ready['startup_observations'],
                         'host': final_host, 'qemu_exit': process.returncode,
+                        'compositor_fbo_correction': animation_info.get('fbo_target_runtime', {'enabled': False}),
                         'scope': 'bounded interactive startup gates and clean exit; no physical input or display latency'},
                         indent=2) + '\n')
                     if live_bridge:
@@ -1063,6 +1078,8 @@ def run_session(args, command, linux_on, live_bridge, parser):
             if animations_on:
                 animation_info['runtime'] = animations.validate_serial((out / 'serial.log').read_bytes(), animation_info['helper_md5'],
                     minimum_reports=3 + (6 if args.exercise_calculator else 0), require_root_guard=True)
+                if args.compositor_fbo_fix:
+                    animation_info['fbo_target_runtime'] = animations.validate_fbo_correction((out / 'serial.log').read_bytes())
                 if args.exercise_keyboard:
                     animation_info['input_handoff_runtime'] = animations.validate_input_handoff((out/'serial.log').read_bytes())
                 if handoff_on:
