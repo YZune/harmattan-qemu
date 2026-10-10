@@ -218,6 +218,9 @@ func test_frames_and_native_input() -> void:
 	key.ctrl_pressed = false
 	ui._input(key)
 	check(event(ui, 2).action == "move" and event(ui, 3).action == "up" and event(ui, 4).type == "release" and event(ui, 5).key == "x", "native key flushes motion and held touch before typing")
+	check(not ui.dragging and ui.pending_move.is_empty(), "native key relinquishes mouse contact and pending motion")
+	ui.get_window().mouse_exited.emit()
+	check(ui.sequence == 5 and event(ui, 5).key == "x", "mouse exit after drag-to-key handoff preserves queued typing")
 	ui.status["frame_file"] = "../frame.synthetic.png"
 	ui._load_frame(2)
 	ui._refresh_state()
@@ -257,6 +260,12 @@ func test_rapid_typing() -> void:
 		check(key.type == "key" and key.seq == index * 2 + 2, "rapid key has a contiguous sequence")
 		queued_text += key.key
 	check(queued_text == text, "rapid typing retains all characters in original order")
+	check(not ui.dragging, "queued typing owns no native mouse contact")
+	ui.get_window().mouse_exited.emit()
+	check(ui.sequence == text.length() * 2, "mouse exit without a drag preserves queued typing")
+	check(ui.live and ui.acknowledged == 0, "mouse exit alone does not change readiness or acknowledge text")
+	ui.get_window().mouse_exited.emit()
+	check(ui.sequence == text.length() * 2, "repeated hover exits publish no keyboard cancellation")
 	ui.get_window().focus_exited.emit()
 	check(event(ui, ui.sequence).type == "cancel" and ui.sequence == text.length() * 2 + 1, "focus loss explicitly cancels the queued typing")
 	for index in range(text.length()):

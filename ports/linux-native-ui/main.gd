@@ -70,7 +70,7 @@ func _ready() -> void:
 	get_window().min_size = Vector2i(320, 560)
 	get_window().close_requested.connect(_request_quit)
 	get_window().focus_exited.connect(_cancel_input)
-	get_window().mouse_exited.connect(_cancel_input)
+	get_window().mouse_exited.connect(_mouse_exited)
 	get_window().go_back_requested.connect(_go_back)
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -540,6 +540,13 @@ func _release_all(control_kind: String = "release") -> void:
 		dragging = false
 	if not controller_id.is_empty() and quit_sequence == 0:
 		_send_event({"type": control_kind})
+
+
+func _mouse_exited() -> void:
+	# A hover exit can retain keyboard focus. Only an owned mouse drag needs
+	# cancellation; emulated keyboard touches belong to the queued key instead.
+	if dragging:
+		_cancel_input()
 
 
 func _cancel_input() -> void:
