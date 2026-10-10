@@ -481,12 +481,13 @@ func _input(event: InputEvent) -> void:
 			_pointer("move", point)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo and live:
+		var input_usec := Time.get_ticks_usec()
 		if event.ctrl_pressed or event.alt_pressed or event.meta_pressed:
 			return
 		var key := ""
 		match event.keycode:
 			KEY_ESCAPE:
-				_go_back()
+				_go_back(input_usec)
 				get_viewport().set_input_as_handled()
 				return
 			KEY_ENTER, KEY_KP_ENTER:
@@ -497,7 +498,7 @@ func _input(event: InputEvent) -> void:
 			key = String.chr(event.unicode)
 		if not key.is_empty():
 			_release_all()
-			_send_event({"type": "key", "key": key})
+			_send_event({"type": "key", "key": key}, input_usec)
 			get_viewport().set_input_as_handled()
 
 
@@ -547,10 +548,10 @@ func _cancel_input() -> void:
 	_release_all("cancel")
 
 
-func _go_back() -> void:
+func _go_back(input_seen_usec: int = 0) -> void:
 	if live:
 		_release_all()
-		_send_event({"type": "key", "key": "Escape"})
+		_send_event({"type": "key", "key": "Escape"}, input_seen_usec)
 
 
 func _can_close_locally() -> bool:
@@ -626,6 +627,7 @@ func _send_event(payload: Dictionary, input_seen_usec: int = 0) -> bool:
 	_telemetry("event_enqueued", {
 		"event_sequence": sequence,
 		"event_type": str(payload.get("type", "")),
+		"input_kind": ("escape_gesture" if payload.get("key", "") == "Escape" else "keyboard") if payload.get("type", "") == "key" else "",
 		"pointer_action": str(payload.get("action", "")),
 		"enqueue_start_usec": enqueue_start_usec,
 		"enqueue_end_usec": enqueue_end_usec,
