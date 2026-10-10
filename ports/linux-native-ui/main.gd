@@ -8,7 +8,7 @@ const POLL_SECONDS := 1.0 / 30.0
 const MOVE_INTERVAL_USEC := 33333
 const FRONTEND_MAX_FPS := 30
 const STALE_MS := 5000
-const TOP := 54.0
+const TOP := 98.0
 const BOTTOM := 78.0
 const MARGIN := 18.0
 
@@ -42,6 +42,7 @@ var frame_error := ""
 var status_label: Label
 var details_label: Label
 var title_label: Label
+var storage_label: Label
 var back_button: Button
 var quit_button: Button
 # Measurement only: a post-draw observation is not physical display/scanout timing.
@@ -170,6 +171,10 @@ func _build_chrome() -> void:
 	title_label = _make_label(15)
 	title_label.text = "Harmattan · QMP display"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	storage_label = _make_label(12)
+	storage_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	storage_label.text = "Storage mode unavailable"
+	storage_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label = _make_label(14)
 	details_label = _make_label(12)
 	details_label.add_theme_color_override("font_color", Color(0.65, 0.71, 0.78))
@@ -193,6 +198,8 @@ func _layout() -> void:
 	quit_button.size = Vector2(64, 32)
 	title_label.position = Vector2(82, 11)
 	title_label.size = Vector2(maxf(0.0, size.x - 164.0), 30)
+	storage_label.position = Vector2(12, 48)
+	storage_label.size = Vector2(size.x - 24, 43)
 	content_rect = Rect2(Vector2(0, TOP), Vector2(size.x, maxf(1.0, size.y - TOP - BOTTOM)))
 	var available := Vector2(maxf(1.0, size.x - MARGIN * 2), maxf(1.0, content_rect.size.y - 12))
 	var scale_factor := minf(available.x / RAW_SIZE.x, available.y / RAW_SIZE.y)
@@ -346,10 +353,36 @@ func _fresh(timestamp: Variant, now_ms: int) -> bool:
 	return age >= -2000 and age <= STALE_MS
 
 
+func _refresh_storage_notice() -> void:
+	# Optional, controller-owned metadata. Never infer mode from a path or treat
+	# the current active profile state as evidence of a previous unclean exit.
+	var line := "Storage mode unavailable"
+	var details := "No fresh storage report.\nCheck the launcher options.\nOlder controllers omit this mode."
+	var color := Color(0.65, 0.71, 0.78)
+	var storage: Variant = status.get("storage")
+	if connected and storage is Dictionary:
+		var mode: Variant = storage.get("mode")
+		var unclean: Variant = storage.get("previous_exit_unclean")
+		if mode is String and mode == "disposable" and unclean is bool and not unclean:
+			line = "Temporary files · Discarded on exit"
+			details = "Files are discarded on exit.\nSelect a persistent profile\nto keep saved files."
+		elif mode is String and mode == "persistent" and unclean is bool:
+			line = "Persistent files · Save in app, then Quit"
+			details = "Save in the app, then Quit.\nBack up the whole closed profile.\nNo CPU/RAM state is saved.\nPower-loss safety is not proven."
+			if unclean:
+				line = "Persistent files · Previous exit unclean\nCurrent disk retained; no rollback"
+				details = "Previous exit was unclean.\nCurrent disk and prior checkpoint\nwere kept without rollback.\nThis does not confirm recovery\nof every file.\nNo checkpoint restore command\nis provided. Back up the whole\nclosed profile; keep diagnostics\nif startup fails."
+				color = Color(0.96, 0.77, 0.40)
+	storage_label.text = line
+	storage_label.tooltip_text = details
+	storage_label.add_theme_color_override("font_color", color)
+
+
 func _refresh_state() -> void:
 	var now_ms := int(Time.get_unix_time_from_system() * 1000.0)
 	var was_live := live
 	connected = status_seen and _fresh(status.get("updated_ms", 0), now_ms)
+	_refresh_storage_notice()
 	var frame_fresh := _fresh(status.get("frame_updated_ms", 0), now_ms)
 	var controller_ready: bool = status.get("ready") is bool and status.get("ready")
 	live = connected and controller_ready and frame_fresh and frame_texture != null and frame_error.is_empty() and transport_error.is_empty() and quit_sequence == 0

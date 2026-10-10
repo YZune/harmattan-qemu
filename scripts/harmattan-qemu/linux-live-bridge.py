@@ -140,6 +140,15 @@ class Session:
                       'capture_target_hz': CAPTURE_HZ}
         self.publish()
 
+    def set_storage(self, *, mode, previous_exit_unclean):
+        """Publish host storage policy; never claims guest recovery or save success."""
+        if (mode not in ('disposable', 'persistent') or type(previous_exit_unclean) is not bool or
+                (mode == 'disposable' and previous_exit_unclean)):
+            raise ValueError('invalid storage notice')
+        with self.publish_lock:
+            self.state['storage'] = {'mode': mode, 'previous_exit_unclean': previous_exit_unclean}
+            self.publish()
+
     def metric(self, kind, **values):
         """Task-local timing; does not drive readiness or input decisions."""
         if not self.metrics_enabled:

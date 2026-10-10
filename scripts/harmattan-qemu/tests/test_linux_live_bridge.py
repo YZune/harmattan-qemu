@@ -82,9 +82,42 @@ class LiveTests(unittest.TestCase):
         status = json.loads((self.session.directory / 'status.json').read_text())
         self.assertFalse(status['ready'])
         self.assertEqual(status['frame_counter'], 0)
+        self.assertNotIn('storage', status)
         unprivate = Path(self.temp.name) / 'unprivate'
         unprivate.mkdir(mode=0o755)
         with self.assertRaises(ValueError): BRIDGE.Session(unprivate)
+    def test_storage_notice_maps_prior_exit_without_changing_readiness_or_errors(self):
+        self.session.state.update(error='existing error', key_error='existing key error')
+        for profile, expected in (
+                (None, {'mode': 'disposable', 'previous_exit_unclean': False}),
+                (SimpleNamespace(previous_exit_unclean=False, state={'state': 'active'}),
+                 {'mode': 'persistent', 'previous_exit_unclean': False}),
+                (SimpleNamespace(previous_exit_unclean=True, state={'state': 'active'}),
+                 {'mode': 'persistent', 'previous_exit_unclean': True})):
+            with self.subTest(storage=expected):
+                SHELL.publish_storage_notice(self.session, profile)
+                status = json.loads((self.session.directory / 'status.json').read_text())
+                self.assertEqual(status['storage'], expected)
+                self.assertFalse(status['ready'])
+                self.assertEqual(status['state'], 'starting')
+                self.assertEqual(status['frame_counter'], 0)
+                self.assertEqual(status['error'], 'existing error')
+                self.assertEqual(status['key_error'], 'existing key error')
+        self.session.finish(passed=False, error='startup failed')
+        status = json.loads((self.session.directory / 'status.json').read_text())
+        self.assertEqual(status['storage'], {'mode': 'persistent', 'previous_exit_unclean': True})
+        self.assertEqual(status['state'], 'error')
+        self.assertEqual(status['error'], 'startup failed')
+        # Cocoa has no live bridge and need not inspect a profile notice.
+        SHELL.publish_storage_notice(None, object())
+    def test_storage_notice_rejects_invalid_values_without_publishing(self):
+        original = (self.session.directory / 'status.json').read_bytes()
+        for mode, previous in (('unknown', False), ('persistent', 1), ('persistent', 'false'),
+                               ('persistent', None), ('disposable', True)):
+            with self.subTest(mode=mode, previous=previous), self.assertRaises(ValueError):
+                self.session.set_storage(mode=mode, previous_exit_unclean=previous)
+            self.assertNotIn('storage', self.session.state)
+            self.assertEqual((self.session.directory / 'status.json').read_bytes(), original)
     def test_existing_private_session_cannot_acquire_a_second_owner(self):
         original = (self.session.directory / 'status.json').read_bytes()
         self.write(self.event(type='release'))

@@ -105,6 +105,9 @@ class Profile:
             else:
                 self.state = json.loads(self.state_path.read_text())
             self.validate()
+            # Retain the validated prior exit independently of this session's
+            # active/clean state. This says nothing about guest recovery.
+            self.previous_exit_unclean = self.state['state'] == 'active'
             # Preserve the previous disk state before opening it for writes.
             # This file is a manual recovery checkpoint, never auto-restored.
             if fresh or self.state['state'] == 'clean':
