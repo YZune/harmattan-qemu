@@ -9,7 +9,7 @@
 - 沿用 QEMU 9.1.3 的 N00 板级和客体图形协议补丁。显式 Linux 模式选择 ELF 库和 OSMesa，不构建 Cocoa。
 - DGLES 使用固定版本的原始 ABI 头文件及 OSMesa 后端。表面尺寸、所有权、缩放、刷新和解绑检查保护回调使用的像素缓冲区；GLES1 与 GLES2 采用相同生命周期规则。
 - QEMU 在正常虚拟机清理阶段停止图形线程，早于 Mesa 的进程退出处理，并保留幂等退出兜底。此前仅在 `atexit()` 清理会在 Mesa 已释放状态后触发可复现的 `glFinish` 崩溃。
-- Linux 准备阶段使用 GNU `cp --reflink=auto --sparse=always`，临时目录与输出相邻。每次 UI 运行新建 qcow2 层并使用 `-snapshot`，准备好的 raw 盘只作只读底盘；运行前必须停止底盘的其他写入者。
+- Linux 准备阶段使用 GNU `cp --reflink=auto --sparse=always`，临时目录与输出相邻。UI 默认运行新建 qcow2 层并使用 `-snapshot`，准备好的 raw 盘只作只读底盘。live 会话可显式选择[私有持久档案](linux-native.zh-CN.md#可选文件持久化)，诊断仍使用临时盘；运行前必须停止底盘的其他写入者。
 - 有界启动器使用标准输入输出上的 QMP 和权限为 0600 的私有串口 FIFO，关闭客体网络，不开启控制监听端口。保留原版客体身份、ABI 摘要、就绪、像素、故障和线程退出检查。
 
 ## 1. 宿主依赖

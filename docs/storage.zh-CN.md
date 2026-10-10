@@ -2,6 +2,8 @@
 
 [English](storage.md) · [构建](building.zh-CN.md) · [联网](networking.zh-CN.md)
 
+以下命令与 APFS 复制行为属于 macOS Cocoa 路径。Linux live 会话使用单独的显式 [`--profile` 选项](linux-native.zh-CN.md#可选文件持久化)，两种宿主路径之间不支持互用档案。
+
 显式选择用户档案后，客体系统分区、已安装的软件包及 home 内已保存文件可跨启动保留。源码启动器默认仍使用一次性快照。使用档案前需重新构建 Cocoa interaction：
 
 ```sh

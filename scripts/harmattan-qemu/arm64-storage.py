@@ -3,14 +3,35 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 
 
 FORMAT = 'harmattan-private-profile-1'
 CAPACITY = 32 * 1024 ** 3
+COPY_RESERVE = 256 * 1024 ** 2
+
+
+def copy_disk(source, destination):
+    """Copy into a fresh/private target without expanding sparse disk holes."""
+    source, destination = Path(source), Path(destination)
+    if sys.platform == 'darwin':
+        command = ['/bin/cp', '-c', str(source), str(destination)]
+    elif sys.platform == 'linux':
+        # Budget for a real copy even when reflinking happens to be available.
+        # This is a best-effort preflight, not a reservation for guest writes.
+        info = source.stat()
+        required = min(info.st_size, info.st_blocks * 512) + COPY_RESERVE
+        if shutil.disk_usage(destination.parent).free < required:
+            raise ValueError('insufficient free space for a sparse profile copy and 256 MiB reserve')
+        command = ['/bin/cp', '--reflink=auto', '--sparse=always', '--', str(source), str(destination)]
+    else:
+        raise ValueError('private profiles require macOS or Linux')
+    subprocess.run(command, check=True)
 
 
 def write_json(path, value):
@@ -72,15 +93,15 @@ class Profile:
             if fresh:
                 if not source.is_file() or not 0 < source.stat().st_size <= CAPACITY:
                     raise ValueError('source disk must be a nonempty raw disk of at most 32 GiB')
-                subprocess.run(['/bin/cp', '-c', str(source), str(self.base)], check=True)
+                copy_disk(source, self.base)
                 self.base.chmod(0o400)
                 subprocess.run([self.image_tool, 'create', '-q', '-f', 'qcow2', '-F', 'raw',
                                 '-b', 'base.raw', 'disk.qcow2', str(CAPACITY)], cwd=self.path, check=True)
                 self.disk.chmod(0o600)
-                self.state = {'format': FORMAT, 'state': 'clean', 'sessions': 0,
+                self.state = {'format': FORMAT, 'host_platform': sys.platform,
+                              'state': 'clean', 'sessions': 0,
                               'base_bytes': self.base.stat().st_size,
                               'scope': 'private system and home disk; not VM CPU/RAM save-state'}
-                write_json(self.state_path, self.state)
             else:
                 self.state = json.loads(self.state_path.read_text())
             self.validate()
@@ -90,13 +111,14 @@ class Profile:
                 fd, temporary = tempfile.mkstemp(prefix='.checkpoint-', dir=self.path)
                 os.close(fd)
                 try:
-                    subprocess.run(['/bin/cp', '-c', str(self.disk), temporary], check=True)
+                    copy_disk(self.disk, temporary)
                     os.replace(temporary, self.path / 'checkpoint.qcow2')
                 finally:
                     if os.path.exists(temporary):
                         os.unlink(temporary)
             if self.state['state'] != 'clean':
                 print('Previous profile exit was unclean; retaining its disk and checkpoint for guest journal recovery.', flush=True)
+            # Publish a new profile only after both copies and validation succeed.
             self.state.update(state='active', sessions=self.state['sessions'] + 1)
             write_json(self.state_path, self.state)
         except BaseException:
@@ -106,6 +128,10 @@ class Profile:
     def validate(self):
         if self.state.get('format') != FORMAT or self.state.get('state') not in ('clean', 'active'):
             raise ValueError('unsupported profile state')
+        # Unmarked profiles predate Linux support and belong to macOS.
+        if (sys.platform not in ('darwin', 'linux') or
+                self.state.get('host_platform', 'darwin') != sys.platform):
+            raise ValueError('profile belongs to another host platform; use a separate profile directory')
         if type(self.state.get('sessions')) is not int or self.state['sessions'] < 0:
             raise ValueError('invalid profile session counter')
         if self.base.stat().st_size != self.state.get('base_bytes') or not 0 < self.base.stat().st_size <= CAPACITY:
