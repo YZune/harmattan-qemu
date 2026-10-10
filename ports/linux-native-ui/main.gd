@@ -15,6 +15,7 @@ const MARGIN := 18.0
 var session_dir := ""
 var configuration_error := ""
 var metrics_enabled := false
+var exit_with_controller := false
 
 var client_id := "%d-%d-%08x" % [int(Time.get_unix_time_from_system() * 1000.0), OS.get_process_id(), randi()]
 var controller_id := ""
@@ -88,6 +89,7 @@ func _ready() -> void:
 func _configure(arguments: PackedStringArray) -> bool:
 	session_dir = ""
 	metrics_enabled = false
+	exit_with_controller = false
 	configuration_error = ""
 	var selected_session := ""
 	var session_seen := false
@@ -101,6 +103,11 @@ func _configure(arguments: PackedStringArray) -> bool:
 				index += 1
 				session_seen = true
 				selected_session = arguments[index]
+			"--exit-with-controller":
+				if exit_with_controller:
+					configuration_error = "Pass --exit-with-controller at most once."
+					return false
+				exit_with_controller = true
 			"--metrics":
 				if metrics_enabled:
 					configuration_error = "Pass --metrics at most once."
@@ -344,7 +351,8 @@ func _refresh_state() -> void:
 	var was_live := live
 	connected = status_seen and _fresh(status.get("updated_ms", 0), now_ms)
 	var frame_fresh := _fresh(status.get("frame_updated_ms", 0), now_ms)
-	live = connected and bool(status.get("ready", false)) and frame_fresh and frame_texture != null and frame_error.is_empty() and transport_error.is_empty() and quit_sequence == 0
+	var controller_ready: bool = status.get("ready") is bool and status.get("ready")
+	live = connected and controller_ready and frame_fresh and frame_texture != null and frame_error.is_empty() and transport_error.is_empty() and quit_sequence == 0
 	if was_live and not live:
 		_cancel_input()
 	var state := str(status.get("state", "waiting"))
@@ -367,7 +375,7 @@ func _refresh_state() -> void:
 	elif live:
 		line = "Live · frame %d · input ack %d/%d" % [frame_counter, acknowledged, sequence]
 		color = Color(0.50, 0.88, 0.68)
-	elif bool(status.get("ready", false)) and not frame_fresh:
+	elif controller_ready and not frame_fresh:
 		line = "Disconnected · framebuffer is stale"
 	else:
 		line = "Controller · " + state
@@ -412,8 +420,23 @@ func _refresh_state() -> void:
 		get_window().title = window_title
 	if was_live != live:
 		queue_redraw()
-	if quit_sequence > 0 and acknowledged >= quit_sequence and state in ["stopped", "closed", "exited", "complete"]:
+	if exit_with_controller and _controller_finished_cleanly():
+		# A bounded session may finish without a window-originated Quit event.
+		# The supervisor separately requires the controller's clean result/exit.
 		_close_window(0)
+	elif quit_sequence > 0 and acknowledged >= quit_sequence and state in ["stopped", "closed", "exited", "complete"]:
+		_close_window(0)
+
+
+func _controller_finished_cleanly() -> bool:
+	var ready: Variant = status.get("ready")
+	var passed: Variant = status.get("passed")
+	var qemu_exit: Variant = status.get("qemu_exit")
+	return connected and not controller_id.is_empty() and status.get("controller_id") == controller_id \
+		and status.get("state") == "exited" and ready is bool and not ready and passed is bool and passed \
+		and (qemu_exit is int or qemu_exit is float) and qemu_exit == 0 \
+		and configuration_error.is_empty() and transport_error.is_empty() and frame_error.is_empty()
+
 
 
 func _draw() -> void:

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-10-10",
+  "base_commit": "b7b06661df4ebf7b62dadfa3f8240ac5813bb4ef",
+  "scope": "Optional one-command Linux Godot launch and owned process lifecycle; offline disposable guest path",
+  "host_checks": {
+    "native_supervisor_tests": {
+      "passed": 19,
+      "scope": "Real synthetic subprocesses; startup/exit ordering, signals, failures, concurrent sessions and owned descendant cleanup"
+    },
+    "existing_linux_ui_tests": {
+      "passed": 14
+    },
+    "godot": {
+      "version": "4.6.3",
+      "wrapper_tests_passed": 8,
+      "new_terminal_state_assertions": 38,
+      "scope": "Isolated headless frontend; not guest execution"
+    },
+    "aggregate": {
+      "tests": 475,
+      "seconds": 37.99,
+      "failures": 9,
+      "errors": 4,
+      "skipped": 7,
+      "status": "failed in restricted local environment",
+      "reason": "Nine LeakSanitizer/ptrace failures and four AF_UNIX permission errors; not counted as a suite pass"
+    },
+    "independent_review": "No blocking findings in supervisor, launcher or frontend exit path"
+  },
+  "native_desktop_lifecycle": {
+    "scope": "Actual Godot window on cloud Linux desktop with explicitly synthetic controller; no QEMU, guest pixels or guest acceptance",
+    "startup_cancel": {
+      "input": "Native mouse click on Quit",
+      "controller_state": "cancelled",
+      "controller_exit": 2,
+      "frontend_exit": -15,
+      "frontend_stop": "supervisor_cleanup",
+      "completed": false,
+      "expected_failure_contained": true,
+      "owned_processes_stopped": true
+    },
+    "controller_completion": {
+      "controller_exit": 0,
+      "frontend_exit": 0,
+      "frontend_stop": "natural",
+      "completed": true,
+      "owned_processes_stopped": true,
+      "scope": "Synthetic successful terminal status tests natural window closure only"
+    },
+    "audio": "Supervised frontend selects Godot Dummy driver; no audio output role"
+  },
+  "ci": {
+    "status": "pending draft publication"
+  },
+  "guest_native_run": {
+    "status": "pending restored-media preparation",
+    "accepted": false
+  },
+  "limitations": [
+    "No new guest/native interaction acceptance yet",
+    "No macOS runtime rerun; default Cocoa path unchanged",
+    "No new performance claim, persistent profile, distribution package or device services",
+    "No firmware, kernels, disks or third-party binaries included"
+  ]
+}

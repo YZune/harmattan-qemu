@@ -12,6 +12,7 @@ import json
 import math
 import os
 import select
+import shutil
 import signal
 from pathlib import Path
 import subprocess
@@ -29,6 +30,9 @@ UI_SPEC.loader.exec_module(systemui)
 LINUX_SPEC = importlib.util.spec_from_file_location('linux_offscreen', HERE / 'linux-offscreen.py')
 linux_offscreen = importlib.util.module_from_spec(LINUX_SPEC)
 LINUX_SPEC.loader.exec_module(linux_offscreen)
+NATIVE_SPEC = importlib.util.spec_from_file_location('native_supervisor', HERE / 'native-supervisor.py')
+native_supervisor = importlib.util.module_from_spec(NATIVE_SPEC)
+NATIVE_SPEC.loader.exec_module(native_supervisor)
 
 
 def fingerprint(path):
@@ -89,14 +93,29 @@ def main(argv=None):
     parser.add_argument('--mode', choices=('startup', 'usability', 'live'), default='startup')
     parser.add_argument('--timeout', type=float, default=600)
     parser.add_argument('--live-session', type=Path, help='fresh private native frontend file bridge; live mode only')
+    parser.add_argument('--frontend', help='Godot executable to launch and supervise; live mode only; session defaults under the run output')
     parser.add_argument('--metrics', action='store_true', help='record private performance timings; live mode only')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--prepare-only', action='store_true', help='validate inputs and build guest helpers; do not launch QEMU')
     args = parser.parse_args(argv)
     if sys.platform != 'linux' or not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('Linux host and positive timeout are required')
-    if (args.mode == 'live') != (args.live_session is not None):
-        parser.error('live mode requires --live-session; other modes cannot use it')
+    if args.mode != 'live' and (args.live_session is not None or args.frontend is not None):
+        parser.error('--live-session and --frontend require live mode')
+    if args.mode == 'live' and args.live_session is None and args.frontend is None:
+        parser.error('live mode requires --live-session or --frontend')
+    frontend = None
+    if args.frontend is not None:
+        if args.prepare_only:
+            parser.error('--frontend cannot be combined with --prepare-only')
+        frontend = shutil.which(args.frontend)
+        if not frontend:
+            parser.error('--frontend must name an executable Godot binary')
+        frontend = str(Path(frontend).resolve())
+        if not (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
+            parser.error('--frontend requires a graphical desktop (DISPLAY or WAYLAND_DISPLAY)')
+        if args.live_session is not None and os.path.lexists(args.live_session):
+            parser.error('bridge directory already exists; choose a fresh session path')
     if args.metrics and args.mode != 'live':
         parser.error('--metrics requires live mode')
     if args.mode == 'live' and not 1 <= args.timeout <= 1800:
@@ -166,6 +185,14 @@ def main(argv=None):
         parser.error('output path must not contain commas or newlines')
     env['MESA_SHADER_CACHE_DIR'] = str(out / 'mesa-cache')
     (out / 'mesa-cache').mkdir(mode=0o700)
+    if args.mode == 'live' and args.live_session is None:
+        args.live_session = out / 'session'
+    session = None
+    if args.live_session is not None:
+        # Keep the final component unresolved in supervised mode so a symlink
+        # cannot turn an already-used session into a different fresh target.
+        session = (args.live_session.parent.resolve() / args.live_session.name
+                   if frontend is not None else args.live_session.resolve())
     base_before = {str(path): fingerprint(path) for path in (raw, kernel, rootfs)}
     overlay = out / 'pr13-32g.qcow2'
     qemu_args = [str(qemu), '-M', 'n00-port-spike', '-name', 'Harmattan PR1.3 Linux software-rendering experiment',
@@ -180,7 +207,7 @@ def main(argv=None):
                   '--system-ui', 'on', '--clock', 'host', '--input-method', 'on', '--device-orientation', 'display',
                   '--compositor-animations', 'on', '--splash', 'off', '--display-handoff', 'on']
     if args.mode == 'live':
-        controller += ['--interactive', '--linux-live-session', str(args.live_session.resolve())]
+        controller += ['--interactive', '--linux-live-session', str(session)]
         if args.metrics:
             controller += ['--linux-live-metrics']
     else:
@@ -196,7 +223,15 @@ def main(argv=None):
     (out / 'launch.json').write_text(json.dumps(record, indent=2) + '\n')
     if args.mode == 'live':
         record.update(scope='Linux native frontend file bridge; original startup and clean-exit gates; physical input requires separate observation',
-                      live_session=str(args.live_session.resolve()))
+                      live_session=str(session))
+        (out / 'launch.json').write_text(json.dumps(record, indent=2) + '\n')
+    frontend_command = None
+    if frontend is not None:
+        frontend_command = [frontend, '--audio-driver', 'Dummy', '--path', str(REPO / 'ports/linux-native-ui'),
+                            '--', '--session', str(session), '--exit-with-controller']
+        if args.metrics:
+            frontend_command += ['--metrics']
+        record['frontend_command'] = frontend_command
         (out / 'launch.json').write_text(json.dumps(record, indent=2) + '\n')
     print(f'Linux UI evidence: {out}', flush=True)
     try:
@@ -204,13 +239,25 @@ def main(argv=None):
                        check=True, env=env, timeout=30)
         # Helper compilation precedes the controller's guest deadline. Bound
         # that preparation too, while allowing the full requested guest budget.
-        code = run_controller(command, env, out / 'controller.log', args.timeout + 300)
+        if frontend_command is not None:
+            # Do not leak QEMU's DGLES loader path or surfaceless EGL selection
+            # into Godot's normal desktop GL Compatibility window.
+            record['native_lifecycle'] = native_supervisor.run(
+                command, env, frontend_command, os.environ.copy(), out,
+                session, args.timeout + 300)
+            code = record['native_lifecycle']['controller_exit']
+            if record['native_lifecycle'].get('failure'):
+                record['failure'] = record['native_lifecycle']['failure']
+        else:
+            code = run_controller(command, env, out / 'controller.log', args.timeout + 300)
         record['controller_exit'] = code
         result_name = 'startup-result.json' if args.mode in ('startup', 'live') else 'keyboard-result.json'
         result_path = out / 'ui' / result_name
         if result_path.exists():
             record['controller_result'] = json.loads(result_path.read_text())
         record['passed'] = code == 0 and record.get('controller_result', {}).get('passed') is True
+        if frontend_command is not None:
+            record['passed'] &= record['native_lifecycle']['completed']
     except BaseException as error:
         record['failure'] = f'{type(error).__name__}: {error}'
         raise
@@ -219,6 +266,9 @@ def main(argv=None):
         record['base_metadata_unchanged'] = base_before == record['base_after']
         record['passed'] &= record['base_metadata_unchanged']
         (out / 'launch-result.json').write_text(json.dumps(record, indent=2) + '\n')
+    if frontend_command is not None and not record['passed']:
+        reason = record.get('failure', 'original controller acceptance or base-image preservation failed')
+        print(f'Linux native launch failed: {reason}\nEvidence: {out}', file=sys.stderr)
     return 0 if record['passed'] else 1
 
 
