@@ -430,12 +430,22 @@ class LiveTests(unittest.TestCase):
         measured = BRIDGE.Session(Path(self.temp.name) / 'measured', metrics=True)
         measured.qmp = self.qmp
         measured.capture()
-        measured.resources()
+        # Exercise Linux /proc parsing deterministically on every host; macOS
+        # correctly has no real /proc controller sample to assert against.
+        fields = ['0'] * 22
+        fields[0], fields[11], fields[12], fields[21] = 'S', '17', '9', '4'
+        process_stat = f'{os.getpid()} (fixture controller) ' + ' '.join(fields)
+        with patch.object(BRIDGE.Path, 'read_text', autospec=True, return_value=process_stat) as read_stat:
+            with patch.object(BRIDGE.os, 'sysconf', side_effect={'SC_PAGE_SIZE': 4096, 'SC_CLK_TCK': 100}.__getitem__):
+                measured.resources()
+        read_stat.assert_called_once_with(Path(f'/proc/{os.getpid()}/stat'))
         records = [json.loads(line) for line in (measured.directory / 'performance.jsonl').read_text().splitlines()]
         self.assertEqual([item['kind'] for item in records], ['capture', 'resources'])
         self.assertEqual(records[0]['frame_counter'], 1)
         self.assertIn('stages_ms', records[0])
-        self.assertIn('controller', records[1]['samples'])
+        self.assertEqual(records[1]['tick_hz'], 100)
+        self.assertEqual(records[1]['samples'], {'controller': {
+            'pid': os.getpid(), 'cpu_ticks': 26, 'rss_bytes': 16384}})
     def test_capture_budget_includes_encoding_and_never_catches_up(self):
         self.assertAlmostEqual(BRIDGE.next_capture_deadline(10, 10.03), 10 + BRIDGE.FRAME_PERIOD)
         self.assertEqual(BRIDGE.next_capture_deadline(10, 10.2), 10.2)
