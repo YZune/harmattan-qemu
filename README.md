@@ -8,9 +8,9 @@
 
 Harmattan QEMU brings Nokia's experimental N00 board support forward to QEMU 9.1.3 and connects its legacy graphics protocol to a native macOS backend. It runs original Harmattan ARM software: the Home screen, selected applications, the compositor, and the on-screen keyboard.
 
-An experimental [Linux x86_64 offscreen source path](docs/linux.md) also runs the original UI with software rendering and QMP input. It does not yet provide a native Linux window or release package.
+An experimental [Linux x86_64 source path](docs/linux.md) also runs the original UI with software rendering. Its opt-in [Godot native window](docs/linux-native.md) supports scoped mouse/keyboard interaction through a private local bridge. Linux release packaging remains open.
 
-This is an experimental preservation project. The native windowed host is ARM64 macOS; the guest remains ARM32 under TCG, using a PR1.0-era emulator kernel and adaptation layer with PR1.3 retail userspace. It is not an official Nokia emulator or a complete N9 hardware model.
+This is an experimental preservation project. The established native host is ARM64 macOS, with an experimental Linux x86_64 window; the guest remains ARM32 under TCG, using a PR1.0-era emulator kernel and adaptation layer with PR1.3 retail userspace. It is not an official Nokia emulator or a complete N9 hardware model.
 
 ## Running Harmattan
 
@@ -25,6 +25,7 @@ Captured on Apple Silicon from the published port's clean build on 2026-09-05. T
 - OMAP3/N00 board, memory, storage, display, power, and touch-device patches.
 - A limited EGL/GLES bridge and Nokia DGLES host-library port.
 - Cocoa display, rotation, input activity, and asynchronous shutdown support.
+- Opt-in Linux OSMesa rendering and a Godot native frontend for disposable offline sessions.
 - Guest compatibility helpers for original compositor, orientation, keyboard, and display handoff.
 - Host tests and bounded guest diagnostics with explicit failure checks.
 
@@ -82,6 +83,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are welco
 | --- | --- | --- |
 | Prebuilt macOS preview | [Guide](docs/releases.md) | [指南](docs/releases.zh-CN.md) |
 | Build and run | [Guide](docs/building.md) | [指南](docs/building.zh-CN.md) |
+| Experimental Linux native window | [Guide](docs/linux-native.md) | [指南](docs/linux-native.zh-CN.md) |
 | Architecture and patches | [Architecture](docs/architecture.md) | [架构](docs/architecture.zh-CN.md) |
 | Compatibility and validation | [Status](docs/status.md) | [状态](docs/status.zh-CN.md) |
 | Sources, inputs, and licensing | [Sources](docs/sources.md) | [来源](docs/sources.zh-CN.md) |

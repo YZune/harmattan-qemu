@@ -152,9 +152,11 @@ def qemu_environment():
     return env
 
 
-def wait_serial(serial, process, log, predicate, deadline):
+def wait_serial(serial, process, log, predicate, deadline, checkpoint=None):
     tail = b""
     while time.monotonic() < deadline:
+        if checkpoint is not None:
+            checkpoint()
         if not select.select([serial], [], [], 0.2)[0]:
             if process.poll() is not None:
                 raise RuntimeError(f"QEMU exited: {process.returncode}")

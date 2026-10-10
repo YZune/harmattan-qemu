@@ -244,7 +244,12 @@ def desktop_frame(data):
 def validate_host_configuration(args, command):
     """The Linux experiment is explicit and limited to bounded offline runs."""
     linux = args.host_backend == 'linux-offscreen'
+    live_session = getattr(args, 'linux_live_session', None)
+    if getattr(args, 'linux_live_metrics', False) and not live_session:
+        raise ValueError('live metrics require a live session')
     if not linux:
+        if live_session:
+            raise ValueError('live file bridge requires Linux offscreen')
         if args.host_renderer is not None or args.systemui_attempts != 15:
             raise ValueError('renderer selection and extended polling require Linux offscreen')
         return False
@@ -256,7 +261,10 @@ def validate_host_configuration(args, command):
             args.call_simulation != 'off' or args.lockscreen != 'off' or
             args.startup_waits != 'ready'):
         raise ValueError('Linux offscreen supports only offline disposable ready-startup runs')
-    if not ((args.interactive and args.exit_on_ready) or
+    if live_session and (not args.interactive or args.exit_on_ready or
+                         args.rotation != 270 or not 1 <= args.timeout <= 1800):
+        raise ValueError('live file bridge requires upright bounded interactive Linux')
+    if not ((args.interactive and (args.exit_on_ready or live_session)) or
             (args.exercise_keyboard and args.exercise_transitions and not args.interactive)):
         raise ValueError('Linux offscreen requires bounded startup or keyboard/transition regression')
     if '-snapshot' not in command:
@@ -273,6 +281,8 @@ def validate_host_configuration(args, command):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host-backend', choices=('cocoa', 'linux-offscreen'), default='cocoa')
+    parser.add_argument('--linux-live-session', type=Path, help='local-only native frontend file bridge')
+    parser.add_argument('--linux-live-metrics', action='store_true')
     parser.add_argument('--host-renderer', help='exact independently observed llvmpipe renderer; Linux only')
     parser.add_argument('--systemui-attempts', type=int, choices=(15, 30), default=15)
     parser.add_argument("--network", choices=("off", "user"), default="off")
@@ -319,6 +329,28 @@ def main():
         linux_on = validate_host_configuration(args, command)
     except (ValueError, RuntimeError) as error:
         parser.error(str(error))
+    live_bridge = None
+    try:
+        if args.linux_live_session:
+            bridge_spec = importlib.util.spec_from_file_location('linux_live_bridge', Path(__file__).with_name('linux-live-bridge.py'))
+            bridge_module = importlib.util.module_from_spec(bridge_spec)
+            bridge_spec.loader.exec_module(bridge_module)
+            live_bridge = bridge_module.Session(args.linux_live_session, metrics=args.linux_live_metrics)
+            live_bridge.start_startup_heartbeat()
+        return run_session(args, command, linux_on, live_bridge, parser)
+    except BaseException as error:
+        # Preparation can fail before QEMU and its cleanup block exist.
+        if live_bridge and live_bridge.state['state'] not in ('error', 'cancelled', 'exited'):
+            live_bridge.finish(passed=False, error=f'{type(error).__name__}: {error}')
+        raise
+    finally:
+        if live_bridge:
+            live_bridge.stop_startup_heartbeat()
+
+
+def run_session(args, command, linux_on, live_bridge, parser):
+    checkpoint = live_bridge.check_startup_cancel if live_bridge else lambda: None
+    checkpoint()
     if args.browser_mode == 'basic' and args.network != 'user':
         parser.error('basic browser mode requires --network user')
     if args.exit_on_ready and (not args.interactive or args.profile or args.boot_animation):
@@ -398,6 +430,7 @@ def main():
     clock_info = {'enabled': clock_on, 'mode': clock_mode}
     timezone_payload = None
     if clock_on:
+        checkpoint()
         timezone_payload, metadata = guest_clock.prepare()
         clock_info.update(metadata)
         clock_info['validator_sha256'] = hashlib.sha256(Path(guest_clock.__file__).read_bytes()).hexdigest()
@@ -416,10 +449,12 @@ def main():
     power_info = {'enabled': power_on, 'mode': args.power, 'full_services': False}
     pose = {'enabled': edge is not None}
     if edge is not None:
+        checkpoint()
         pose_binary, pose_script, pose_info = orientation.prepare()
         pose.update(pose_info, mode=args.device_orientation or 'display', edge=edge)
     animation_info = {'enabled': animations_on}
     if animations_on:
+        checkpoint()
         animation_binary, metadata = animations.prepare(splash=splash_on, handoff=handoff_on)
         animation_info.update(metadata)
     splash_info = {'enabled': splash_on}
@@ -428,37 +463,44 @@ def main():
         helper_payloads.update(lockscreen.payloads())
     call_info = {'enabled': args.call_simulation == 'on'}
     if call_info['enabled']:
+        checkpoint()
         call_payloads, call_info = call_simulation.prepare(locked=args.call_lockscreen)
         helper_payloads.update(call_payloads)
     if power_on:
         helper_payloads['ui-sdk-power-guest.sh'] = Path(__file__).with_name('ui-sdk-power-guest.sh').read_bytes()
     browser_info = {'enabled': False}
     if args.network == 'user':
+        checkpoint()
         browser_payloads, browser_info = browser.prepare(args.browser_mode)
         helper_payloads.update(browser_payloads)
     app_viewport_info = {'profile_helpers_prepared': bool(args.profile)}
     if args.profile:
+        checkpoint()
         app_payloads, metadata = app_viewport.prepare()
         helper_payloads.update(app_payloads)
         app_viewport_info.update(metadata)
     keyboard_info = {'enabled': keyboard_on}
     if keyboard_on:
+        checkpoint()
         keyboard_payloads, metadata = keyboard.prepare(exercise=args.exercise_keyboard)
         helper_payloads.update(keyboard_payloads)
         keyboard_info.update(metadata)
     if splash_on:
+        checkpoint()
         splash_payloads, metadata = splash.prepare()
         helper_payloads.update(splash_payloads)
         splash_info.update(metadata)
     guard_on = args.interactive or args.exercise_startup_input
     guard_info = {'enabled': guard_on}
     if guard_on:
+        checkpoint()
         guard_payloads, metadata = startup.prepare()
         helper_payloads.update(guard_payloads)
         guard_info.update(metadata)
     if args.startup_waits == 'ready':
         for name in ('N00X11.pm', 'wait-shell-ready-guest.pl'):
             helper_payloads[name] = Path(__file__).with_name(name).read_bytes()
+    checkpoint()
     out = args.output.resolve()
     out.mkdir(mode=0o700, parents=True, exist_ok=False)
     boot_info = {'enabled': False}
@@ -467,6 +509,7 @@ def main():
     if lock_control:
         boot_environment.update(lock_control.environment())
     if args.boot_animation:
+        checkpoint()
         movie_environment, boot_info = boot_animation.prepare(args.boot_animation, out / 'boot', args.rotation)
         boot_environment.update(movie_environment)
     guest = Path(__file__).with_name("diagnose-shell-guest.sh").read_bytes()
@@ -475,7 +518,11 @@ def main():
     runner_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     calculator_digest = hashlib.sha256(Path(calculator.__file__).read_bytes()).hexdigest()
     performance_digest = hashlib.sha256(Path(performance.__file__).read_bytes()).hexdigest()
-    timings = {}
+    timings = {'stage_spans': [],
+        'stage_span_accounting': 'Host monotonic seconds from the unchanged startup timer. '
+            'Exclusive spans do not overlap the existing phase durations or one another; '
+            'nested spans are already included in their named parent. Coverage is partial; '
+            'do not add nested spans to totals. Completed spans only.'}
     measurements = None
     started = time.monotonic()
     deadline = started + args.timeout
@@ -500,6 +547,18 @@ def main():
     def raw_frame(name):
         return display.native_ppm((out / f'{name}.ppm').read_bytes(), args.rotation)
 
+    startup_spans_finished = False
+
+    def record_span(name, began, *, parent=None):
+        if startup_spans_finished:
+            return
+        ended = time.monotonic()
+        timings['stage_spans'].append({'name': name,
+            'accounting': 'nested' if parent else 'exclusive', 'parent': parent,
+            'start_seconds': round(began - started, 6),
+            'end_seconds': round(ended - started, 6),
+            'wall_seconds': round(ended - began, 6)})
+
     try:
         ca_info = {'enabled': False}
         ca_payload = None
@@ -521,6 +580,7 @@ def main():
         with (out / "serial.log").open("xb") as log, (out / "qemu-stderr.log").open("xb") as errors:
             chardev = (f'pipe,id=n00serial,path={serial.path}' if linux_on
                        else f'socket,id=n00serial,fd={child.fileno()}')
+            checkpoint()
             process = subprocess.Popen(command + control + ["-qmp", "stdio", "-chardev",
                 chardev, "-serial", "chardev:n00serial", "-monitor", "none"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors,
@@ -535,6 +595,7 @@ def main():
                 first = True
                 while first or time.monotonic() < end:
                     first = False
+                    checkpoint()
                     if process.poll() is not None:
                         raise RuntimeError('QEMU exited during performance observation')
                     if select.select([serial], [], [], min(0.2, max(0, end - time.monotonic())))[0]:
@@ -546,6 +607,7 @@ def main():
                             raise RuntimeError('guest failure during performance measurement')
 
             def capture(name):
+                capture_started = time.monotonic()
                 # Freeze guest execution for a consistent PPM/PNG pair. Avoid
                 # resuming vCPUs inside a display-update coroutine nested in
                 # the legacy synchronous MMC/DMA path. Rendering/input between
@@ -558,16 +620,20 @@ def main():
                         linux_offscreen.export_png(out / f'{name}.ppm', out / f'{name}.png')
                 finally:
                     qmp.call('cont')
+                record_span('capture.' + name, capture_started,
+                    parent=('phases.home/home_settle' if name == 'home-readiness' else
+                            None if name in PHASES else 'diagnostic_probe'))
 
             def wait_line(marker):
                 if marker in (out / "serial.log").read_bytes().replace(b"\r", b"").split(b"\n")[:-1]:
                     return
                 display.wait_serial(serial, process, log,
-                    lambda data: marker in data.split(b"\n")[:-1], deadline)
+                    lambda data: marker in data.split(b"\n")[:-1], deadline, checkpoint=checkpoint)
 
             display.wait_serial(serial, process, log,
-                lambda data: b"shell ready" in data and b"/ # " in data, deadline)
+                lambda data: b"shell ready" in data and b"/ # " in data, deadline, checkpoint=checkpoint)
             timings['boot_to_serial_shell_seconds'] = time.monotonic() - started
+            preparation_started = time.monotonic()
             serial.sendall(b"dmesg -n 1; stty -echo; PS2=''; printf '\\nN00_SHELL_UPLOAD_READY\\n'\n")
             wait_line(b"N00_SHELL_UPLOAD_READY")
             if os.environ.get('HARMATTAN_UI_IDLE_PROFILE', '').startswith('wfi'):
@@ -586,12 +652,14 @@ def main():
                 network_result = network.configure(serial, process, log, deadline, display)
                 (out / 'network-result.json').write_text(json.dumps(network_result, indent=2) + '\n')
             def upload(payload, target, tag):
+                upload_started = time.monotonic()
                 serial.sendall(f"/usr/bin/perl -ne 'chomp; print pack(\"H*\",$_)' > {target} <<'{tag}'\n".encode())
                 encoded = payload.hex()
                 for start in range(0, len(encoded), 76):
                     serial.sendall(encoded[start:start + 76].encode() + b"\n")
                 serial.sendall(f"{tag}\nprintf '\\n{tag}_DONE\\n'\n".encode())
                 wait_line(f"{tag}_DONE".encode())
+                record_span('upload.' + tag, upload_started, parent='guest_preparation')
 
             upload(guest, "/tmp/n00-shell-guest.sh", "N00_SHELL_SCRIPT")
             upload(inspector, "/tmp/n00-shell-x11.pl", "N00_SHELL_INSPECTOR")
@@ -626,6 +694,8 @@ def main():
                 serial.sendall(b'export N00_UI_STARTUP_GUARD=1\n')
             if args.startup_waits == 'ready':
                 serial.sendall(b'export N00_UI_READY_WAITS=1\n')
+            if linux_on:
+                serial.sendall(b'export N00_UI_POLL_READINESS_FIRST=1\n')
             if systemui_on:
                 serial.sendall(b'export N00_UI_SYSTEMUI=1\n')
                 if linux_on:
@@ -643,11 +713,14 @@ def main():
                 serial.sendall(b"export N00_SHELL_INPUT=1\n")
             if power_on:
                 ui_power.run_phase(serial, wait_line, out, 'start', power_info)
+            record_span('guest_preparation', preparation_started)
             def start_home():
+                home_started = time.monotonic()
                 serial.sendall(b"printf '\\n'; sh /tmp/n00-shell-guest.sh home-start; printf '\\nN00_HOME_START_EXIT_%s\\nN00_HOME_START_DONE\\n' $?\n")
                 wait_line(b'N00_HOME_START_DONE')
                 if re.findall(rb'^N00_HOME_START_EXIT_(\d+)$', (out / 'serial.log').read_bytes().replace(b'\r', b''), re.M) != [b'0']:
                     raise ValueError('original Home did not finish window initialization')
+                record_span('service.home_start', home_started, parent='phases.' + phase)
             for phase in PHASES:
                 phase_started = time.monotonic()
                 if phase == 'home' and args.boot_animation:
@@ -714,15 +787,20 @@ def main():
                 if phase == 'bootstrap' and audio_output:
                     audio_output.info['guest_policy'] = audio.validate_policy(serial_data)
                 if phase == 'bootstrap' and edge is not None:
+                    orientation_started = time.monotonic()
                     orientation.command(serial, wait_line, 'start', edge, 'startup')
                     pose['startup'] = orientation.validate_provider(
                         orientation.block((out / 'serial.log').read_bytes(), 'startup'), edge, pose['helper_md5'])
+                    record_span('service.orientation_start', orientation_started)
                 if phase == 'theme' and systemui_on:
                     if early_home:
+                        compositor_started = time.monotonic()
                         serial.sendall(b"printf '\\n'; sh /tmp/n00-shell-guest.sh compositor-start; printf '\\nN00_POWER_COMPOSITOR_START_EXIT_%s\\nN00_POWER_COMPOSITOR_START_DONE\\n' $?\n")
                         wait_line(b'N00_POWER_COMPOSITOR_START_DONE')
                         if re.findall(rb'^N00_POWER_COMPOSITOR_START_EXIT_(\d+)$', (out / 'serial.log').read_bytes().replace(b'\r', b''), re.M) != [b'0']:
                             raise ValueError('compositor did not acquire ownership before System UI')
+                        record_span('service.compositor_owner_start', compositor_started)
+                    systemui_started = time.monotonic()
                     serial.sendall(b"printf '\\nN00_SYSTEMUI_START_BEGIN\\n'; sh /tmp/n00-shell-guest.sh systemui; "
                                    b"printf '\\nN00_SYSTEMUI_START_EXIT_%s\\n' $?; printf '\\nN00_SYSTEMUI_START_DONE\\n'\n")
                     wait_line(b'N00_SYSTEMUI_START_DONE')
@@ -730,15 +808,19 @@ def main():
                     if re.findall(rb'^N00_SYSTEMUI_START_EXIT_(\d+)$', startup_data, re.M) != [b'0']:
                         raise ValueError('original System UI did not start')
                     ui_service['startup'] = systemui.validate_serial(startup_data, minimum_reports=1)
+                    record_span('service.systemui_start', systemui_started)
                 if phase == 'compositor' and keyboard_on:
+                    ime_started = time.monotonic()
                     serial.sendall(b"sh /tmp/n00-shell-guest.sh input-method; printf '\\nN00_IME_START_EXIT_%s\\n' $?; printf '\\nN00_IME_START_DONE\\n'\n")
                     wait_line(b'N00_IME_START_DONE')
                     ime_data = (out/'serial.log').read_bytes().replace(b'\r',b'')
                     if re.findall(rb'^N00_IME_START_EXIT_(\d+)$', ime_data, re.M) != [b'0']:
                         raise ValueError('original input method did not start')
                     keyboard_info['startup'] = keyboard.validate_serial(ime_data, minimum_reports=1)
+                    record_span('service.input_method_start', ime_started)
             if power_on:
                 ui_power.run_phase(serial, wait_line, out, 'settled', power_info)
+            runtime_validation_started = time.monotonic()
             if systemui_on:
                 ui_service['runtime'] = systemui.validate_serial((out / 'serial.log').read_bytes())
             if keyboard_on:
@@ -749,6 +831,7 @@ def main():
             if guard_on:
                 guard_info['held'] = startup.validate(startup.collect(serial, wait_line, out),
                                                        exercised=args.exercise_startup_input)
+            record_span('validation.runtime_and_input_held', runtime_validation_started)
             if args.exercise_startup_input:
                 validate_desktop_serial((out / 'serial.log').read_bytes(), with_input=True)
                 host_validator((out / 'qemu-stderr.log').read_bytes(), live=True)
@@ -804,6 +887,7 @@ def main():
                         (out / 'serial.log').read_bytes(), clock_snapshot['epoch'], clock_info['timezone_md5'],
                         additional_phases=app_clock_phases)
             if args.interactive:
+                final_validation_started = time.monotonic()
                 guest_result = validate_desktop_serial((out / 'serial.log').read_bytes(), with_input=True)
                 host_startup = (systemui.validate_host((out / 'qemu-stderr.log').read_bytes(), live=True, renderer=args.host_renderer) if systemui_on
                                 else validate_live_host((out / 'qemu-stderr.log').read_bytes(), renderer=args.host_renderer))
@@ -819,6 +903,7 @@ def main():
                         animation_info['handoff_runtime'] = animations.validate_handoff((out / 'serial.log').read_bytes())
                 if splash_on:
                     splash_info['runtime'] = splash.validate_serial((out / 'serial.log').read_bytes(), splash_info)
+                record_span('validation.final_startup', final_validation_started)
                 if args.boot_animation:
                     boot_animation.reveal(out / 'boot', drain)
                     boot_info['desktop_revealed'] = True
@@ -826,7 +911,9 @@ def main():
                     call_simulation.phase(serial, wait_line, out, 'setup', 'setup', call_info, audio_output)
                 if lock_control:
                     lock_control.phase(serial, wait_line, 'inspect')
+                release_started = time.monotonic()
                 guard_info['released'] = startup.validate(startup.collect(serial, wait_line, out, release=True), released=True)
+                record_span('input_guard.release', release_started)
                 if lock_control:
                     lock_control.enable()
                 ready = {'state': 'ready', 'scope': 'verified original Home startup with real guest input; no app or physical-input acceptance',
@@ -856,6 +943,7 @@ def main():
                     'host_startup': host_startup,
                     'startup_wall_seconds': round(time.monotonic() - started, 3)}
                 ready.update(startup_waits=args.startup_waits, startup_observations=timings, phases=phases)
+                startup_spans_finished = True
                 if linux_on:
                     ready.update(host_backend=args.host_backend, host_renderer=args.host_renderer,
                                  transport='QMP stdio; serial private FIFOs',
@@ -903,6 +991,12 @@ def main():
                         call_simulation.phase(serial, wait_line, out, 'incoming', 'initial-incoming', call_info)
                     if args.exit_on_ready:
                         quit_guest()
+                    if live_bridge:
+                        def validate_live_session():
+                            host_validator((out / 'qemu-stderr.log').read_bytes(), live=True)
+                            validate_desktop_serial((out / 'serial.log').read_bytes(), with_input=True)
+                        live_bridge.run(qmp, drain, deadline, validate_live_session)
+                        quit_guest()
                     while process.poll() is None:
                         if lock_control and lock_control.pending():
                             deadline = qmp.deadline = time.monotonic() + 30
@@ -932,7 +1026,9 @@ def main():
                     'scope': 'interactive lifecycle only; inspect logs for application/GLES failures'}, indent=2) + '\n')
                 if process.returncode != 0:
                     raise RuntimeError(f'interactive QEMU exited with {process.returncode}')
-                if args.exit_on_ready:
+                if args.exit_on_ready or live_bridge:
+                    if live_bridge:
+                        validate_desktop_serial((out / 'serial.log').read_bytes(), with_input=True)
                     host_data = (out / 'qemu-stderr.log').read_bytes()
                     final_host = (call_simulation.validate_host(host_data, host_validator) if call_info['enabled']
                                   else host_validator(host_data))
@@ -946,9 +1042,12 @@ def main():
                     (out / 'startup-result.json').write_text(json.dumps({
                         'passed': True, 'startup_waits': args.startup_waits,
                         'startup_wall_seconds': ready['startup_wall_seconds'],
+                        'startup_observations': ready['startup_observations'],
                         'host': final_host, 'qemu_exit': process.returncode,
                         'scope': 'bounded interactive startup gates and clean exit; no physical input or display latency'},
                         indent=2) + '\n')
+                    if live_bridge:
+                        live_bridge.finish(passed=True, qemu_exit=process.returncode, host=final_host)
                     print(f'PASS: bounded original Home startup; evidence: {out}', flush=True)
                 return
             if power_on:
@@ -1102,6 +1201,8 @@ def main():
                 label = 'original Home single-touch scroll and exact restoration' if args.verify_input else 'original Home window and stable desktop rendering, no input'
                 print(f"PASS: {label}; evidence: {out}", flush=True)
     except BaseException as error:
+        if live_bridge and live_bridge.state['state'] != 'cancelled':
+            live_bridge.finish(passed=False, error=f'{type(error).__name__}: {error}')
         if lock_control:
             lock_control.info.update(passed=False, failure=f'{type(error).__name__}: {error}')
             (out / 'lockscreen-result.json').write_text(json.dumps(lock_control.info, indent=2) + '\n')
@@ -1111,6 +1212,8 @@ def main():
             (out / 'call-simulation-result.json').write_text(json.dumps(call_info, indent=2) + '\n')
         raise
     finally:
+        if live_bridge:
+            live_bridge.stop_startup_heartbeat()
         if lock_control:
             lock_control.close()
         serial.close()

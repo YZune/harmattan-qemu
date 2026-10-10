@@ -1,8 +1,8 @@
 # 实验性 Linux 离屏运行路径
 
-[English](linux.md) · [构建指南](building.zh-CN.md) · [验证记录](linux-validation.json)
+[English](linux.md) · [构建指南](building.zh-CN.md) · [原生窗口](linux-native.zh-CN.md) · [验证记录](linux-validation.json)
 
-本文对应 [issue #3](https://github.com/YZune/harmattan-qemu/issues/3) 的有界 Linux 宿主路径：x86_64 Linux、ARM32 TCG、DGLES 与 Mesa OSMesa 软件渲染，以及 QMP 输入和 framebuffer 采集。不需要宿主 GPU、X11、Wayland 或桌面会话，即可生成真实客体画面。Linux 原生窗口、安装包、实体输入和完整设备服务仍属独立工作。Apple Silicon Cocoa 路径保留原有默认行为。
+本文对应 [issue #3](https://github.com/YZune/harmattan-qemu/issues/3) 的有界 Linux 宿主路径：x86_64 Linux、ARM32 TCG、DGLES 与 Mesa OSMesa 软件渲染，以及 QMP 输入和 framebuffer 采集。不需要宿主 GPU、X11、Wayland 或桌面会话，即可生成真实客体画面。显式 [Godot 原生窗口](linux-native.zh-CN.md)在离屏后端上增加局部桌面输入；安装包、触摸硬件及完整设备服务仍属独立工作。Apple Silicon Cocoa 路径保留原有默认行为。
 
 ## 设计
 
@@ -121,4 +121,4 @@ python3 -B scripts/harmattan-qemu/run-linux-ui.py \
 
 当时完整主机测试套件因环境限制 Unix socket 与 LeakSanitizer 而失败；局部测试和真实客体成功不能将其改写为完整套件通过。Linux 跳过 AppKit 测试。整理后的 CI 与当前源码构建检查单独记录。本次 Linux 改动未重跑 macOS 运行时。
 
-此路径不代表完整量产启动、蜂窝/音频/网络/浏览器/相机服务、任意应用兼容、持久配置、长时间稳定性或 Linux 桌面前端已完成。
+此离屏记录不代表完整量产启动、蜂窝/音频/网络/浏览器/相机服务、任意应用兼容、持久配置或长时间稳定性已完成。[原生窗口记录](linux-native-validation.json)单独说明局部桌面交互及其验证边界。

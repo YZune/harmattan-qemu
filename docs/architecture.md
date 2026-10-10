@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | Host emulator | QEMU 9.1.3 plus forward-ported Nokia N00 devices | `ports/qemu-n00/` |
 | Host graphics | Nokia DGLES with Cocoa FBO or Linux OSMesa adaptation | `ports/dgles2/` |
+| Experimental Linux window | Godot framebuffer/input frontend; private local bridge to the controller | `ports/linux-native-ui/`, `linux-live-bridge.py`; see [native design](linux-native.md#design-and-scope) |
 | Guest kernel and adaptation | User-supplied PR1.0 emulator kernel and graphics ABI | External inputs |
 | Experimental PR1.3 kernel | Original DVD kernel plus QEMU adaptation and build compatibility | `ports/guest-kernel/`, `build-pr13-kernel.sh`; see [kernel](kernel.md) |
 | Guest product software | User-supplied PR1.3 original libraries and applications | External inputs |

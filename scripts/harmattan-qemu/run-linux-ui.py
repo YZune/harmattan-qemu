@@ -86,13 +86,21 @@ def main(argv=None):
     parser.add_argument('--prepared-root', type=Path, required=True, help='prepare-guest.py output directory')
     parser.add_argument('--helper-workspace', type=Path, help='guest helper build directory; defaults beside QEMU build')
     parser.add_argument('--renderer', required=True, help='exact llvmpipe renderer from the real DGLES smoke')
-    parser.add_argument('--mode', choices=('startup', 'usability'), default='startup')
+    parser.add_argument('--mode', choices=('startup', 'usability', 'live'), default='startup')
     parser.add_argument('--timeout', type=float, default=600)
+    parser.add_argument('--live-session', type=Path, help='fresh private native frontend file bridge; live mode only')
+    parser.add_argument('--metrics', action='store_true', help='record private performance timings; live mode only')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--prepare-only', action='store_true', help='validate inputs and build guest helpers; do not launch QEMU')
     args = parser.parse_args(argv)
     if sys.platform != 'linux' or not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('Linux host and positive timeout are required')
+    if (args.mode == 'live') != (args.live_session is not None):
+        parser.error('live mode requires --live-session; other modes cannot use it')
+    if args.metrics and args.mode != 'live':
+        parser.error('--metrics requires live mode')
+    if args.mode == 'live' and not 1 <= args.timeout <= 1800:
+        parser.error('live session timeout must be between 1 and 1800 seconds')
     for key in ('HARMATTAN_USER_PROFILE', 'HARMATTAN_PREBUILT_HELPERS', 'HARMATTAN_APP_CONTENTS'):
         if os.environ.get(key):
             parser.error(f'unset {key}: only isolated source-built snapshots are supported')
@@ -171,7 +179,12 @@ def main(argv=None):
                   '--browser-mode', 'original', '--power', 'off', '--call-simulation', 'off', '--lockscreen', 'off',
                   '--system-ui', 'on', '--clock', 'host', '--input-method', 'on', '--device-orientation', 'display',
                   '--compositor-animations', 'on', '--splash', 'off', '--display-handoff', 'on']
-    controller += ['--interactive', '--exit-on-ready'] if args.mode == 'startup' else ['--exercise-keyboard', '--exercise-transitions']
+    if args.mode == 'live':
+        controller += ['--interactive', '--linux-live-session', str(args.live_session.resolve())]
+        if args.metrics:
+            controller += ['--linux-live-metrics']
+    else:
+        controller += ['--interactive', '--exit-on-ready'] if args.mode == 'startup' else ['--exercise-keyboard', '--exercise-transitions']
     command = controller + ['--'] + qemu_args
     record = {'scope': 'Linux headless software-rendered original Home; no physical GPU/Cocoa/retail service graph acceptance',
               'mode': args.mode, 'command': command, 'host_renderer': args.renderer, 'network': 'off',
@@ -181,7 +194,11 @@ def main(argv=None):
               'base_before': base_before, 'qemu_sha256': hashlib.sha256(qemu.read_bytes()).hexdigest(),
               'kernel_sha256': hashlib.sha256(kernel.read_bytes()).hexdigest(), 'passed': False}
     (out / 'launch.json').write_text(json.dumps(record, indent=2) + '\n')
-    print(f'Linux headless UI evidence: {out}', flush=True)
+    if args.mode == 'live':
+        record.update(scope='Linux native frontend file bridge; original startup and clean-exit gates; physical input requires separate observation',
+                      live_session=str(args.live_session.resolve()))
+        (out / 'launch.json').write_text(json.dumps(record, indent=2) + '\n')
+    print(f'Linux UI evidence: {out}', flush=True)
     try:
         subprocess.run([str(image_tool), 'create', '-q', '-f', 'qcow2', '-F', 'raw', '-b', str(raw), str(overlay), '32G'],
                        check=True, env=env, timeout=30)
@@ -189,7 +206,7 @@ def main(argv=None):
         # that preparation too, while allowing the full requested guest budget.
         code = run_controller(command, env, out / 'controller.log', args.timeout + 300)
         record['controller_exit'] = code
-        result_name = 'startup-result.json' if args.mode == 'startup' else 'keyboard-result.json'
+        result_name = 'startup-result.json' if args.mode in ('startup', 'live') else 'keyboard-result.json'
         result_path = out / 'ui' / result_name
         if result_path.exists():
             record['controller_result'] = json.loads(result_path.read_text())

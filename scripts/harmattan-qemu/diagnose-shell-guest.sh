@@ -85,6 +85,7 @@ start_audio_policy() {
 }
 
 report_systemui() {
+    systemui_wait_reason=process
     ids=$(pidof sysuid) || return 1
     case "$ids" in ''|*[!0-9]*) echo 'Expected one sysuid process' >&2; return 1 ;; esac
     # Font/theme startup can temporarily sleep in disk I/O. Retry startup
@@ -93,13 +94,24 @@ report_systemui() {
     grep -q '^State:[[:space:]]*[RS]' /tmp/n00-systemui-process.log || return 1
     printf '\nN00_SYSTEMUI_REPORT_BEGIN\nN00_SYSTEMUI_PROCESS %s\n' "$ids"
     cat /tmp/n00-systemui-process.log
-    readlink "/proc/$ids/exe"
-    md5sum /usr/bin/sysuid "/proc/$ids/exe"
+    # Preserve the original identity-first order unless the Linux launcher
+    # explicitly opts into avoiding executable rereads on failed readiness polls.
+    if [ "${N00_UI_POLL_READINESS_FIRST:-0}" != 1 ]; then
+        readlink "/proc/$ids/exe"
+        md5sum /usr/bin/sysuid "/proc/$ids/exe"
+    fi
+    systemui_wait_reason=owner
     printf 'N00_SYSTEMUI_OWNER_BEGIN\n'
     su user -c "$user_env dbus-send --session --print-reply --reply-timeout=2000 --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID string:com.meego.core.MStatusBar" || return 1
     printf 'N00_SYSTEMUI_OWNER_END\nN00_SYSTEMUI_PIXMAP_BEGIN\n'
+    systemui_wait_reason=pixmap
     su user -c "$user_env dbus-send --session --print-reply --reply-timeout=2000 --dest=com.meego.core.MStatusBar /statusbar com.meego.core.MStatusBar.sharedPixmapHandle" || return 1
-    printf 'N00_SYSTEMUI_PIXMAP_END\nN00_SYSTEMUI_REPORT_END\n'
+    printf 'N00_SYSTEMUI_PIXMAP_END\n'
+    if [ "${N00_UI_POLL_READINESS_FIRST:-0}" = 1 ]; then
+        readlink "/proc/$ids/exe"
+        md5sum /usr/bin/sysuid "/proc/$ids/exe"
+    fi
+    printf 'N00_SYSTEMUI_REPORT_END\n'
 }
 
 report_processes() {
@@ -333,15 +345,30 @@ case ${1:-} in
         # every original identity/D-Bus/pixmap check and failure gate remains.
         systemui_attempts=${N00_UI_SYSTEMUI_ATTEMPTS:-15}
         case "$systemui_attempts" in 15|30) ;; *) exit 2 ;; esac
+        systemui_poll_started=$(date +%s)
+        systemui_wait_process=0
+        systemui_wait_owner=0
+        systemui_wait_pixmap=0
         attempt=0
         while [ "$attempt" -lt "$systemui_attempts" ]; do
             attempt=$((attempt + 1))
+            systemui_wait_reason=process
             if report_systemui > /tmp/n00-systemui-ready.log 2>&1; then
                 if [ "$(grep -c 'uint32 [1-9][0-9]*' /tmp/n00-systemui-ready.log)" = 2 ]; then ready=1; break; fi
+                systemui_wait_reason=pixmap
             fi
+            case "$systemui_wait_reason" in
+                process) systemui_wait_process=$((systemui_wait_process + 1)) ;;
+                owner) systemui_wait_owner=$((systemui_wait_owner + 1)) ;;
+                pixmap) systemui_wait_pixmap=$((systemui_wait_pixmap + 1)) ;;
+            esac
             sleep 1
         done
+        systemui_poll_finished=$(date +%s)
         cat /tmp/n00-systemui-ready.log
+        printf 'N00_SYSTEMUI_POLL_OBSERVATION attempts=%s budget=%s guest_wall_seconds=%s failed_process=%s failed_owner=%s failed_pixmap=%s\n' \
+            "$attempt" "$systemui_attempts" "$((systemui_poll_finished - systemui_poll_started))" \
+            "$systemui_wait_process" "$systemui_wait_owner" "$systemui_wait_pixmap"
         test "$ready" = 1
         printf 'N00_SYSTEMUI_READY_ATTEMPTS used=%s budget=%s\n' "$attempt" "$systemui_attempts"
         ;;

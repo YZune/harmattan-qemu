@@ -1,0 +1,30 @@
+; Copyright (C) 2026 YZune and contributors.
+; SPDX-License-Identifier: GPL-2.0-or-later
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Harmattan · Live Framebuffer"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=468
+window/size/viewport_height=840
+window/size/window_width_override=468
+window/size/window_height_override=840
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.043, 0.055, 0.075, 1)
