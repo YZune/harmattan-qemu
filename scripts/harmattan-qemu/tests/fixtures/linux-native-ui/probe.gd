@@ -155,6 +155,7 @@ func _run() -> void:
 	ui.free()
 	test_frames_and_native_input()
 	test_rapid_typing()
+	test_keyboard_input_timing()
 	for terminal in ["error", "failed", "cancelled", "stale"]:
 		ui = frontend("test-close-" + terminal)
 		ui.quit_sequence = 1
@@ -260,4 +261,35 @@ func test_rapid_typing() -> void:
 	check(event(ui, ui.sequence).type == "cancel" and ui.sequence == text.length() * 2 + 1, "focus loss explicitly cancels the queued typing")
 	for index in range(text.length()):
 		check(event(ui, index * 2 + 2).key == text[index], "cancellation does not rewrite published key files")
+	ui.free()
+
+
+func test_keyboard_input_timing() -> void:
+	var ui = frontend("test-keyboard-timing")
+	ui.release_delay_msec = 5
+	var started := Time.get_ticks_usec()
+	for code in [KEY_X, KEY_ESCAPE]:
+		var key = InputEventKey.new()
+		key.pressed = true
+		key.keycode = code
+		key.unicode = 120 if code == KEY_X else 0
+		ui._input(key)
+	var finished := Time.get_ticks_usec()
+	check(ui.sequence == 4 and event(ui, 2).key == "x" and event(ui, 4).key == "Escape", "keyboard timing preserves release and key ordering")
+	check(not event(ui, 2).has("input_seen_usec") and not event(ui, 4).has("input_kind"), "keyboard diagnostics do not change event payloads")
+	if ui.metrics_enabled:
+		ui.telemetry_file.flush()
+		var records = FileAccess.get_file_as_string(ui.session_dir.path_join("telemetry.test-keyboard-timing.jsonl")).split("\n", false)
+		var key_records := 0
+		for line in records:
+			var record = JSON.parse_string(line)
+			if record.kind == "event_enqueued" and record.event_type == "key":
+				check(record.input_seen_usec >= started and record.input_seen_usec <= finished, "keyboard timestamp comes from the input callback")
+				check(record.input_pending_usec >= 4000, "keyboard timestamp includes work before publication")
+				check(record.input_to_enqueue_usec >= record.input_pending_usec, "keyboard enqueue interval contains pending time")
+				check(record.input_kind == ("keyboard" if record.event_sequence == 2 else "escape_gesture"), "Escape gesture timing is classified separately")
+				key_records += 1
+		check(key_records == 2, "ordinary key and Escape both report input timing")
+	else:
+		check(ui.event_enqueue_times.is_empty(), "keyboard events add no metrics bookkeeping by default")
 	ui.free()

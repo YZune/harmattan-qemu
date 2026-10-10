@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-10",
+  "scope": "Experimental Linux native letter-case sequencing and opt-in timing. Not generic text-completion or latency acceptance.",
+  "baseline_commit": "ef5a067e8addf69d9680c6b34fb9f7038ad20ac5",
+  "baseline_tree_merged_as": "6006303e638198c25ed4f266b4ee27190c2792be",
+  "tested_source_sha256": {
+    "ports/linux-native-ui/main.gd": "cf1d5eb95c16583311477a667d1391c6671019ad99b14418826b86950072cce2",
+    "scripts/harmattan-qemu/linux-live-bridge.py": "4a8ed8fd861bae1d77691c0f5b56c6ec648cf0aeff5ed3f0f788f4149ae879bf",
+    "scripts/harmattan-qemu/tests/test_linux_live_bridge.py": "b073bab2e98795f0f7d17c6ea06d845d8b3870e5cc856808ab8b75d44b2380cd",
+    "scripts/harmattan-qemu/tests/fixtures/linux-native-ui/probe.gd": "883acd2122bb97d3d227e4e9dc50e1094e3550e9044e75a2a04395ea63f2fafa",
+    "scripts/harmattan-qemu/tests/fixtures/linux-native-ui/test_frontend.gd": "d60b45b29be220d23c007a91cd10825aed6a93e1e62e49739c9278abd1760fda"
+  },
+  "environment": {
+    "host": "Linux x86_64",
+    "frontend": "Godot 4.6.3",
+    "qemu": "9.1.3",
+    "qemu_sha256": "a2ca1cb1b0ac052baed7a31a7571e50ca66e4d9cb005c430c584f26899d635ff",
+    "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)",
+    "guest": "Verified original Harmattan inputs in private disposable snapshots",
+    "network": "off",
+    "transport": "Private files and owned QMP stdio; no listener"
+  },
+  "actual_native_input": {
+    "source": "OS desktop automation through the Godot window, then bridge-owned guest touchscreen input",
+    "before": "The unchanged timing implementation with diagnostics inserted only L from the 16-key Linux works AaZz burst; later requests were rejected or expired after repeated Shift.",
+    "after": "The same 16-key burst displayed Linux works AaZz; all 16 key events were accepted. A subsequent space and ABC displayed Linux works AaZz ABC and saved in the Notes list.",
+    "focus_interruption": "A pending X was cancelled after its contact had already reached the guest. Focus return and a new b displayed Xb, with no X replay.",
+    "audit": {
+      "total": 64,
+      "accepted": 62,
+      "cancelled": 2,
+      "cancelled_sequences": {
+        "58": "Key interrupted by focus loss",
+        "63": "Release cancelled by the immediately following Quit"
+      }
+    }
+  },
+  "candidate_lifecycle": {
+    "startup_seconds": 111.509,
+    "native_quit": true,
+    "controller_exit": 0,
+    "qemu_exit": 0,
+    "frontend_exit": 0,
+    "frontend_stop": "natural",
+    "graphics_faults": 0,
+    "graphics_render_rejects": 0,
+    "workers": "joined",
+    "base_metadata_unchanged": true,
+    "escape_return_retested": false
+  },
+  "known_failures": {
+    "rapid_delete_and_retype": {
+      "sequence": [
+        "a",
+        "Backspace",
+        "b"
+      ],
+      "expected": "b",
+      "observed": "B",
+      "candidate_reproduced": true,
+      "unmodified_baseline_reproduced": true,
+      "unmodified_bridge_sha256": "9b49074d9723452d54fe8e31287fc76e7052731b9c5c88ee00b85bd63a1ec7bd",
+      "baseline_lifecycle": "All three processes exited 0 through native Quit; zero graphics faults/rejections and workers joined."
+    },
+    "separate_graphics_path": "A longer baseline Notes new/cancel/Escape sequence stopped at the strict GPU gate with ten FBO/renderbuffer call faults. Those wire operations are missing from the current render dispatcher; current-context ambiguity is not resolved by those logs. This keyboard change does not repair or bypass that gate."
+  },
+  "source_checks": {
+    "independent_review": "No blocking findings",
+    "bridge_tests": 48,
+    "headless_godot_wrapper_tests": 8,
+    "host_suite": {
+      "tests": 492,
+      "failures": 9,
+      "errors": 5,
+      "skips": 7,
+      "failure_causes": [
+        "9 LeakSanitizer/ptrace failures",
+        "4 restricted Unix-socket errors",
+        "1 missing unversioned clang executable"
+      ],
+      "clang_retry": "The one affected test passed with the previously installed official LLVM 19 toolchain, zero skips."
+    },
+    "diff_check": "passed"
+  },
+  "timing_limits": [
+    "Contact/cooldown values remain 100/180/300 ms.",
+    "The successful 16-key burst took 6.941 seconds from first bridge service start through last acknowledgement. It is a bounded correctness observation, not a throughput comparison.",
+    "Queue timing starts at the first identity-checked bridge read, before full event validation; completion is a bridge acknowledgement, not visible text completion.",
+    "Godot and Python process clocks are separate; do not subtract their raw monotonic values.",
+    "Nested phase times must not be summed.",
+    "No physical input, display scanout, macOS runtime or general keyboard-layout validation was performed."
+  ]
+}

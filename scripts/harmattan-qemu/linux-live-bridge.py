@@ -24,6 +24,7 @@ FRAME_PERIOD = 1 / CAPTURE_HZ
 IDLE_POLL_SECONDS = .005
 NAME = re.compile(r'([A-Za-z0-9_-]{8,64})\.(\d{20})\.json\Z')
 MAX_EVENTS = 256
+MAX_KEY_PHASES = 128
 MAX_EVENT_AGE_SECONDS = 8
 HEARTBEAT_SECONDS = 3
 HERE = Path(__file__).resolve().parent
@@ -104,6 +105,7 @@ class Session:
         self.directory = private_directory(directory)
         self.events = private_directory(self.directory / 'events')
         self.metrics_enabled = metrics
+        self.key_timings = {} if metrics else None
         self.controller_id = secrets.token_hex(16)
         self.publish_lock = threading.RLock()
         self.heartbeat_stop = threading.Event()
@@ -116,6 +118,9 @@ class Session:
         self.press_started = 0
         self.pending = None
         self.steps = deque()
+        # A contact can outlive its cancelled request in Maliit's event loop.
+        # Keep only a passive visual guard, never a key or a replayable action.
+        self.layout_transition = None
         self.next_step = 0
         self.qmp = None
         self.next_frame = 0
@@ -143,6 +148,71 @@ class Session:
             stream.write(json.dumps({'kind': kind, 'controller_id': self.controller_id,
                                      'unix_ms': time.time_ns() / 1e6,
                                      'mono_ns': time.monotonic_ns(), **values}) + '\n')
+
+    def key_timing(self, event):
+        """Bounded, text-free observations; never consulted by input decisions."""
+        if not self.metrics_enabled or event.get('type') != 'key':
+            return None
+        identity = (event['client_id'], event['seq'])
+        if identity not in self.key_timings:
+            # At most the bounded file queue plus the currently serviced key.
+            if len(self.key_timings) >= MAX_EVENTS + 1:
+                return None
+            self.key_timings[identity] = {
+                'input_kind': 'escape_gesture' if event.get('key') == 'Escape' else 'keyboard',
+                'observed_ns': time.monotonic_ns(), 'phases': [], 'dropped_phases': 0,
+            }
+        return self.key_timings[identity]
+
+    def key_phase(self, event, phase, at=None):
+        timing = self.key_timing(event)
+        if timing is None:
+            return
+        at = time.monotonic_ns() if at is None else at
+        if len(timing['phases']) < MAX_KEY_PHASES:
+            timing['phases'].append({'phase': phase, 'mono_ns': at})
+        else:
+            timing['dropped_phases'] += 1
+        if phase.endswith('_started'):
+            timing[phase + '_ns'] = at
+        elif phase.endswith('_finished'):
+            name = phase.removesuffix('_finished')
+            started = timing.pop(name + '_started_ns', None)
+            if started is not None:
+                timing[name + '_ns'] = timing.get(name + '_ns', 0) + at - started
+
+    def finish_key_timing(self, identity, outcome):
+        if not self.metrics_enabled:
+            return
+        timing = self.key_timings.pop(identity, None)
+        if timing is None:
+            return
+        completed = time.monotonic_ns()
+        started = timing.get('service_started_ns')
+        completion_started = timing.get('completion_started_ns')
+        durations = {'queue_wait': None if started is None else (started - timing['observed_ns']) / 1e6,
+                     'service': None if started is None else (completed - started) / 1e6,
+                     'touchdown_qmp': timing.get('touchdown_ns', 0) / 1e6,
+                     'touchup_qmp': timing.get('touchup_ns', 0) / 1e6,
+                     'completion': None if completion_started is None else (completed - completion_started) / 1e6}
+        for name in ('layout_wait', 'case_switch'):
+            elapsed = timing.get(name + '_ns', 0)
+            if name + '_started_ns' in timing:
+                elapsed += (completed if completion_started is None else completion_started) - timing[name + '_started_ns']
+            durations[name] = elapsed / 1e6
+        self.metric('keyboard', client_id=identity[0], event_sequence=identity[1],
+                    input_kind=timing['input_kind'], outcome=outcome,
+                    observed_ns=timing['observed_ns'], service_started_ns=started,
+                    completed_ns=completed, durations_ms=durations,
+                    phases=timing['phases'], dropped_phases=timing['dropped_phases'])
+
+    def finish_key_timings(self):
+        if self.metrics_enabled:
+            try:
+                for identity in list(self.key_timings):
+                    self.finish_key_timing(identity, 'interrupted')
+            finally:
+                self.key_timings.clear()
 
     def resources(self):
         if not self.metrics_enabled:
@@ -191,25 +261,55 @@ class Session:
         self.stop_startup_heartbeat()
         self.state.update(dict(ready=False, state='exited' if passed else 'error', passed=passed) | extra)
         self.publish()
+        self.finish_key_timings()
 
-    def pointer(self, x, y, down, client=None):
+    def pointer(self, x, y, down, client=None, timing_event=None):
         payload = pointer_events(x, y, down)
+        timing_event = self.pending if timing_event is None else timing_event
+        timing = self.key_timing(timing_event) if timing_event else None
+        phase = None
+        if timing is not None and down != self.down:
+            phase = ('case_switch_' if 'case_switch_started_ns' in timing else '') + ('touchdown' if down else 'touchup')
+        started = time.monotonic_ns() if phase else None
         begin = time.perf_counter_ns()
-        self.qmp.call('input-send-event', {'events': payload})
+        succeeded = False
+        try:
+            self.qmp.call('input-send-event', {'events': payload})
+            succeeded = True
+        finally:
+            if phase:
+                finished = time.monotonic_ns()
+                self.key_phase(timing_event, phase + '_started', started)
+                self.key_phase(timing_event, phase + ('_finished' if succeeded else '_failed'), finished)
         self.loop_metrics['input_qmp_ms'] += (time.perf_counter_ns() - begin) / 1e6
         if down and not self.down:
             self.press_started = time.monotonic()
         self.point, self.down = (x, y), down
         self.pointer_client = client if down else None
         self.pointer_updated = time.monotonic()
+        if not down and self.layout_transition is not None and self.layout_transition['frame'] is None:
+            self.layout_transition.update(frame=self.state['frame_counter'], expires=time.monotonic() + 2)
 
-    def release(self):
+    def release(self, timing_event=None):
         if self.down:
-            self.pointer(*self.point, False)
+            self.pointer(*self.point, False, timing_event=timing_event)
+
+    def confirm_layout_transition(self):
+        transition = self.layout_transition
+        if transition is None:
+            return True
+        # Old known frames and fresh opposite-case frames do not establish
+        # that the guest processed the released contact, even after cancel.
+        if (transition['frame'] is not None and self.state['frame_counter'] > transition['frame'] and
+                self.state['keyboard_layout'] == transition['layout']):
+            self.layout_transition = None
+            return True
+        return False
 
     def capture(self):
         from PIL import Image
         cadence_started = time.monotonic()
+        capture_started_ns = time.monotonic_ns() if self.metrics_enabled else None
         marks = [('start', time.perf_counter_ns())]
         started_ms = time.time_ns() / 1e6
         interval_ms = None if self.capture_started is None else (marks[0][1] - self.capture_started) / 1e6
@@ -220,6 +320,7 @@ class Session:
         marks.append(('stop', time.perf_counter_ns()))
         try:
             self.qmp.call('screendump', {'filename': str(ppm), 'format': 'ppm'})
+            sampled_ns = time.monotonic_ns() if self.metrics_enabled else None
             marks.append(('dump', time.perf_counter_ns()))
         finally:
             self.qmp.call('cont')
@@ -258,6 +359,11 @@ class Session:
         atomic_json(self.directory / 'frame.provenance.json', provenance)
         self.state.update(frame_counter=provenance['frame_counter'], frame_file=frame_name, frame_updated_ms=round(time.time() * 1000),
                           rgb_sha256=provenance['rgb_sha256'])
+        if self.pending is None:
+            # Remember a cancelled contact settling while idle, even if the
+            # user changes views before their next text request. This only
+            # clears a passive guard; it never resumes the cancelled action.
+            self.confirm_layout_transition()
         # Start-to-start pacing: encoding is work inside the frame budget.
         # Skip missed slots rather than bursting captures after a long operation.
         self.next_frame = next_capture_deadline(cadence_started, time.monotonic())
@@ -267,6 +373,8 @@ class Session:
                 old.unlink(missing_ok=True)
         marks.append(('publish', time.perf_counter_ns()))
         self.metric('capture', frame_counter=provenance['frame_counter'], started_ms=started_ms,
+                    capture_started_ns=capture_started_ns, sampled_ns=sampled_ns,
+                    keyboard_layout=self.state['keyboard_layout'],
                     interval_ms=interval_ms, total_ms=(marks[-1][1] - marks[0][1]) / 1e6,
                     stages_ms={marks[i][0]: (marks[i][1] - marks[i-1][1]) / 1e6
                                for i in range(1, len(marks))}, queue_depth=self.queue_depth,
@@ -274,6 +382,7 @@ class Session:
         self.loop_metrics = dict.fromkeys(self.loop_metrics, 0.0)
 
     def acknowledge(self, event, accepted, message=''):
+        self.key_phase(event, 'completion_started')
         client, sequence = event['client_id'], event['seq']
         self.acks[client] = max(sequence, self.acks.get(client, 0))
         self.state.update(event_client_id=client, event_ack=self.acks[client],
@@ -299,6 +408,7 @@ class Session:
             audit.write(json.dumps({'time_ms': round(time.time() * 1000), 'event': record,
                                     'accepted': accepted, 'message': message}) + '\n')
         self.publish()
+        self.finish_key_timing((client, sequence), 'accepted' if accepted else 'rejected')
 
     def event_paths(self):
         begin = time.perf_counter_ns()
@@ -309,6 +419,12 @@ class Session:
             raise ValueError('native event queue exceeds 256 files; stop to avoid stale input replay')
         if any(not NAME.fullmatch(path.name) for path in paths):
             raise ValueError('invalid event filename in private queue')
+        if self.metrics_enabled:
+            present = {(match[1], int(match[2])) for path in paths if (match := NAME.fullmatch(path.name))}
+            if self.pending:
+                present.add((self.pending['client_id'], self.pending['seq']))
+            for identity in self.key_timings.keys() - present:
+                self.finish_key_timing(identity, 'removed')
         return paths
 
     def read_queued_event(self, path):
@@ -320,6 +436,9 @@ class Session:
             raise ValueError('event identity does not match this controller and filename')
         if client not in self.acks and len(self.acks) >= 8:
             raise ValueError('too many frontend clients for this session')
+        # First bridge observation is a monotonic queue boundary, not the
+        # frontend's wall-clock created_ms or its unrelated ticks epoch.
+        self.key_timing(event)
         return event
 
     def heartbeat_fresh(self, client):
@@ -371,7 +490,7 @@ class Session:
     def cancel_pending(self, message):
         event, self.pending = self.pending, None
         self.steps.clear()
-        self.release()
+        self.release(timing_event=event)
         if event is not None:
             self.acknowledge(event, False, message)
 
@@ -508,6 +627,7 @@ class Session:
             if not isinstance(key, str) or len(key) > 32:
                 raise ValueError('invalid key')
             self.pending = event
+            self.key_phase(event, 'service_started')
             self.next_step = time.monotonic()
             if key == 'Escape':
                 # Original edge-return gesture from arm64-keyboard.py. This
@@ -540,30 +660,65 @@ class Session:
             self.pending = None
             return
         item = self.steps.popleft()
-        if item[0] == 'pointer':
-            _, x, y, down, delay = item
+        if item[0] in ('pointer', 'case_pointer'):
+            _, x, y, down, delay, *target = item
             self.pointer(x, y, down, self.pending['client_id'])
+            if target:
+                self.layout_transition = {'layout': target[0], 'frame': None, 'expires': None}
             self.next_step = time.monotonic() + delay
             return
-        _, key, expires = item
-        layout = self.state['keyboard_layout']
-        if layout not in ('upper', 'lower'):
-            if time.monotonic() < expires:
-                self.steps.appendleft(item)
-                self.next_step = time.monotonic() + .05
-                return
-            event, self.pending = self.pending, None
-            self.acknowledge(event, False, 'original letter keyboard is not visibly recognized; open it before typing')
+        settling = item[0] == 'settle'
+        if settling:
+            expires = self.layout_transition['expires']
+            message = ('letter was released but keyboard case did not visibly settle; '
+                       'text completion is uncertain and will not be replayed')
+        else:
+            _, key, expires = item
+            message = ('keyboard case transition was not visibly confirmed; text input not sent'
+                       if self.layout_transition is not None or item[0] == 'case' else
+                       'original letter keyboard is not visibly recognized; open it before typing')
+        if time.monotonic() >= expires:
+            self.cancel_pending(message)
             return
+        timing = self.key_timing(self.pending)
+        layout = self.state['keyboard_layout']
+        if not self.confirm_layout_transition():
+            self.wait_layout(item)
+            return
+        if layout not in ('upper', 'lower') or (item[0] == 'case' and (layout == 'upper') != key.isupper()):
+            self.wait_layout(item)
+            return
+        if timing is not None and 'layout_wait_started_ns' in timing:
+            self.key_phase(self.pending, 'layout_wait_finished')
+        if settling:
+            self.acknowledge(self.pending, True)
+            self.pending = None
+            return
+        if item[0] == 'case':
+            self.key_phase(self.pending, 'case_switch_finished')
         alpha = len(key) == 1 and key.isascii() and key.isalpha()
         if alpha and ((layout == 'upper') != key.isupper()):
-            self.steps.extendleft(reversed([('pointer', 32, 750, True, .10),
+            self.key_phase(self.pending, 'case_switch_started')
+            desired = 'upper' if key.isupper() else 'lower'
+            # The case step can only wait or send the letter. Never toggle
+            # Shift again because the old hash persists after its cooldown.
+            self.steps.extendleft(reversed([('case_pointer', 32, 750, True, .10, desired),
                                             ('pointer', 32, 750, False, .30),
-                                            ('key', key, expires)]))
+                                            ('case', key, expires)]))
         else:
             x, y = KEYS[key.lower() if alpha else key]
-            self.steps.extendleft(reversed([('pointer', x, y, True, .10),
-                                            ('pointer', x, y, False, .18)]))
+            contact = ('pointer', x, y, True, .10)
+            if alpha and key.isupper():
+                contact = ('case_pointer', x, y, True, .10, 'lower')
+            self.steps.extendleft(reversed([contact, ('pointer', x, y, False, .18)] +
+                                          ([('settle',)] if alpha and key.isupper() else [])))
+
+    def wait_layout(self, item):
+        timing = self.key_timing(self.pending)
+        if timing is not None and 'layout_wait_started_ns' not in timing:
+            self.key_phase(self.pending, 'layout_wait_started')
+        self.steps.appendleft(item)
+        self.next_step = time.monotonic() + .05
 
     def check_pointer_liveness(self):
         clients = set()
@@ -632,6 +787,9 @@ class Session:
                 drain(self.wait_seconds(time.monotonic()))
                 self.loop_metrics['drain_ms'] += (time.perf_counter_ns() - begin) / 1e6
         finally:
-            self.release()
-            self.state['ready'] = False
-            self.publish()
+            try:
+                self.release()
+                self.state['ready'] = False
+                self.publish()
+            finally:
+                self.finish_key_timings()

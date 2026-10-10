@@ -60,6 +60,22 @@ class LiveTests(unittest.TestCase):
         target = self.session.events / ('%s.%020d.json' % (event['client_id'], event['seq']))
         BRIDGE.atomic_json(target, event)
         return target
+    def measured_session(self):
+        self.session = BRIDGE.Session(Path(self.temp.name) / 'measured', metrics=True)
+        self.session.qmp = self.qmp
+        self.heartbeat()
+    def performance(self, kind):
+        return [record for line in (self.session.directory / 'performance.jsonl').read_text().splitlines()
+                if (record := json.loads(line))['kind'] == kind]
+    def observe_layout(self, layout):
+        self.session.state['keyboard_layout'] = layout
+        self.session.state['frame_counter'] += 1
+    def due_step(self):
+        with patch.object(BRIDGE.time, 'monotonic', return_value=self.session.next_step):
+            self.session.step()
+    def contacts(self):
+        return [(args['events'][0]['data']['value'], args['events'][1]['data']['value'])
+                for name, args in self.qmp.calls if name == 'input-send-event' and args['events'][-1]['data']['down']]
     def test_owned_private_directories_and_startup_gate(self):
         self.assertEqual(self.session.directory.stat().st_mode & 0o777, 0o700)
         self.assertEqual(self.session.events.stat().st_mode & 0o777, 0o700)
@@ -244,6 +260,223 @@ class LiveTests(unittest.TestCase):
         for key in ('Delete', '中', '1', 'F5'):
             self.session.release()
             with self.assertRaises(ValueError): self.session.begin(self.event(3, type='key', key=key))
+    def test_uppercase_letter_waits_for_auto_lower_before_next_text(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='L'))
+        queued = self.write(self.event(2, type='key', key='i'))
+        for _ in range(3):
+            self.due_step()  # Plan, contact, release.
+        released = self.session.next_step - .18
+        for delay in (.18, .24, .40, .50):
+            self.observe_layout('upper')
+            with patch.object(BRIDGE.time, 'monotonic', return_value=released + delay):
+                self.session.step()
+            self.assertIsNotNone(self.session.pending)
+            self.assertIsNone(self.session.next_event())
+            self.assertTrue(queued.exists())
+            self.assertEqual(len(self.contacts()), 1)
+        self.observe_layout('unknown')
+        self.due_step()
+        self.observe_layout('lower')
+        with patch.object(BRIDGE.time, 'monotonic', return_value=released + .61):
+            self.session.step()
+            self.session.begin(self.session.next_event())
+        for _ in range(4):
+            self.due_step()
+        self.assertEqual([record['accepted'] for record in self.audit()], [True, True])
+        self.assertEqual(self.contacts(), [(round(x * 32767 / 479), round(y * 32767 / 863))
+                                          for x, y in ((432, 670), (360, 590))])
+        self.assertIsNone(self.session.layout_transition)
+    def test_initial_lowercase_sends_shift_once_and_waits_for_desired_layout(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='a'))
+        self.due_step()
+        self.due_step()
+        self.assertAlmostEqual(self.session.next_step - self.session.press_started, .10)
+        self.due_step()
+        released = self.session.next_step - .30
+        for delay, layout in ((.30, 'upper'), (.40, 'upper'), (.50, 'unknown'), (.60, 'upper')):
+            self.observe_layout(layout)
+            with patch.object(BRIDGE.time, 'monotonic', return_value=released + delay):
+                self.session.step()
+            self.assertEqual(len(self.contacts()), 1)
+            self.assertFalse(self.session.down)
+        self.observe_layout('lower')
+        self.due_step()
+        for _ in range(3):
+            self.due_step()
+        self.assertTrue(self.audit()[0]['accepted'])
+        self.assertEqual(self.contacts(), [(round(x * 32767 / 479), round(y * 32767 / 863))
+                                          for x, y in ((32, 750), (48, 670))])
+    def test_uppercase_uppercase_waits_for_lower_then_one_shift(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='Q'))
+        self.write(self.event(2, type='key', key='W'))
+        for _ in range(3):
+            self.due_step()
+        self.observe_layout('upper')
+        self.due_step()
+        self.assertIsNone(self.session.next_event())
+        self.observe_layout('lower')
+        self.due_step()
+        self.session.begin(self.session.next_event())
+        for _ in range(3):
+            self.due_step()
+        for layout in ('lower', 'unknown', 'lower'):
+            self.observe_layout(layout)
+            self.due_step()
+            self.assertEqual(len(self.contacts()), 2)
+        self.observe_layout('upper')
+        for _ in range(3):
+            self.due_step()
+        self.observe_layout('lower')
+        self.due_step()
+        self.assertEqual([record['accepted'] for record in self.audit()], [True, True])
+        self.assertEqual([x for x, _ in self.contacts()], [round(x * 32767 / 479) for x in (24, 32, 72)])
+    def test_expected_layout_seen_before_release_cannot_clear_transition(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='Q'))
+        self.due_step()
+        self.due_step()
+        self.observe_layout('lower')  # The contact has not been released yet.
+        self.due_step()
+        self.due_step()
+        self.assertIsNotNone(self.session.pending)
+        self.assertIsNotNone(self.session.layout_transition)
+        self.observe_layout('lower')
+        self.due_step()
+        self.assertTrue(self.audit()[0]['accepted'])
+    def test_unconfirmed_shift_times_out_without_repeat_or_letter(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='a'))
+        expires = self.session.steps[0][2]
+        for _ in range(3):
+            self.due_step()
+        for layout in ('upper', 'unknown', 'upper', 'unknown'):
+            self.observe_layout(layout)
+            self.due_step()
+            self.assertEqual(len(self.contacts()), 1)
+        self.observe_layout('lower')  # Even a desired frame cannot revive an expired request.
+        with patch.object(BRIDGE.time, 'monotonic', return_value=expires):
+            self.session.step()
+        self.assertFalse(self.audit()[0]['accepted'])
+        self.assertIn('case transition', self.audit()[0]['message'])
+        self.assertFalse(self.session.steps)
+        self.assertIsNotNone(self.session.layout_transition)
+        self.session.step()
+        self.assertEqual(len(self.contacts()), 1)
+    def test_unsettled_uppercase_times_out_with_uncertain_completion_and_guard(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='L'))
+        for _ in range(3):
+            self.due_step()
+        expires = self.session.layout_transition['expires']
+        self.observe_layout('unknown')  # Includes an unrecognized Caps-lock state.
+        self.due_step()
+        with patch.object(BRIDGE.time, 'monotonic', return_value=expires):
+            self.session.step()
+        self.assertIn('completion is uncertain', self.audit()[0]['message'])
+        self.assertFalse(self.audit()[0]['accepted'])
+        self.session.begin(self.event(2, type='key', key='i'))
+        self.observe_layout('upper')
+        self.due_step()
+        self.assertEqual(len(self.contacts()), 1)
+        self.assertIsNotNone(self.session.layout_transition)
+        self.observe_layout('lower')
+        for _ in range(4):
+            self.due_step()
+        self.assertEqual([record['accepted'] for record in self.audit()], [False, True])
+        self.assertEqual(len(self.contacts()), 2)
+    def test_cancelled_shift_keeps_only_passive_guard_for_new_text(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='a'))
+        self.due_step()
+        self.due_step()  # Cancel while the single Shift contact is held.
+        self.observe_layout('lower')
+        self.session.begin(self.event(2, type='cancel'))
+        self.assertFalse(self.session.down)
+        self.assertFalse(self.session.steps)
+        self.assertIsNone(self.session.pending)
+        self.session.begin(self.event(3, type='release'))
+        self.assertIsNotNone(self.session.layout_transition)
+        self.session.begin(self.event(4, type='key', key='b'))
+        self.due_step()  # A pre-release desired frame is still stale.
+        self.observe_layout('upper')
+        self.due_step()
+        self.assertEqual(len(self.contacts()), 1)
+        self.observe_layout('lower')
+        for _ in range(4):
+            self.due_step()
+        self.assertEqual([record['accepted'] for record in self.audit()], [False, True, True, True])
+        self.assertEqual([x for x, _ in self.contacts()], [round(x * 32767 / 479) for x in (32, 288)])
+    def test_cancelled_uppercase_keeps_guard_without_replaying_letter(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='L'))
+        for _ in range(3):
+            self.due_step()
+        self.session.begin(self.event(2, type='cancel'))
+        self.observe_layout('lower')
+        self.session.step()
+        self.assertEqual(len(self.contacts()), 1)
+        self.assertIsNotNone(self.session.layout_transition)
+        self.session.begin(self.event(3, type='key', key='i'))
+        for _ in range(4):
+            self.due_step()
+        self.assertEqual([record['accepted'] for record in self.audit()], [False, True, True])
+        self.assertEqual(len(self.contacts()), 2)
+    def test_cancelled_transition_observed_while_idle_does_not_guard_reopened_keyboard(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='a'))
+        for _ in range(3):
+            self.due_step()
+        self.session.begin(self.event(2, type='cancel'))
+        digest = BRIDGE.hashlib.sha256(self.qmp.pixels[550 * 480 * 3:]).hexdigest()
+        with patch.dict(BRIDGE.LAYOUTS, {digest: 'upper'}):
+            self.session.capture()
+        self.assertIsNotNone(self.session.layout_transition)
+        with patch.dict(BRIDGE.LAYOUTS, {digest: 'lower'}):
+            self.session.capture()
+        self.assertIsNone(self.session.layout_transition)
+        self.assertEqual(len(self.contacts()), 1)
+        with patch.dict(BRIDGE.LAYOUTS, {digest: 'upper'}):
+            self.session.capture()  # A newly opened editor can auto-capitalize.
+        self.session.begin(self.event(3, type='key', key='b'))
+        for _ in range(3):
+            self.due_step()
+        self.assertEqual(len(self.contacts()), 2)  # One Shift for each explicit request.
+        self.observe_layout('lower')
+        for _ in range(4):
+            self.due_step()
+        self.assertEqual([record['accepted'] for record in self.audit()], [False, True, True])
+        self.assertEqual([x for x, _ in self.contacts()], [round(x * 32767 / 479) for x in (32, 32, 288)])
+    def test_lost_heartbeat_during_case_wait_releases_and_preserves_guard(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='a'))
+        self.due_step()
+        self.due_step()
+        self.heartbeat(age=4)
+        self.session.step()
+        self.assertFalse(self.session.down)
+        self.assertFalse(self.session.steps)
+        self.assertIsNone(self.session.pending)
+        self.assertIsNotNone(self.session.layout_transition)
+        self.heartbeat()
+        self.session.begin(self.event(2, type='key', key='b'))
+        self.observe_layout('upper')
+        self.due_step()
+        self.assertEqual(len(self.contacts()), 1)
+    def test_event_expiry_during_case_wait_never_sends_letter(self):
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='a'))
+        for _ in range(3):
+            self.due_step()
+        self.session.pending['created_ms'] -= 9000
+        self.observe_layout('lower')
+        self.due_step()
+        self.assertFalse(self.session.steps)
+        self.assertIsNone(self.session.pending)
+        self.assertIn('expired', self.audit()[0]['message'])
+        self.assertEqual(len(self.contacts()), 1)
     def test_escape_is_right_edge_gesture_and_quit_releases(self):
         self.session.begin(self.event(type='key', key='Escape'))
         self.session.step()
@@ -404,6 +637,186 @@ class LiveTests(unittest.TestCase):
         record = self.audit()[-1]
         self.assertTrue(record['accepted'])
         self.assertEqual(record['event']['key'], '[redacted]')
+        self.assertIsNone(self.session.key_timings)
+        self.assertFalse((self.session.directory / 'performance.jsonl').exists())
+    def test_key_metrics_separate_monotonic_queue_layout_shift_and_touch_phases(self):
+        self.measured_session()
+        clock = [100.0]
+        original_call = self.qmp.call
+        def timed_call(name, arguments=None):
+            original_call(name, arguments)
+            clock[0] += .002
+        def due_step():
+            clock[0] = self.session.next_step
+            self.session.step()
+        with patch.object(BRIDGE.time, 'monotonic_ns', side_effect=lambda: round(clock[0] * 1e9)), \
+                patch.object(BRIDGE.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(self.qmp, 'call', side_effect=timed_call):
+            self.write(self.event(type='key', key='Q', extra='private payload'))
+            self.write(self.event(2, type='key', key='w'))
+            first = self.session.next_event()
+            self.assertEqual(len(self.session.key_timings), 2)
+            clock[0] += .2
+            self.session.begin(first)
+            self.session.step()
+            clock[0] += .3
+            self.session.state['keyboard_layout'] = 'lower'
+            self.session.step()
+            self.session.step()  # Shift down, preserving the 100 ms contact.
+            self.assertAlmostEqual(self.session.next_step - clock[0], .10)
+            due_step()  # Shift up, preserving the 300 ms cooldown.
+            self.assertAlmostEqual(self.session.next_step - clock[0], .30)
+            self.observe_layout('upper')
+            due_step()  # Recheck layout after Shift.
+            due_step()  # Letter down.
+            self.assertAlmostEqual(self.session.next_step - clock[0], .10)
+            due_step()  # Letter up, preserving the 180 ms cooldown.
+            self.assertAlmostEqual(self.session.next_step - clock[0], .18)
+            self.observe_layout('lower')
+            due_step()  # Completion follows cooldown and observed auto-lower.
+            second = self.session.next_event()
+            self.session.state['keyboard_layout'] = 'lower'
+            self.session.begin(second)
+            for _ in range(4):
+                due_step()
+        first, second = self.performance('keyboard')
+        self.assertEqual(first['durations_ms'], {'queue_wait': 200, 'service': 988,
+                                               'layout_wait': 300, 'case_switch': 404,
+                                               'touchdown_qmp': 2, 'touchup_qmp': 2, 'completion': 0})
+        self.assertEqual(second['durations_ms'], {'queue_wait': 1188, 'service': 284,
+                                                'layout_wait': 0, 'case_switch': 0,
+                                                'touchdown_qmp': 2, 'touchup_qmp': 2, 'completion': 0})
+        phases = {item['phase']: item['mono_ns'] for item in first['phases']}
+        self.assertEqual(phases['touchdown_finished'] - phases['touchdown_started'], 2_000_000)
+        self.assertEqual(phases['touchup_finished'] - phases['touchup_started'], 2_000_000)
+        self.assertEqual(first['completed_ns'] - phases['touchup_finished'], 180_000_000)
+        self.assertEqual(first['input_kind'], 'keyboard')
+        self.assertEqual(first['outcome'], 'accepted')
+        self.assertEqual(first['dropped_phases'], 0)
+        self.assertEqual(self.session.key_timings, {})
+        self.assertTrue(all(set(record) == {'time_ms', 'event', 'accepted', 'message'} for record in self.audit()))
+        serialized = (self.session.directory / 'performance.jsonl').read_text()
+        for forbidden in ('private payload', '"key"', '"text"', '"Q"', '"w"'):
+            self.assertNotIn(forbidden, serialized)
+    def test_key_metrics_cover_cancelled_prefix_and_escape_without_layout_wait(self):
+        self.measured_session()
+        self.session.begin(self.event(type='key', key='Escape'))
+        self.session.step()
+        self.write(self.event(2, type='key', key='x'))
+        self.write(self.event(3, type='cancel'))
+        self.session.begin(self.session.next_event())
+        gesture, queued = self.performance('keyboard')
+        self.assertEqual(gesture['input_kind'], 'escape_gesture')
+        self.assertEqual(gesture['outcome'], 'rejected')
+        self.assertEqual(gesture['durations_ms']['layout_wait'], 0)
+        self.assertEqual(gesture['durations_ms']['case_switch'], 0)
+        self.assertEqual([item['phase'] for item in gesture['phases']],
+                         ['service_started', 'touchdown_started', 'touchdown_finished',
+                          'touchup_started', 'touchup_finished', 'completion_started'])
+        self.assertEqual(queued['outcome'], 'rejected')
+        self.assertIsNone(queued['service_started_ns'])
+        self.assertIsNone(queued['durations_ms']['service'])
+        self.assertIsNone(queued['durations_ms']['queue_wait'])
+        self.assertFalse(self.session.key_timings)
+        self.assertFalse(self.session.down)
+    def test_key_metrics_keep_case_switch_open_until_observed_and_measure_auto_lower_wait(self):
+        self.measured_session()
+        clock = [100.0]
+        with patch.object(BRIDGE.time, 'monotonic_ns', side_effect=lambda: round(clock[0] * 1e9)), \
+                patch.object(BRIDGE.time, 'monotonic', side_effect=lambda: clock[0]):
+            self.observe_layout('lower')
+            event = self.event(type='key', key='Q')
+            self.session.begin(event)
+            self.session.step()
+            self.session.step()
+            clock[0] = 100.1
+            self.session.step()
+            clock[0] = 100.4
+            self.observe_layout('lower')
+            self.session.step()
+            self.assertIn('case_switch_started_ns', self.session.key_timing(event))
+            clock[0] = 100.8
+            self.observe_layout('upper')
+            self.session.step()
+            self.session.step()
+            clock[0] = 100.9
+            self.session.step()
+            clock[0] = self.session.next_step
+            self.observe_layout('upper')
+            self.session.step()
+            self.assertIsNotNone(self.session.pending)
+            clock[0] = 101.3
+            self.observe_layout('lower')
+            self.session.step()
+        record, = self.performance('keyboard')
+        self.assertEqual(record['outcome'], 'accepted')
+        self.assertEqual(record['durations_ms']['case_switch'], 800)
+        self.assertEqual(record['durations_ms']['layout_wait'], 620)
+        self.assertEqual(record['durations_ms']['service'], 1300)
+        phases = [item['phase'] for item in record['phases']]
+        self.assertEqual(phases.count('case_switch_started'), 1)
+        self.assertEqual(phases.count('case_switch_finished'), 1)
+        self.assertEqual(phases.count('layout_wait_started'), 2)
+        self.assertEqual(phases.count('layout_wait_finished'), 2)
+        self.assertFalse(self.session.key_timings)
+    def test_key_metrics_finish_cancelled_case_wait_without_releasing_a_later_letter(self):
+        self.measured_session()
+        self.observe_layout('upper')
+        self.session.begin(self.event(type='key', key='a'))
+        for _ in range(4):
+            self.due_step()
+        self.session.begin(self.event(2, type='cancel'))
+        record, = self.performance('keyboard')
+        self.assertEqual(record['outcome'], 'rejected')
+        phases = [item['phase'] for item in record['phases']]
+        self.assertEqual(phases.count('case_switch_started'), 1)
+        self.assertNotIn('case_switch_finished', phases)
+        self.assertNotIn('touchdown_started', phases)
+        self.assertFalse(self.session.key_timings)
+        self.assertEqual(len(self.contacts()), 1)
+    def test_key_metrics_finish_layout_rejection_and_do_not_keep_removed_events(self):
+        self.measured_session()
+        self.write(self.event(type='key', key='q'))
+        removed = self.write(self.event(2, type='key', key='w'))
+        self.session.begin(self.session.next_event())
+        self.session.step()
+        removed.unlink()
+        self.session.next_event()
+        with patch.object(BRIDGE.time, 'monotonic', return_value=time.monotonic() + 3):
+            self.session.step()
+        removed_record, rejected = self.performance('keyboard')
+        self.assertEqual(removed_record['outcome'], 'removed')
+        self.assertEqual(rejected['outcome'], 'rejected')
+        self.assertGreater(rejected['durations_ms']['layout_wait'], 0)
+        self.assertFalse(self.session.key_timings)
+        self.assertFalse(self.qmp.calls)
+    def test_key_metrics_are_bounded_and_flushed_on_qmp_failure(self):
+        self.measured_session()
+        event = self.event(type='key', key='Escape')
+        self.session.begin(event)
+        for _ in range(BRIDGE.MAX_KEY_PHASES + 10):
+            self.session.key_phase(event, 'test_phase')
+        self.assertEqual(len(self.session.key_timing(event)['phases']), BRIDGE.MAX_KEY_PHASES)
+        self.assertEqual(self.session.key_timing(event)['dropped_phases'], 11)
+        for sequence in range(2, BRIDGE.MAX_EVENTS + 10):
+            self.session.key_timing(self.event(sequence, type='key', key='q'))
+        self.assertEqual(len(self.session.key_timings), BRIDGE.MAX_EVENTS + 1)
+        # Leave a normal-sized trace for the failure assertion itself.
+        self.session.key_timings = {}
+        self.session.key_phase(event, 'service_started')
+        original_call = self.qmp.call
+        def fail_input(name, arguments=None):
+            if name == 'input-send-event':
+                raise RuntimeError('synthetic QMP failure')
+            return original_call(name, arguments)
+        with patch.object(self.qmp, 'call', side_effect=fail_input):
+            with self.assertRaisesRegex(RuntimeError, 'synthetic QMP failure'):
+                self.session.run(self.qmp, lambda _: None, time.monotonic() + 2, lambda: None)
+        record, = self.performance('keyboard')
+        self.assertEqual(record['outcome'], 'interrupted')
+        self.assertIn('touchdown_failed', [item['phase'] for item in record['phases']])
+        self.assertNotIn('touchdown_finished', [item['phase'] for item in record['phases']])
+        self.assertFalse(self.session.key_timings)
     def test_capture_is_lossless_and_resumes_before_publication(self):
         from PIL import Image
         for _ in range(5): self.session.capture()
@@ -443,6 +856,9 @@ class LiveTests(unittest.TestCase):
         self.assertEqual([item['kind'] for item in records], ['capture', 'resources'])
         self.assertEqual(records[0]['frame_counter'], 1)
         self.assertIn('stages_ms', records[0])
+        self.assertEqual(records[0]['keyboard_layout'], 'unknown')
+        self.assertLessEqual(records[0]['capture_started_ns'], records[0]['sampled_ns'])
+        self.assertLessEqual(records[0]['sampled_ns'], records[0]['mono_ns'])
         self.assertEqual(records[1]['tick_hz'], 100)
         self.assertEqual(records[1]['samples'], {'controller': {
             'pid': os.getpid(), 'cpu_ticks': 26, 'rss_bytes': 16384}})
