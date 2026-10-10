@@ -7,7 +7,7 @@ The [boot-chain input and GP register work](boot-chain.md) restores CONTROL_STAT
 
 An explicit [incoming-call simulation](call-simulation.md) now drives the original call UI and ringtone with synthetic call state. It is separate from cellular emulation and is disabled in normal startup. See its [validation record](call-simulation-validation.json). Its explicit locked mode retains the original green swipe animation; answer/reject, lock restoration, banner-edge pixels and the strict GPU gate pass the current audio-off headless regressions. See [combined validation](call-lockscreen-validation.json).
 
-The experimental [Linux offscreen runtime](linux.md) now has a bounded original Home/Notes/Maliit/Calculator result. [Linux validation](linux-validation.json) separates the original experiment from integration checks; it does not establish native window, physical input or full device-service support.
+The experimental [Linux offscreen runtime](linux.md) has a bounded original Home/Notes/Maliit/Calculator result. The opt-in [Godot native window](linux-native.md) adds scoped desktop mouse/keyboard input. [Offscreen validation](linux-validation.json) and [native validation](linux-native-validation.json) separate historical experiments from integration checks; neither establishes full device services or physical display latency.
 
 ## Experimental compatibility
 
@@ -64,7 +64,7 @@ The [original lock-screen integration](lockscreen.md) connects the Cocoa shell s
 
 Native source builds now provide opt-in [SDK Ethernet networking](networking.md). The [validation record](networking-validation.json) covers a clean QEMU build, 259 host tests, guest DHCP/public DNS/HTTP, bidirectional content checks and the combined headless UI regression with networking enabled. Existing downloaded preview apps require rebuilding.
 
-- Linux native window/distribution, a Windows runtime port, independent second-Mac validation and Developer ID signing/notarization. See the [prebuilt preview](releases.md) for the packaged runtime and its remaining guest-input requirement.
+- Linux native-window integration/reproduction and distribution, a Windows runtime port, independent second-Mac validation and Developer ID signing/notarization. See the [prebuilt preview](releases.md) for the packaged runtime and its remaining guest-input requirement.
 - Independent reproduction of the new original-media preparation route, support for additional media versions, and a redistributable guest baseline.
 - Complete EGL/GLES coverage, SGX emulation, and arbitrary ARMEL packages.
 - Full Upstart/Aegis/device services, cellular, camera, hardware audio routing, Wi-Fi/connection-manager integration, and accurate physical sensors.

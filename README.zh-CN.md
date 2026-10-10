@@ -8,9 +8,9 @@
 
 Harmattan QEMU 将 Nokia 的实验性 N00 板级支持移植到 QEMU 9.1.3，并将旧图形协议接到原生 macOS 后端。它运行原版 Harmattan ARM 软件，包括 Home 桌面、部分应用、合成器和屏幕键盘。
 
-实验性的 [Linux x86_64 离屏源码路径](docs/linux.zh-CN.md)也可通过软件渲染与 QMP 输入运行原版界面，尚未提供 Linux 原生窗口或发行包。
+实验性的 [Linux x86_64 源码路径](docs/linux.zh-CN.md)也可通过软件渲染运行原版界面。显式启用的 [Godot 原生窗口](docs/linux-native.zh-CN.md)通过私有本地桥接支持局部鼠标/键盘交互；Linux 发行包仍待完成。
 
-这是一个实验性的系统保存项目。原生窗口宿主为 ARM64 macOS；客体仍通过 TCG 执行 ARM32 代码，组合 PR1.0 时期的模拟器内核、适配层和 PR1.3 量产用户态。它不是 Nokia 官方模拟器，也尚未完整模拟 N9 硬件。
+这是一个实验性的系统保存项目。主要原生宿主为 ARM64 macOS，另有实验性 Linux x86_64 窗口；客体仍通过 TCG 执行 ARM32 代码，组合 PR1.0 时期的模拟器内核、适配层和 PR1.3 量产用户态。它不是 Nokia 官方模拟器，也尚未完整模拟 N9 硬件。
 
 ## 运行画面
 
@@ -25,6 +25,7 @@ Harmattan QEMU 将 Nokia 的实验性 N00 板级支持移植到 QEMU 9.1.3，并
 - OMAP3/N00 板级、内存、存储、显示、电源和触摸设备补丁。
 - 受限的 EGL/GLES 桥接与 Nokia DGLES 宿主库移植。
 - Cocoa 显示、旋转、输入活动声明和异步退出支持。
+- 显式 Linux OSMesa 渲染与 Godot 原生前端，用于一次性离线会话。
 - 面向原版合成器、方向、键盘及显示交接的客体兼容辅助代码。
 - 主机测试及有明确失败检查的客体诊断。
 
@@ -82,6 +83,7 @@ flowchart TB
 | --- | --- | --- |
 | macOS 预编译预览版 | [指南](docs/releases.zh-CN.md) | [Guide](docs/releases.md) |
 | 构建与运行 | [指南](docs/building.zh-CN.md) | [Guide](docs/building.md) |
+| 实验性 Linux 原生窗口 | [指南](docs/linux-native.zh-CN.md) | [Guide](docs/linux-native.md) |
 | 架构与补丁 | [架构](docs/architecture.zh-CN.md) | [Architecture](docs/architecture.md) |
 | 兼容性与验证 | [状态](docs/status.zh-CN.md) | [Status](docs/status.md) |
 | 来源、输入和许可 | [来源](docs/sources.zh-CN.md) | [Sources](docs/sources.md) |

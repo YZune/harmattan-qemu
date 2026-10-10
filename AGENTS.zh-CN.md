@@ -15,9 +15,9 @@
 | 文档或发布元数据 | 检查链接、发布内容和差异，无需重建模拟器 |
 | 主机工具、验证器及测试 | Python、C 编译器、Perl；先运行相关 unittest，行为改动再运行主机测试套件 |
 | QEMU/DGLES 补丁 | 所选支持的宿主/后端、工具和固定源码归档；干净源码构建与相关图形/生命周期检查 |
-| 客体行为或交互 UI | 上述条件，再加 APFS、macOS 图形会话、支持 ARM 的 LLVM/lld、debugfs 和准备好的客体输入；运行相关客体诊断 |
+| 客体行为或交互 UI | 上述条件，再加支持 ARM 的 LLVM/lld、debugfs 和准备好的客体输入；macOS 需要 APFS/图形会话，Linux 使用独立离屏或 Godot 前提；运行相关客体诊断 |
 
-Linux 可运行可移植主机测试，并跳过 AppKit 测试。[Linux x86_64 离屏指南](docs/linux.zh-CN.md)说明独立的构建与客体路径；原生窗口运行时仍面向 Apple Silicon macOS。`check-environment.py` 是完整构建的前提检查，其中缺少 Mac 或归档的结果不妨碍 Linux 上的纯源码贡献。它只检查文件存在及工具发现，不验证摘要、盘内内容、APFS 行为或编译器能力。
+Linux 可运行可移植主机测试，并跳过 AppKit 测试。[Linux x86_64 指南](docs/linux.zh-CN.md)说明独立构建与客体路径；显式 [Godot 原生窗口](docs/linux-native.zh-CN.md)增加本地文件桥接和有界输入。macOS Cocoa 默认行为不变。`check-environment.py` 是完整构建的前提检查，其中缺少 Mac 或归档的结果不妨碍 Linux 上的纯源码贡献。它只检查文件存在及工具发现，不验证摘要、盘内内容、APFS 行为或编译器能力。
 
 ## 无需镜像的检查
 
@@ -38,7 +38,7 @@ git diff --check
 
 按[构建说明](docs/building.zh-CN.md)准备工具和准确输入布局，[inputs.json](docs/inputs.json)标识归档和客体文件。先运行 `python3 scripts/check-environment.py`，需要客体运行时加 `--guest`。不要通过修改固定版本或摘要来绕过缺失或不匹配的输入。
 
-Linux 使用 [Linux 指南](docs/linux.zh-CN.md)的显式命令。macOS 前提满足后，如需一次原生干净构建：
+Linux 使用 [Linux 指南](docs/linux.zh-CN.md)与[原生窗口指南](docs/linux-native.zh-CN.md)的显式命令。不得复用 live 会话目录，也不能将历史私有运行证据当作最终整合验证。macOS 前提满足后，如需一次原生干净构建：
 
 ```sh
 mkdir -p extracted
@@ -71,6 +71,7 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh
 
 - `ports/qemu-n00/`：维护中的 QEMU 补丁和外壳视图源码。保留构建脚本的补丁顺序；只在解包树中修改，无法经过干净构建保留下来。
 - `ports/dgles2/`：DGLES 补丁，应用到自己的固定归档，不应用到 QEMU 树。
+- `ports/linux-native-ui/`：显式 Godot framebuffer/输入前端。保留明确会话路径、离线/私有传输、就绪/错误状态和有界输入范围；详细计时必须显式启用。
 - `scripts/harmattan-qemu/`：构建器、启动器、局部客体辅助代码、QMP 控制器及 `tests/`。沿用相邻代码和既有标准库、工具模式，保留源码及 ABI 检查和明确的失败处理。
 - `docs/`、根目录 Markdown、`.github/`：公开文档和贡献设施。中英文同步更新，命令变化时同步维护本说明。
 
@@ -87,4 +88,4 @@ sh scripts/harmattan-qemu/run-arm64-ui.sh
 
 ## 完成报告
 
-说明改动、实际执行的命令、结果，以及未覆盖或受阻的部分。区分主机测试、干净源码构建、原生图形执行、无窗口客体、Cocoa 窗口和真实输入。QMP 截图及客体 RAM 采样不测量屏幕 FPS；历史记录只能作为参考，不能充当本次运行证据。不要将原始日志或机器专用路径复制进公开文档。
+说明改动、实际执行的命令、结果，以及未覆盖或受阻的部分。区分主机测试、干净源码构建、原生图形执行、无窗口客体、Cocoa/Godot 窗口、合成前端检查和真实输入。QMP 截图及客体 RAM 采样不测量屏幕 FPS；历史记录只能作为参考，不能充当本次运行证据。不要将原始日志或机器专用路径复制进公开文档。

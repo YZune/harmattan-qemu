@@ -1,8 +1,8 @@
 # Experimental Linux offscreen runtime
 
-[简体中文](linux.zh-CN.md) · [Build guide](building.md) · [Validation record](linux-validation.json)
+[简体中文](linux.zh-CN.md) · [Build guide](building.md) · [Native window](linux-native.md) · [Validation record](linux-validation.json)
 
-This is the bounded Linux host path for [issue #3](https://github.com/YZune/harmattan-qemu/issues/3): x86_64 Linux, ARM32 TCG, DGLES with Mesa OSMesa software rendering, and QMP input/framebuffer capture. It produces real guest pixels without a host GPU, X11, Wayland or a desktop session. A native Linux window, installer, physical input and full device services remain separate work. The Apple Silicon Cocoa path keeps its existing defaults.
+This is the bounded Linux host path for [issue #3](https://github.com/YZune/harmattan-qemu/issues/3): x86_64 Linux, ARM32 TCG, DGLES with Mesa OSMesa software rendering, and QMP input/framebuffer capture. It produces real guest pixels without a host GPU, X11, Wayland or a desktop session. The opt-in [Godot native window](linux-native.md) adds scoped desktop input over this offscreen backend; an installer, touch hardware and full device services remain separate work. The Apple Silicon Cocoa path keeps its existing defaults.
 
 ## Design
 
@@ -121,4 +121,4 @@ The [validation record](linux-validation.json) separates the 2026-10-08 experime
 
 The full host suite failed in that restricted environment because Unix sockets and LeakSanitizer were unavailable; focused tests and actual guest success do not convert that into a suite pass. AppKit tests skipped on Linux. Integration CI and current source-build checks are reported separately. macOS runtime was not rerun for this Linux change.
 
-This path does not establish full retail startup, cellular/audio/network/browser/camera services, arbitrary application compatibility, persistent profiles, long-session stability or a Linux desktop frontend.
+This offscreen record does not establish full retail startup, cellular/audio/network/browser/camera services, arbitrary application compatibility, persistent profiles or long-session stability. The [native window record](linux-native-validation.json) separately documents scoped desktop interaction and its verification limits.

@@ -6,7 +6,7 @@ Original retail boot/modem payload preparation is a separate [boot-chain input s
 
 ## Supported starting point
 
-The native windowed build/run path targets **Apple Silicon macOS on APFS**. An experimental **Linux x86_64 offscreen** path has separate [dependencies, design and commands](linux.md); use that guide on Linux. The remainder of this page describes the macOS path. QEMU 9.1.3 is pinned because its OMAP foundations match this port, not because it is the newest QEMU release.
+This build/run guide targets **Apple Silicon macOS on APFS**. The experimental **Linux x86_64** path has separate [dependencies, design and commands](linux.md), plus an opt-in [Godot native window](linux-native.md); use those guides on Linux. The remainder of this page describes the macOS path. QEMU 9.1.3 is pinned because its OMAP foundations match this port, not because it is the newest QEMU release.
 
 The separate [experimental PR1.3 kernel build](kernel.md) uses a Linux build environment and preserves the original Aegis implementation. It does not change the default SDK kernel or establish full device-service readiness.
 

@@ -6,7 +6,7 @@
 
 ## 支持的起点
 
-原生窗口构建和运行路径面向 **Apple Silicon 原生 macOS 与 APFS**。实验性的 **Linux x86_64 离屏**路径有独立的[依赖、设计和命令](linux.zh-CN.md)，Linux 用户应使用该指南；本文其余部分描述 macOS 路径。固定 QEMU 9.1.3 是因为其 OMAP 基础与当前移植匹配，不表示它是最新版本。
+本构建和运行指南面向 **Apple Silicon 原生 macOS 与 APFS**。实验性的 **Linux x86_64** 路径有独立的[依赖、设计和命令](linux.zh-CN.md)，以及显式 [Godot 原生窗口](linux-native.zh-CN.md)，Linux 用户应使用这些指南；本文其余部分描述 macOS 路径。固定 QEMU 9.1.3 是因为其 OMAP 基础与当前移植匹配，不表示它是最新版本。
 
 独立的[实验性 PR1.3 内核构建](kernel.zh-CN.md)使用 Linux 构建环境，并保留原版 Aegis 实现；不改变默认 SDK 内核，也不代表完整设备服务已就绪。
 

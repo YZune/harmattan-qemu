@@ -23,3 +23,6 @@ __pycache__/
 .env.*
 *.pem
 *.key
+
+# Godot import/editor cache (source project remains portable).
+.godot/

@@ -1,6 +1,8 @@
 # Sourced by diagnose-shell-guest.sh inside its disposable guest only.
 # Uses its UI environment and the original PR1.3 input method and keyboard.
 report_input_method() {
+    ime_wait_reason=process
+    ime_state_sleeps=0
     ime_pid=$(pidof meego-im-uiserver) || return 1
     case "$ime_pid" in ''|*[!0-9]*) return 1 ;; esac
     # Match the statusbar readiness gate: font/theme disk loading can be
@@ -8,24 +10,43 @@ report_input_method() {
     for ime_state_attempt in 1 2 3 4 5; do
         sed -n '1,8p' "/proc/$ime_pid/status" >/tmp/n00-ime-process.log || return 1
         if grep -q '^State:[[:space:]]*[RS]' /tmp/n00-ime-process.log; then break; fi
+        ime_state_sleeps=$((ime_state_sleeps + 1))
         sleep 1
     done
     grep -q '^State:[[:space:]]*[RS]' /tmp/n00-ime-process.log || return 1
+    # Only the explicit Linux opt-in checks readiness before library hashes.
+    # The default retains the original identity, mapping and D-Bus order.
+    if [ "${N00_UI_POLL_READINESS_FIRST:-0}" = 1 ]; then
+        ime_wait_reason=mapping
+        grep -q '/usr/lib/meego-im-plugins/libmeego-keyboard.so$' "/proc/$ime_pid/maps" || return 1
+    fi
     printf '\nN00_IME_BEGIN\nN00_IME_PID %s\n' "$ime_pid"
     cat /tmp/n00-ime-process.log
-    readlink "/proc/$ime_pid/exe"
-    md5sum /usr/bin/meego-im-uiserver "/proc/$ime_pid/exe" \
-        /usr/lib/meego-im-plugins/libmeego-keyboard.so \
-        /usr/lib/qt4/plugins/inputmethods/libminputcontext.so
-    grep -q '/usr/lib/meego-im-plugins/libmeego-keyboard.so$' "/proc/$ime_pid/maps" || return 1
+    if [ "${N00_UI_POLL_READINESS_FIRST:-0}" != 1 ]; then
+        readlink "/proc/$ime_pid/exe"
+        md5sum /usr/bin/meego-im-uiserver "/proc/$ime_pid/exe" \
+            /usr/lib/meego-im-plugins/libmeego-keyboard.so \
+            /usr/lib/qt4/plugins/inputmethods/libminputcontext.so
+        ime_wait_reason=mapping
+        grep -q '/usr/lib/meego-im-plugins/libmeego-keyboard.so$' "/proc/$ime_pid/maps" || return 1
+    fi
     printf 'N00_IME_KEYBOARD_MAPPED\n'
     printf 'N00_IME_ARGUMENTS '
     tr '\000' ' ' < "/proc/$ime_pid/cmdline"
     printf '\nN00_IME_OWNER_BEGIN\n'
+    ime_wait_reason=owner
     su user -c "$user_env dbus-send --session --print-reply --reply-timeout=2000 --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID string:org.maliit.server" || return 1
     printf 'N00_IME_OWNER_END\nN00_IME_ADDRESS_BEGIN\n'
+    ime_wait_reason=address
     su user -c "$user_env dbus-send --session --print-reply --reply-timeout=2000 --dest=org.maliit.server /org/maliit/server/address org.freedesktop.DBus.Properties.Get string:org.maliit.Server.Address string:address" || return 1
-    printf 'N00_IME_ADDRESS_END\nN00_IME_END\n'
+    printf 'N00_IME_ADDRESS_END\n'
+    if [ "${N00_UI_POLL_READINESS_FIRST:-0}" = 1 ]; then
+        readlink "/proc/$ime_pid/exe"
+        md5sum /usr/bin/meego-im-uiserver "/proc/$ime_pid/exe" \
+            /usr/lib/meego-im-plugins/libmeego-keyboard.so \
+            /usr/lib/qt4/plugins/inputmethods/libminputcontext.so
+    fi
+    printf 'N00_IME_END\n'
 }
 
 start_input_method() {
@@ -39,11 +60,32 @@ start_input_method() {
     # No manual-redirection: mcompositor retains ownership of XComposite.
     su user -c "$user_env meego-im-uiserver -use-self-composition -software -local-theme -graphicssystem raster >/tmp/n00-shell-input-method.log 2>&1 &"
     ime_ready=0
+    ime_poll_started=$(date +%s)
+    ime_wait_process=0
+    ime_wait_mapping=0
+    ime_wait_owner=0
+    ime_wait_address=0
+    ime_poll_state_sleeps=0
     for ime_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        if report_input_method >/tmp/n00-ime-ready.log 2>&1; then ime_ready=1; break; fi
+        if report_input_method >/tmp/n00-ime-ready.log 2>&1; then
+            ime_poll_state_sleeps=$((ime_poll_state_sleeps + ime_state_sleeps))
+            ime_ready=1
+            break
+        fi
+        ime_poll_state_sleeps=$((ime_poll_state_sleeps + ime_state_sleeps))
+        case "$ime_wait_reason" in
+            process) ime_wait_process=$((ime_wait_process + 1)) ;;
+            mapping) ime_wait_mapping=$((ime_wait_mapping + 1)) ;;
+            owner) ime_wait_owner=$((ime_wait_owner + 1)) ;;
+            address) ime_wait_address=$((ime_wait_address + 1)) ;;
+        esac
         sleep 1
     done
+    ime_poll_finished=$(date +%s)
     cat /tmp/n00-ime-ready.log
+    printf 'N00_IME_POLL_OBSERVATION attempts=%s budget=15 guest_wall_seconds=%s state_sleeps=%s failed_process=%s failed_mapping=%s failed_owner=%s failed_address=%s\n' \
+        "$ime_attempt" "$((ime_poll_finished - ime_poll_started))" "$ime_poll_state_sleeps" \
+        "$ime_wait_process" "$ime_wait_mapping" "$ime_wait_owner" "$ime_wait_address"
     if [ "$ime_ready" != 1 ]; then tail -80 /tmp/n00-shell-input-method.log; return 1; fi
 }
 

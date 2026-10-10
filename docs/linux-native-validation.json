@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "scope": "Opt-in Linux x86_64 Godot native window for the original ARM32 Harmattan UI; offline disposable sessions",
+  "historical_private_experiment": {
+    "recorded_date_utc": "2026-10-10",
+    "code_state": "Verified private experiment before public path/CLI cleanup; not a test of the final public integration",
+    "provenance": {
+      "source_manifest_sha256": "b1257300b1a9fc50b048748df67e373bde99467d49239e372b6993d9031a186f",
+      "performance_report_sha256": "9513dfaf6d8b6cc2b0692b2a87ca03ad25735c781670ffbf679429c6d335552b",
+      "runtime_report_sha256": "e8bd709b2083312927dbada655c36a61c0b6117c9f4d3b38ded749014df247fe",
+      "source_sha256": {
+        "scripts/harmattan-qemu/run-linux-ui.py": "0cebbecce12d3f8f67a990de3d8beb76ced99007b449e3c36681d368c2040d17",
+        "scripts/harmattan-qemu/diagnose-arm64-shell.py": "7e3b72a1041ad22d136dc53142d4ba7fbf7a69e11ddc8b9e7f5984346d3b9813",
+        "scripts/harmattan-qemu/linux-live-bridge.py": "05b6aed5f170d21678a268a477ca65752328a19a66bca9f9f8d1f5677552aff9",
+        "scripts/harmattan-qemu/diagnose-shell-guest.sh": "bb2a95c2cf600d3137ff65a318e5a91c3f759531374f6bc18660ec64a0472a31",
+        "scripts/harmattan-qemu/input-method-guest.sh": "18281de80fb25f03e06ca5f2ae251784e9579e14b1dbe48ac83fd17ad1a88727",
+        "scripts/harmattan-qemu/tests/test_linux_live_bridge.py": "2e2eb36edc349dc9162eae5875e3be47c6ff8aae1e473a5b9860f60c7d3692ea",
+        "scripts/harmattan-qemu/tests/test_startup_polling_optimization.py": "ec890e4b4eb1caacf371c9126ff66eba85167e782001ee77e63124b83b42dae2",
+        "ports/linux-native-ui/main.gd": "b8ab7b99b2ebf50a70a1e27fe9ada1d926def98d1015be08f550477b1fdd6642",
+        "ports/linux-native-ui/main.gd.uid": "744f7bacb3a781c7ce2cb0cd01fe4aa1404f4b346a59943ee855f5f058f4da42",
+        "ports/linux-native-ui/main.tscn": "f7e0f486479fe2cbd0532766e298af7c2aeffdaa609aa4d4153d8c3e4dda6d12",
+        "ports/linux-native-ui/project.godot": "1111a72eb925984e3671d500f7f1588ab1f342bbda606f5f9f3278e6413d2877"
+      },
+      "availability": "Sanitized summary only; private raw evidence, guest media and binaries are excluded from this repository"
+    },
+    "runtime": {
+      "host_architecture": "x86_64 Linux",
+      "godot": "4.6.3",
+      "qemu": "9.1.3",
+      "guest_architecture": "ARM32 TCG",
+      "graphics": "DGLES with Mesa OSMesa",
+      "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "framebuffer": [
+        480,
+        864
+      ],
+      "network": "off",
+      "audio": "off",
+      "transport": "owned private local files; controller-owned QMP stdio; no exposed services"
+    },
+    "optimized_native_run": {
+      "passed": true,
+      "input_source": "Native desktop mouse/keyboard events generated through OS UI automation",
+      "steps": [
+        "Calculator 2+3=5",
+        "Actual right-edge mouse drag returned Home",
+        "Notes Linux -> Linu -> Linux works through visible Maliit",
+        "Mouse saved note",
+        "Escape requested right-edge return",
+        "Native Quit closed window after cleanup"
+      ],
+      "captures": 4498,
+      "input_events": 66,
+      "accepted_events": 66,
+      "rejected_events": 0,
+      "qemu_exit": 0,
+      "controller_exit": 0,
+      "graphics_clean": true,
+      "workers_joined": true,
+      "faults": 0,
+      "rejects": 0,
+      "base_metadata_unchanged": true,
+      "base_full_hash_rechecked": false
+    },
+    "same_source_repeat": {
+      "passed": true,
+      "source_unchanged": true,
+      "mesa_cache": "fresh per run",
+      "host_suite_concurrent": false,
+      "steps": [
+        "Calculator 2+3=5",
+        "Repeated reopen, clear, recalculate and edge return",
+        "Native Quit"
+      ],
+      "captures": 7177,
+      "accepted_events": 80,
+      "rejected_events": 0,
+      "qemu_exit": 0,
+      "controller_exit": 0,
+      "graphics_clean": true,
+      "workers_joined": true,
+      "faults": 0,
+      "rejects": 0,
+      "base_metadata_unchanged": true,
+      "post_draw_new_capture_hz": 17.898,
+      "frontend_cpu_percent": 77.445,
+      "skipped_capture_counters": 0,
+      "evidence_limit": "Compact repeat summaries retained; full repeat frame telemetry not included in the private source kit"
+    },
+    "idle_comparison": {
+      "window": "30 seconds from first capture publication +5 s to +35 s; Home idle; both logs cover the full window",
+      "cpu_normalization": "One logical CPU = 100%; cumulative process ticks with window-boundary interpolation",
+      "percentile_method": "nearest rank",
+      "baseline": {
+        "capture_interarrival_hz": 4.893,
+        "post_draw_new_capture_hz": 4.891,
+        "frontend_cpu_percent": 503.771,
+        "controller_cpu_percent": 13.531,
+        "qemu_cpu_percent": 1.903,
+        "three_process_cpu_sum_percent": 519.205,
+        "publish_to_post_draw_ms": {
+          "median": 43,
+          "p95": 75
+        }
+      },
+      "optimized": {
+        "capture_interarrival_hz": 17.964,
+        "post_draw_new_capture_hz": 17.974,
+        "frontend_cpu_percent": 74.417,
+        "controller_cpu_percent": 39.254,
+        "qemu_cpu_percent": 4.954,
+        "three_process_cpu_sum_percent": 118.625,
+        "publish_to_post_draw_ms": {
+          "median": 24,
+          "p95": 41
+        }
+      },
+      "limit": "Capture/transport and frontend callback measurements, not guest FPS, physical scanout or photons"
+    },
+    "gesture_comparison": {
+      "baseline": {
+        "release_to_controller_ack_tail_ms": 1136,
+        "source_gesture_ms": 806,
+        "published_move_events": 123
+      },
+      "optimized": {
+        "release_to_controller_ack_tail_ms": 19,
+        "source_gesture_ms": 500,
+        "published_move_events": 12
+      },
+      "limit": "Same route with different duration, not identical timed-motion replay; timing starts at the Godot callback, not hardware input; acknowledgement is not application acceptance"
+    },
+    "startup": {
+      "instrumented_baseline_seconds": 160.596,
+      "optimized_seconds": 107.062,
+      "same_source_fresh_cache_repeat_seconds": 105.471,
+      "earlier_different_source_seconds": [
+        161.215,
+        131.403
+      ],
+      "limit": "First optimized run partly overlapped host tests; repeat did not. Frontend contention and readiness hash order changed together. Host load, caches and guest readiness vary; these few runs cannot isolate causation or guarantee a fixed speedup. Do not double-count nested spans."
+    },
+    "render_consistency": {
+      "status": "passed for selected controls only",
+      "frames": 5,
+      "static_rgb_region": [
+        0,
+        190,
+        480,
+        625
+      ],
+      "observation": "Identical RGB in selected Calculator static controls; no missing glyph observed in native window",
+      "limit": "Not exhaustive renderer conformance"
+    },
+    "host_suite": {
+      "tests": 426,
+      "seconds": 22.81,
+      "failures": 9,
+      "errors": 4,
+      "skipped": 7,
+      "status": "failed",
+      "reason": "Nine LeakSanitizer/ptrace SSI failures and four AF_UNIX permission errors; not an all-green suite",
+      "bridge_tests_passed": 15,
+      "polling_tests_passed": 5
+    },
+    "godot_checks": {
+      "parser": "passed",
+      "synthetic_assertions": 227,
+      "status": "passed",
+      "scope": "Headless isolated synthetic frontend session; native interaction validated separately"
+    },
+    "older_counts": "Earlier 417-test aggregate and 27 focused tests predate startup-heartbeat correction; neither is final optimization evidence"
+  },
+  "public_integration": {
+    "date_utc": "2026-10-10",
+    "status": "Implementation source verified by independent review and Linux/macOS/Godot CI; guest/native rerun limits remain below",
+    "host_suite": {
+      "status": "failed in restricted local environment",
+      "tests": 455,
+      "seconds": 31.677,
+      "failures": 9,
+      "errors": 5,
+      "skipped": 7,
+      "reason": "Nine LeakSanitizer/ptrace SSI failures; four prohibited AF_UNIX errors; one missing-clang error. None is counted as a pass."
+    },
+    "godot_checks": {
+      "status": "passed",
+      "godot": "4.6.3",
+      "wrapper_tests": 7,
+      "synthetic_assertions_metrics_off": 358,
+      "synthetic_assertions_metrics_on": 357,
+      "scope": "Isolated headless source frontend including consecutive typing, explicit cancellation, lifecycle and protocol errors"
+    },
+    "publication_check": {
+      "status": "passed",
+      "files": 370,
+      "errors": 0,
+      "shell_syntax": "passed for every tracked shell script",
+      "diff_whitespace": "passed"
+    },
+    "guest_native_rerun": false,
+    "macos_runtime_rerun": false,
+    "guest_blocker": "Prepared guest inputs are unavailable in the publication environment; full guest/native flow was not rerun after path/CLI cleanup",
+    "note": "Final local source checks and CI are separate from the historical guest experiment. Review corrections include ordered key release versus explicit cancellation.",
+    "default_report_compatibility": {
+      "status": "passed",
+      "synthetic_scenarios": 9,
+      "comparison": "Default macOS reporter output byte-for-byte equal to baseline; Linux readiness-first polling is enabled only by N00_UI_POLL_READINESS_FIRST=1",
+      "scope": "Report-output compatibility only; not a macOS runtime regression"
+    },
+    "shell_syntax": "passed for interim tree",
+    "diff_check": "passed for interim tree",
+    "ci": {
+      "status": "passed for implementation commit",
+      "commit": "22ad7d40e435388ac810413d323bc5d657de31a7",
+      "pull_request": "https://github.com/YZune/harmattan-qemu/pull/30",
+      "run": "https://github.com/YZune/harmattan-qemu/actions/runs/38032681606",
+      "jobs": {
+        "host-tests (ubuntu-24.04)": {
+          "status": "passed",
+          "tests": 448,
+          "skipped": 8
+        },
+        "host-tests (macos-15)": {
+          "status": "passed",
+          "tests": 448,
+          "skipped": 4
+        },
+        "native-frontend": {
+          "status": "passed",
+          "tests": 7,
+          "godot": "4.6.3"
+        }
+      },
+      "initial_failure": "The first macOS run exposed a test-only assumption that /proc exists. A deterministic proc-stat/sysconf fixture fixed the test and checks exact CPU/RSS values; production code was unchanged.",
+      "scope": "Host/source checks and synthetic frontend protocol; no guest media or native desktop interaction in CI. The documentation-only evidence commit is checked separately by the PR workflow."
+    },
+    "focused_checks": {
+      "bridge_tests_passed": 31,
+      "startup_lifecycle_tests_passed": 4,
+      "polling_tests_passed": 7,
+      "macos_default_reporter_scenarios_equal_to_base": 9
+    }
+  },
+  "limitations": [
+    "No Linux release package or installer validation",
+    "No persistent profile; guest writes are discarded after the session",
+    "No complete retail startup or cellular/network/browser/audio/camera services",
+    "No physical GPU, touch-hardware latency, arbitrary app/layout or long-session acceptance",
+    "No full macOS runtime regression rerun",
+    "No firmware, kernel, raw/qcow2 disk, rootfs, raw logs, screenshots, fonts, artwork or third-party binaries added"
+  ]
+}
