@@ -106,16 +106,22 @@ class GLESGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             probe = Path(tmp) / "probe"
             probe.write_bytes(b"\x7fELF\x01\x01" + b"\0" * 12 + b"\x28\0")
-            argv = [str(SCRIPT), "--probe", str(probe), "--output", str(Path(tmp) / "out"),
-                    "--render", "--fbo-api", "--renderer", "llvmpipe (LLVM 19.1.7, 256 bits)",
-                    "--", "qemu-system-arm", "-snapshot"]
-            with mock.patch("sys.argv", argv), mock.patch.object(SMOKE.socket, "socketpair") as sockets, \
-                    mock.patch.object(SMOKE.linux_offscreen, "require_pillow"), \
-                    mock.patch.object(SMOKE.linux_offscreen, "PipeSerial", side_effect=RuntimeError("test transport boundary")) as pipes:
-                with self.assertRaisesRegex(RuntimeError, "test transport boundary"):
-                    SMOKE.main()
-                sockets.assert_not_called()
-                self.assertEqual(pipes.call_args.args[0], Path(tmp) / "out" / "serial-pipe")
+            alias = Path(tmp) / "alias"
+            alias.symlink_to(Path(tmp), target_is_directory=True)
+            # macOS temp paths may already traverse /var -> /private/var.
+            # Exercise normalization on every host, including an explicit alias.
+            for output in (Path(tmp) / "out", alias / "out-alias"):
+                argv = [str(SCRIPT), "--probe", str(probe), "--output", str(output),
+                        "--render", "--fbo-api", "--renderer", "llvmpipe (LLVM 19.1.7, 256 bits)",
+                        "--", "qemu-system-arm", "-snapshot"]
+                with self.subTest(output=output), mock.patch("sys.argv", argv), \
+                        mock.patch.object(SMOKE.socket, "socketpair") as sockets, \
+                        mock.patch.object(SMOKE.linux_offscreen, "require_pillow"), \
+                        mock.patch.object(SMOKE.linux_offscreen, "PipeSerial", side_effect=RuntimeError("test transport boundary")) as pipes:
+                    with self.assertRaisesRegex(RuntimeError, "test transport boundary"):
+                        SMOKE.main()
+                    sockets.assert_not_called()
+                    self.assertEqual(pipes.call_args.args[0], output.resolve() / "serial-pipe")
 
     def test_complete_guest_markers(self):
         SMOKE.validate_serial(b"\r\n".join(SMOKE.MARKERS) + b"\r\n")
