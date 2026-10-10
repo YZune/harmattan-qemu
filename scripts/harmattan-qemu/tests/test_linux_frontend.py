@@ -113,6 +113,15 @@ class LinuxFrontendTests(unittest.TestCase):
         reports = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
         self.assertEqual(reports, [{'checks': 38, 'result': 'passed'}])
 
+    def test_storage_notice_is_optional_private_and_does_not_change_readiness(self):
+        result = self.run_godot(['--session', str(self.session)], 'probe_storage_notice.gd')
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertNotIn('SCRIPT ERROR', output)
+        self.assertNotIn('FAILED:', output)
+        reports = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
+        self.assertEqual(reports, [{'checks': 58, 'result': 'passed'}])
+
     def test_existing_private_session_starts_without_metrics(self):
         result = self.run_godot(['--session', str(self.session)])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

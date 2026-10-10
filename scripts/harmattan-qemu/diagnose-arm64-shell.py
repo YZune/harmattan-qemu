@@ -280,6 +280,13 @@ def validate_host_configuration(args, command):
     return True
 
 
+def publish_storage_notice(live_bridge, profile):
+    """Call only after the selected profile has acquired its lock and validated."""
+    if live_bridge:
+        live_bridge.set_storage(mode='persistent' if profile else 'disposable',
+                                previous_exit_unclean=profile.previous_exit_unclean if profile else False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host-backend', choices=('cocoa', 'linux-offscreen'), default='cocoa')
@@ -585,6 +592,7 @@ def run_session(args, command, linux_on, live_bridge, parser):
             command = storage.persistent_command(command, profile_session.disk)
             if not linux_on:
                 boot_environment['N00_COCOA_STORAGE_SHUTDOWN'] = str(shutdown_request)
+        publish_storage_notice(live_bridge, profile_session)
         with (out / "serial.log").open("xb") as log, (out / "qemu-stderr.log").open("xb") as errors:
             chardev = (f'pipe,id=n00serial,path={serial.path}' if linux_on
                        else f'socket,id=n00serial,fd={child.fileno()}')

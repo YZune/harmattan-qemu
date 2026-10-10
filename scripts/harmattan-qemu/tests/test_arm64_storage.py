@@ -89,6 +89,26 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(), b'untouched source')
         self.assertEqual((self.profile / 'base.raw').stat().st_mode & 0o222, 0)
 
+    def test_previous_exit_notice_survives_current_session_state_changes(self):
+        profile = self.open()
+        self.assertFalse(profile.previous_exit_unclean)
+        self.assertEqual(profile.state['state'], 'active')
+        profile.finish(synced=True, exit_code=0)
+        profile.close()
+
+        profile = self.open()
+        self.assertFalse(profile.previous_exit_unclean)
+        self.assertEqual(profile.state['state'], 'active')
+        profile.close()
+
+        profile = self.open()
+        self.assertTrue(profile.previous_exit_unclean)
+        self.assertEqual(profile.state['state'], 'active')
+        profile.finish(synced=True, exit_code=0)
+        self.assertTrue(profile.previous_exit_unclean)
+        self.assertEqual(profile.state['state'], 'clean')
+        self.assertNotIn('previous_exit_unclean', profile.state)
+
     def test_reject_external_backing_and_mutable_base(self):
         profile = self.open()
         self.info['full-backing-filename'] = str(self.source)
