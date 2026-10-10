@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offline Linux experiment using original Home startup/acceptance controllers.
 
-The raw image and helper rootfs are only opened read-only. Each invocation owns a
-new qcow2 overlay, additionally protected by QEMU -snapshot. No Cocoa, external
+The raw image and helper rootfs are only opened read-only. Runs default to a new
+qcow2 overlay protected by QEMU -snapshot; live mode may select a private profile.
+No Cocoa, external
 control socket, networking, audio, or physical-GPU requirement is introduced.
 """
 import argparse
@@ -94,6 +95,7 @@ def main(argv=None):
     parser.add_argument('--timeout', type=float, default=600)
     parser.add_argument('--live-session', type=Path, help='fresh private native frontend file bridge; live mode only')
     parser.add_argument('--frontend', help='Godot executable to launch and supervise; live mode only; session defaults under the run output')
+    parser.add_argument('--profile', type=Path, help='explicit private persistent disk directory; live mode only')
     parser.add_argument('--compositor-fbo-fix', action='store_true', help='enable one SHA/ABI-pinned original compositor FBO callsite correction')
     parser.add_argument('--metrics', action='store_true', help='record private performance timings; live mode only')
     parser.add_argument('--output', type=Path)
@@ -105,6 +107,8 @@ def main(argv=None):
         parser.error('--live-session and --frontend require live mode')
     if args.mode == 'live' and args.live_session is None and args.frontend is None:
         parser.error('live mode requires --live-session or --frontend')
+    if args.profile is not None and (args.mode != 'live' or args.prepare_only):
+        parser.error('--profile requires a live guest session; diagnostics remain disposable')
     frontend = None
     if args.frontend is not None:
         if args.prepare_only:
@@ -123,7 +127,7 @@ def main(argv=None):
         parser.error('live session timeout must be between 1 and 1800 seconds')
     for key in ('HARMATTAN_USER_PROFILE', 'HARMATTAN_PREBUILT_HELPERS', 'HARMATTAN_APP_CONTENTS'):
         if os.environ.get(key):
-            parser.error(f'unset {key}: only isolated source-built snapshots are supported')
+            parser.error(f'unset {key}: use explicit source-built Linux options (--profile for persistence)')
     try:
         systemui.renderer_pattern(args.renderer)
         linux_offscreen.require_pillow()
@@ -194,6 +198,8 @@ def main(argv=None):
         # cannot turn an already-used session into a different fresh target.
         session = (args.live_session.parent.resolve() / args.live_session.name
                    if frontend is not None else args.live_session.resolve())
+    # Preserve the final component so Profile can reject a symlink itself.
+    profile = args.profile.parent.resolve() / args.profile.name if args.profile is not None else None
     base_before = {str(path): fingerprint(path) for path in (raw, kernel, rootfs)}
     overlay = out / 'pr13-32g.qcow2'
     qemu_args = [str(qemu), '-M', 'n00-port-spike', '-name', 'Harmattan PR1.3 Linux software-rendering experiment',
@@ -211,6 +217,9 @@ def main(argv=None):
         controller += ['--compositor-fbo-fix']
     if args.mode == 'live':
         controller += ['--interactive', '--linux-live-session', str(session)]
+        if profile is not None:
+            controller += ['--profile', str(profile), '--profile-base', str(raw),
+                           '--profile-image-tool', str(image_tool)]
         if args.metrics:
             controller += ['--linux-live-metrics']
     else:
@@ -221,7 +230,9 @@ def main(argv=None):
               'linux_systemui_polling_budget': 30,
               'compositor_fbo_fix': args.compositor_fbo_fix,
               'transport': 'QMP stdio and private serial FIFOs; no socket/listener',
-              'guest_backing_open': 'read-only qcow2 backing; disposable qcow2 plus -snapshot',
+              'guest_backing_open': ('private read-only base clone and persistent qcow2; controller owns profile lock'
+                                     if profile is not None else 'read-only qcow2 backing; disposable qcow2 plus -snapshot'),
+              'profile': str(profile) if profile is not None else None,
               'base_before': base_before, 'qemu_sha256': hashlib.sha256(qemu.read_bytes()).hexdigest(),
               'kernel_sha256': hashlib.sha256(kernel.read_bytes()).hexdigest(), 'passed': False}
     (out / 'launch.json').write_text(json.dumps(record, indent=2) + '\n')
@@ -239,8 +250,9 @@ def main(argv=None):
         (out / 'launch.json').write_text(json.dumps(record, indent=2) + '\n')
     print(f'Linux UI evidence: {out}', flush=True)
     try:
-        subprocess.run([str(image_tool), 'create', '-q', '-f', 'qcow2', '-F', 'raw', '-b', str(raw), str(overlay), '32G'],
-                       check=True, env=env, timeout=30)
+        if profile is None:
+            subprocess.run([str(image_tool), 'create', '-q', '-f', 'qcow2', '-F', 'raw', '-b', str(raw), str(overlay), '32G'],
+                           check=True, env=env, timeout=30)
         # Helper compilation precedes the controller's guest deadline. Bound
         # that preparation too, while allowing the full requested guest budget.
         if frontend_command is not None:
@@ -260,6 +272,11 @@ def main(argv=None):
         if result_path.exists():
             record['controller_result'] = json.loads(result_path.read_text())
         record['passed'] = code == 0 and record.get('controller_result', {}).get('passed') is True
+        if profile is not None:
+            storage_result = record.get('controller_result', {}).get('storage', {})
+            record['passed'] &= (storage_result.get('persistent') is True and
+                                 storage_result.get('state') == 'clean' and
+                                 storage_result.get('guest_synced') is True)
         if frontend_command is not None:
             record['passed'] &= record['native_lifecycle']['completed']
     except BaseException as error:

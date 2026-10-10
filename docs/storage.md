@@ -2,6 +2,8 @@
 
 [简体中文](storage.zh-CN.md) · [Building](building.md) · [Networking](networking.md)
 
+The commands and APFS copy behavior below describe the macOS Cocoa path. Linux live sessions have a separate explicit [`--profile` option](linux-native.md#optional-persistent-files); profiles are not portable between the two host paths.
+
 An explicit profile preserves the guest system partition, installed packages and saved home files across launches. The default source launcher still creates disposable snapshots. Rebuild the Cocoa interaction runtime before using profiles:
 
 ```sh

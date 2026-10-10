@@ -9,7 +9,7 @@ This is the bounded Linux host path for [issue #3](https://github.com/YZune/harm
 - The existing QEMU 9.1.3 patch stack supplies the N00 board and guest graphics protocol. The explicit Linux build selects ELF libraries and OSMesa; it does not build Cocoa.
 - DGLES uses the pinned original ABI headers and the OSMesa backend. Surface bounds, ownership, resize, flush and unbind checks protect the callback pixel target. GLES1 and GLES2 share the same lifecycle rules.
 - QEMU stops graphics workers during normal VM cleanup, before Mesa's process-exit handlers. An idempotent exit fallback remains. Deferring the only cleanup to `atexit()` caused a reproducible `glFinish` crash after Mesa teardown.
-- Preparation uses GNU `cp --reflink=auto --sparse=always` and stages beside the output on Linux. Every UI run uses a new qcow2 overlay plus `-snapshot`; the prepared raw image remains the read-only backing file. Keep the base image quiescent.
+- Preparation uses GNU `cp --reflink=auto --sparse=always` and stages beside the output on Linux. UI runs default to a new qcow2 overlay plus `-snapshot`; the prepared raw image remains the read-only backing file. Live sessions may explicitly select a [private persistent profile](linux-native.md#optional-persistent-files); diagnostics remain disposable. Keep the base image quiescent.
 - The bounded launcher uses QMP on stdio and private mode-0600 serial FIFOs. Networking is disabled and no control listener is opened. Original guest identity, ABI hashes, readiness, pixels, faults and worker-join gates remain active.
 
 ## 1. Host dependencies

@@ -893,6 +893,14 @@ class LiveTests(unittest.TestCase):
         command = ['qemu', '-display', 'none', '-nic', 'none', '-snapshot']
         with patch.object(SHELL.sys, 'platform', 'linux'):
             self.assertTrue(SHELL.validate_host_configuration(args, command))
+            profile = SimpleNamespace(**(vars(args) | {'profile': Path('private-profile')}))
+            self.assertTrue(SHELL.validate_host_configuration(profile, command))
+            for changes in ({'linux_live_session': None}, {'interactive': False}, {'exit_on_ready': True},
+                            {'network': 'user'}, {'audio': 'pulse'}, {'timeout': 1801}):
+                with self.subTest(profile=changes), self.assertRaises(ValueError):
+                    SHELL.validate_host_configuration(SimpleNamespace(**(vars(profile) | changes)), command)
+            with self.assertRaises(ValueError):
+                SHELL.validate_host_configuration(profile, command[:-1])
             for key, bad in (('network', 'user'), ('timeout', 1801), ('rotation', 0),
                              ('exit_on_ready', True), ('startup_waits', 'fixed')):
                 with self.assertRaises(ValueError):

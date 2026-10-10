@@ -257,10 +257,12 @@ def validate_host_configuration(args, command):
         raise ValueError('Linux offscreen requires Linux and an exact llvmpipe renderer')
     systemui.renderer_pattern(args.host_renderer)
     if (args.network != 'off' or args.audio != 'off' or args.ca_certificates != 'off' or
-            args.profile or args.boot_animation or args.power != 'off' or
+            args.boot_animation or args.power != 'off' or
             args.call_simulation != 'off' or args.lockscreen != 'off' or
             args.startup_waits != 'ready'):
-        raise ValueError('Linux offscreen supports only offline disposable ready-startup runs')
+        raise ValueError('Linux offscreen supports only offline ready-startup runs')
+    if args.profile and not live_session:
+        raise ValueError('Linux profiles require the interactive live file bridge')
     if live_session and (not args.interactive or args.exit_on_ready or
                          args.rotation != 270 or not 1 <= args.timeout <= 1800):
         raise ValueError('live file bridge requires upright bounded interactive Linux')
@@ -268,7 +270,7 @@ def validate_host_configuration(args, command):
             (args.exercise_keyboard and args.exercise_transitions and not args.interactive)):
         raise ValueError('Linux offscreen requires bounded startup or keyboard/transition regression')
     if '-snapshot' not in command:
-        raise ValueError('Linux offscreen requires a disposable -snapshot')
+        raise ValueError('Linux offscreen requires the launcher snapshot command; profiles replace only its owned drive')
     for flag, expected in (('-display', 'none'), ('-nic', 'none')):
         if command.count(flag) != 1 or command[command.index(flag) + 1:command.index(flag) + 2] != [expected]:
             raise ValueError('Linux offscreen requires -display none and -nic none')
@@ -476,8 +478,10 @@ def run_session(args, command, linux_on, live_bridge, parser):
         checkpoint()
         browser_payloads, browser_info = browser.prepare(args.browser_mode)
         helper_payloads.update(browser_payloads)
-    app_viewport_info = {'profile_helpers_prepared': bool(args.profile)}
-    if args.profile:
+    # The Linux profile path covers original applications, not the Cocoa-only
+    # FBReader viewport adaptation or its additional application acceptance.
+    app_viewport_info = {'profile_helpers_prepared': bool(args.profile and not linux_on)}
+    if args.profile and not linux_on:
         checkpoint()
         app_payloads, metadata = app_viewport.prepare()
         helper_payloads.update(app_payloads)
@@ -579,7 +583,8 @@ def run_session(args, command, linux_on, live_bridge, parser):
         if args.profile:
             profile_session = storage.Profile(args.profile, args.profile_base, args.profile_image_tool)
             command = storage.persistent_command(command, profile_session.disk)
-            boot_environment['N00_COCOA_STORAGE_SHUTDOWN'] = str(shutdown_request)
+            if not linux_on:
+                boot_environment['N00_COCOA_STORAGE_SHUTDOWN'] = str(shutdown_request)
         with (out / "serial.log").open("xb") as log, (out / "qemu-stderr.log").open("xb") as errors:
             chardev = (f'pipe,id=n00serial,path={serial.path}' if linux_on
                        else f'socket,id=n00serial,fd={child.fileno()}')
@@ -1058,6 +1063,9 @@ def run_session(args, command, linux_on, live_bridge, parser):
                         'startup_wall_seconds': ready['startup_wall_seconds'],
                         'startup_observations': ready['startup_observations'],
                         'host': final_host, 'qemu_exit': process.returncode,
+                        'storage': {'persistent': profile_session is not None,
+                                    'state': profile_session.state['state'] if profile_session else None,
+                                    'guest_synced': profile_synced},
                         'compositor_fbo_correction': animation_info.get('fbo_target_runtime', {'enabled': False}),
                         'scope': 'bounded interactive startup gates and clean exit; no physical input or display latency'},
                         indent=2) + '\n')

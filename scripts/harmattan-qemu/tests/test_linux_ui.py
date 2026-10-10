@@ -285,6 +285,61 @@ class LinuxLauncherTests(unittest.TestCase):
                     self.assertEqual(LAUNCHER.main(args), 1)
                 self.assertFalse(json.loads((root / 'run/launch-result.json').read_text())['passed'])
 
+    def test_profile_is_explicit_live_only_and_requires_clean_sync_evidence(self):
+        for storage in ({'persistent': True, 'state': 'clean', 'guest_synced': True},
+                        {}, {'persistent': False, 'state': 'clean', 'guest_synced': True},
+                        {'persistent': True, 'state': 'active', 'guest_synced': True},
+                        {'persistent': True, 'state': 'clean', 'guest_synced': False}):
+            with self.subTest(storage=storage), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve()
+                args, prepared = self.fixture(root)
+                profile = root / 'profiles/daily'
+                args += ['--mode', 'live', '--live-session', str(root / 'session'), '--profile', str(profile)]
+                before = {path.name: path.read_bytes() for path in prepared.iterdir()}
+                commands = []
+                def controller(command, env, log, timeout):
+                    commands.append(command)
+                    ui = root / 'run/ui'
+                    ui.mkdir()
+                    (ui / 'startup-result.json').write_text(json.dumps({'passed': True, 'storage': storage}))
+                    return 0
+                kernel_sha = hashlib.sha256((prepared / 'zImage-2.6.32.26-qemu').read_bytes()).hexdigest()
+                with patch.dict(os.environ, {}, clear=True), patch.object(LAUNCHER.sys, 'platform', 'linux'), \
+                     patch.object(LAUNCHER, 'KERNEL_SHA256', kernel_sha), \
+                     patch.object(LAUNCHER.linux_offscreen, 'require_pillow'), \
+                     patch.object(LAUNCHER.subprocess, 'run') as create, \
+                     patch.object(LAUNCHER, 'run_controller', side_effect=controller), contextlib.redirect_stdout(io.StringIO()):
+                    expected = storage == {'persistent': True, 'state': 'clean', 'guest_synced': True}
+                    self.assertEqual(LAUNCHER.main(args), 0 if expected else 1)
+                create.assert_not_called()  # The controller owns profile creation and its lock.
+                command = commands[0]
+                for flag, value in (('--profile', profile), ('--profile-base', prepared / 'harmattan-pr1.3.raw'),
+                                    ('--profile-image-tool', root / 'build/qemu-img')):
+                    self.assertEqual(command[command.index(flag) + 1], str(value))
+                self.assertIn('-snapshot', command)  # Removed only by the guarded shared storage path.
+                self.assertFalse(profile.exists())  # The launcher itself must not open or modify it.
+                self.assertEqual({path.name: path.read_bytes() for path in prepared.iterdir()}, before)
+                result = json.loads((root / 'run/launch-result.json').read_text())
+                self.assertEqual(result['passed'], expected)
+                self.assertEqual(result['profile'], str(profile))
+
+    def test_profile_rejects_diagnostics_preparation_and_implicit_environment(self):
+        for options, environment in ((['--mode', 'startup'], {}), (['--mode', 'usability'], {}),
+                (['--mode', 'live', '--live-session', 'session', '--prepare-only'], {}),
+                (['--mode', 'live', '--live-session', 'session'], {'HARMATTAN_USER_PROFILE': 'other-profile'})):
+            with self.subTest(options=options, environment=environment), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                args, _ = self.fixture(root)
+                args += options + ['--profile', str(root / 'profile')]
+                with patch.dict(os.environ, environment, clear=True), patch.object(LAUNCHER.sys, 'platform', 'linux'), \
+                     patch.object(LAUNCHER.subprocess, 'run') as run, contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as error:
+                        LAUNCHER.main(args)
+                    self.assertEqual(error.exception.code, 2)
+                    run.assert_not_called()
+                self.assertFalse((root / 'run').exists())
+                self.assertFalse((root / 'profile').exists())
+
     def test_mismatched_runtime_or_kernel_fails_before_execution(self):
         for mismatch in ('runtime', 'kernel'):
             with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as tmp:
