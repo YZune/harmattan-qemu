@@ -224,18 +224,20 @@ class LinuxLauncherTests(unittest.TestCase):
         return args, prepared
 
     def test_disposable_offline_command_and_both_modes(self):
-        for mode in ('startup', 'usability'):
+        for mode in ('startup', 'usability', 'live'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 args, prepared = self.fixture(root)
                 args += ['--mode', mode]
+                if mode == 'live':
+                    args += ['--live-session', str(root / 'session')]
                 before = {path.name: path.read_bytes() for path in prepared.iterdir()}
                 commands = []
                 def controller(command, env, log, timeout):
                     commands.append((command, env))
                     ui = root / 'run/ui'
                     ui.mkdir()
-                    name = 'startup-result.json' if mode == 'startup' else 'keyboard-result.json'
+                    name = 'startup-result.json' if mode in ('startup', 'live') else 'keyboard-result.json'
                     (ui / name).write_text('{"passed": true}')
                     return 0
                 kernel_sha = hashlib.sha256((prepared / 'zImage-2.6.32.26-qemu').read_bytes()).hexdigest()

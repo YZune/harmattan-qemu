@@ -18,6 +18,25 @@ The macOS Cocoa entry point and defaults are unchanged. This Linux work does not
 
 First complete [Linux dependencies, source builds, DGLES smoke and guest preparation](linux.md). Keep the selected build/runtime paths and the exact renderer reported by the smoke test. The historical renderer was `llvmpipe (LLVM 19.1.7, 256 bits)`; do not substitute it for a different local result. You also need a graphical desktop that can run Godot's GL Compatibility renderer and an [official Godot 4.6.3](https://github.com/godotengine/godot-builds/releases/tag/4.6.3-stable) executable available as `godot`. Other Godot versions and display environments require separate validation.
 
+### One command with an owned window
+
+Run from the repository root with the Linux build variables still set:
+
+```sh
+python3 -B scripts/harmattan-qemu/run-linux-ui.py \
+  --build-root "$HARMATTAN_LINUX_BUILD" \
+  --dgles-runtime "$HARMATTAN_DGLES_ROOT/objs-x86_64" \
+  --prepared-root extracted/guest-from-original-media-linux \
+  --renderer 'llvmpipe (LLVM 19.1.7, 256 bits)' \
+  --mode live --frontend "$(command -v godot)" --timeout 1800
+```
+
+The launcher selects a fresh session below its run output and opens the native window after checking the controller-created session and startup status. The window can show startup progress before Home is ready; input remains gated by the existing guest validation. Add `--metrics` once to enable both controller and frontend timing. `--live-session` may override the fresh path. An unavailable desktop or failed frontend is an error; there is no automatic display fallback.
+
+The launcher supervises the frontend and controller together. A window exit alone cannot turn an incomplete or failed guest run into success. If either side fails, the launcher bounds cleanup of the processes it started and preserves its diagnostics. Normal Quit still waits for the controller's original guest/graphics shutdown checks.
+
+### Manual two-terminal launch
+
 Run both commands from this repository root, as the same user. Choose a new absolute session path for every launch; the controller creates it. Do not reuse a previous session or share its files with another user. The example basename below can be changed, but both terminals must use the same path.
 
 In terminal 1, with the build variables from the Linux guide still set:
@@ -45,6 +64,8 @@ The timeout is a bounded controller budget, including guest startup, not 30 minu
 
 For detailed local timing, add `--metrics` to the Python command and after `--` in the Godot command. Metrics are optional and do not relax readiness or input validation. Status, input audit and terminal results remain separate from detailed timing; session files can contain typed text and guest pixels and belong outside Git.
 
+The supervised frontend uses Godot's Dummy audio driver because this path has no audio output. Detailed outcomes are in `launch-result.json` under `native_lifecycle`; frontend diagnostics are in `frontend.log`. A startup cancellation or forced process cleanup remains a failed/cancelled run, even when all owned processes have stopped. The [launcher validation record](linux-native-launcher-validation.json) separates synthetic lifecycle checks, actual desktop-window checks and guest execution.
+
 ## Input and clean exit
 
 Wait for **Live** and a fresh guest image. A fresh startup heartbeat with frame counter zero means the controller is still starting, not that Home is ready.
@@ -56,9 +77,13 @@ Wait for **Live** and a fresh guest image. A fresh startup heartbeat with frame 
 
 ## Failures and readiness
 
-Missing/mismatched build inputs, an incorrect renderer, a reused/unsafe session directory, invalid frame data, sequence gaps or stale controller state must remain failures. Do not edit status files or bypass checks to force **Live**. On startup timeout, inspect the diagnostic `controller.log` and result JSON; provide the missing input or resolve the failed readiness gate, then use a fresh session. The launcher bounds the controller and cleans up its own process group on failure. If the controller becomes unavailable or fails, **Close** exits only the frontend with exit 2 and explicitly leaves cleanup unconfirmed. Retain the controller output and inspect its terminal result; do not treat the last displayed frame or a locally closed window as proof of a running or cleanly stopped guest.
+Missing/mismatched build inputs, an incorrect renderer, a reused/unsafe session directory, invalid frame data, sequence gaps or stale controller state must remain failures. Do not edit status files or bypass checks to force **Live**. On startup timeout, inspect the diagnostic `controller.log` and result JSON; provide the missing input or resolve the failed readiness gate, then use a fresh session. The launcher bounds the controller and cleans up its own process group on failure. In manual mode, if the controller becomes unavailable or fails, **Close** exits only the frontend with exit 2 and explicitly leaves cleanup unconfirmed. With `--frontend`, the supervisor instead bounds cleanup of both owned process groups and reports the failure in the terminal. Retain the controller output and inspect its terminal result; do not treat the last displayed frame or a locally closed window as proof of a running or cleanly stopped guest.
 
 ## Recorded results and their limits
+
+The [one-command launcher validation](linux-native-launcher-validation.json) records a fresh original-media rebuild and actual native-window checks on 2026-10-10 using implementation commit `0dfaf046339ea2551d4025eea789822de083ff77`. The supervised command opened the window, passed startup gates in 113.055 seconds, and completed Calculator `2+3=5`, a mouse edge drag, Notes typing/edit/save, Escape return and native Quit. Controller, QEMU and Godot exited naturally with code 0; graphics cleanup passed with zero counted faults/rejections and joined workers. Of 61 audited input sequences, 60 were accepted and the release immediately before Quit was cancelled by the existing quit-priority rule. All observed application actions completed; an acknowledgement count alone is not an accepted-event count.
+
+A second fresh session reached Home in 112.567 seconds and closed the real window naturally when its 180-second controller budget expired, again with all three exit codes 0 and clean graphics teardown. These are bounded Linux interaction/lifecycle checks, not a performance comparison, persistence test, full service-graph acceptance or macOS runtime rerun. The record includes restored input verification, base-preservation checks and separate cross-platform CI evidence. Private images, logs and guest media remain outside the repository.
 
 The [validation record](linux-native-validation.json) separates the historical private experiment from checks of the public integration. The private optimized run used native desktop mouse/keyboard events generated through OS UI automation. It passed Calculator `2+3=5`, a real window edge drag, Notes `Linux` → `Linu` → `Linux works`, save, Escape return and native Quit. All 66 input events were accepted; QEMU/controller exited 0 with zero counted graphics faults/rejections and all workers joined. An unchanged-source, fresh-cache repeat passed Calculator/reopen/clear/recalculate/edge-return/Quit with 80 accepted events. Base-image preservation was checked by metadata, not a new full disk hash. Five selected Calculator frames had identical RGB in the static-control region; that is a bounded consistency check.
 
@@ -79,7 +104,7 @@ The measured edge-drag release-to-controller-acknowledgement tail was 1,136 → 
 
 Startup was 160.596 s for the instrumented baseline, 107.062 s optimized and 105.471 s for the unchanged-source fresh-cache repeat. Earlier source versions took 161.215 and 131.403 s. The first optimized start partly overlapped a host test run; the repeat did not. Readiness, caches and host load vary, and frontend contention changed alongside hash-read ordering. These few runs do not isolate one optimization's effect or establish a fixed startup speedup. Nested timing spans must not be summed with their enclosing spans.
 
-The historical 426-test host suite had 9 LeakSanitizer/ptrace failures, 4 Unix-socket permission errors and 7 skips; it was not an all-green run. Its 15 bridge and 5 polling tests passed, as did Godot parsing and 227 isolated synthetic frontend assertions. Those counts belong to the private experiment. Initial public-integration checks executed 453 host tests in 31.311 s, with 9 LeakSanitizer/ptrace failures, 4 Unix-socket permission errors, 1 missing-Clang error and 7 skips. Seven Godot wrapper tests passed, including 325 metrics-off and 324 metrics-on synthetic assertions, before an additional typing fix awaiting rerun. Publication inspection covered 370 files with zero errors, and shell syntax/diff checks passed. Final reruns and CI remain pending; these results must not be inferred from the historical counts. The full guest/native flow has not been rerun after publication-path cleanup because the prepared inputs are unavailable in that environment.
+The historical 426-test host suite had 9 LeakSanitizer/ptrace failures, 4 Unix-socket permission errors and 7 skips; it was not an all-green run. Its 15 bridge and 5 polling tests passed, as did Godot parsing and 227 synthetic frontend assertions. PR #30 subsequently completed 31 bridge, 4 startup lifecycle and 7 polling tests, plus 7 Godot wrapper tests with 358/357 assertions (metrics off/on). Its final local aggregate ran 455 tests with 9 failures, 5 errors and 7 skips due to LeakSanitizer/ptrace, Unix-socket restrictions and missing Clang. Cross-platform CI passed separately, as linked below. These are source/protocol checks; PR #30 did not rerun the full guest/native flow after publication cleanup because the prepared inputs were unavailable.
 
 No claim is made for a Linux installer, persistent profiles, full retail boot/services, cellular, browser/network/audio/camera support, physical GPU acceleration, arbitrary applications/layouts, touch hardware, long sessions or full macOS regression coverage. Guest media, raw logs, screenshots and third-party binaries are not part of this source addition.
 

@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-10-10",
+  "base_commit": "b7b06661df4ebf7b62dadfa3f8240ac5813bb4ef",
+  "scope": "Optional one-command Linux Godot launch and owned process lifecycle; offline disposable guest path",
+  "host_checks": {
+    "native_supervisor_tests": {
+      "passed": 19,
+      "scope": "Real synthetic subprocesses; startup/exit ordering, signals, failures, concurrent sessions and owned descendant cleanup"
+    },
+    "existing_linux_ui_tests": {
+      "passed": 14
+    },
+    "godot": {
+      "version": "4.6.3",
+      "wrapper_tests_passed": 8,
+      "new_terminal_state_assertions": 38,
+      "scope": "Isolated headless frontend; not guest execution"
+    },
+    "aggregate": {
+      "tests": 475,
+      "seconds": 37.99,
+      "failures": 9,
+      "errors": 4,
+      "skipped": 7,
+      "status": "failed in restricted local environment",
+      "reason": "Nine LeakSanitizer/ptrace failures and four AF_UNIX permission errors; not counted as a suite pass"
+    },
+    "independent_review": "No blocking findings in supervisor, launcher or frontend exit path"
+  },
+  "native_desktop_lifecycle": {
+    "scope": "Actual Godot window on cloud Linux desktop with explicitly synthetic controller; no QEMU, guest pixels or guest acceptance",
+    "startup_cancel": {
+      "input": "Native mouse click on Quit",
+      "controller_state": "cancelled",
+      "controller_exit": 2,
+      "frontend_exit": -15,
+      "frontend_stop": "supervisor_cleanup",
+      "completed": false,
+      "expected_failure_contained": true,
+      "owned_processes_stopped": true
+    },
+    "controller_completion": {
+      "controller_exit": 0,
+      "frontend_exit": 0,
+      "frontend_stop": "natural",
+      "completed": true,
+      "owned_processes_stopped": true,
+      "scope": "Synthetic successful terminal status tests natural window closure only"
+    },
+    "audio": "Supervised frontend selects Godot Dummy driver; no audio output role"
+  },
+  "ci": {
+    "status": "passed",
+    "implementation_commit": "0dfaf046339ea2551d4025eea789822de083ff77",
+    "run": "https://github.com/YZune/harmattan-qemu/actions/runs/38041763496",
+    "ubuntu_host": {
+      "tests": 467,
+      "skipped": 8,
+      "passed": true
+    },
+    "macos_host": {
+      "tests": 467,
+      "skipped": 4,
+      "passed": true
+    },
+    "godot_frontend": {
+      "tests": 8,
+      "passed": true
+    },
+    "scope": "Source/protocol checks; macOS runtime not rerun"
+  },
+  "guest_native_run": {
+    "status": "passed",
+    "accepted": true,
+    "scope": "Actual Godot native window and OS desktop mouse/keyboard; original Harmattan guest offline under QEMU TCG; bounded interaction and lifecycle only",
+    "new_source_media_verified": "Exact sizes and SHA256 of both source media match docs/guest-media.json",
+    "fresh_qemu": {
+      "version": "9.1.3",
+      "build_source_commit": "b7b06661df4ebf7b62dadfa3f8240ac5813bb4ef",
+      "sha256": "a2ca1cb1b0ac052baed7a31a7571e50ca66e4d9cb005c430c584f26899d635ff",
+      "cleanup_probes_passed": [
+        "prelaunch",
+        "running",
+        "paused"
+      ]
+    },
+    "fresh_dgles": {
+      "smoke_cases_passed": 12,
+      "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "mesa_version": "25.0.7"
+    },
+    "offline_preparation": {
+      "completion_marker": true,
+      "qemu_exit": 0,
+      "forced_kill": false,
+      "arm_helper_preparation_exit": 0
+    },
+    "runs": [
+      {
+        "kind": "native interaction and Quit",
+        "passed": true,
+        "startup_wall_seconds": 113.055,
+        "controller_budget_seconds": 900,
+        "quit_reason": "native frontend request",
+        "controller_exit": 0,
+        "qemu_exit": 0,
+        "frontend_exit": 0,
+        "frontend_stop": "natural",
+        "graphics_clean": true,
+        "graphics_faults": 0,
+        "graphics_rejects": 0,
+        "workers_joined": true,
+        "base_metadata_unchanged": true,
+        "input_sequences": 61,
+        "accepted_events": 60,
+        "cancelled_events": 1,
+        "cancelled_event": "Automatic release immediately preceding Quit (sequence 60), cancelled by existing quit-priority rule; Quit accepted",
+        "observed_actions": [
+          "Calculator 2+3=5",
+          "native mouse edge drag to Home",
+          "Notes native keyboard Linux, Backspace, x and space plus works -> Linux works",
+          "Notes save visible in list",
+          "native Escape to Home",
+          "native mouse Quit and natural window closure"
+        ]
+      },
+      {
+        "kind": "controller budget completion",
+        "passed": true,
+        "startup_wall_seconds": 112.567,
+        "controller_budget_seconds": 180,
+        "quit_reason": "bounded session timeout",
+        "controller_exit": 0,
+        "qemu_exit": 0,
+        "frontend_exit": 0,
+        "frontend_stop": "natural",
+        "graphics_clean": true,
+        "graphics_faults": 0,
+        "graphics_rejects": 0,
+        "workers_joined": true,
+        "base_metadata_unchanged": true,
+        "input_sequences": 0,
+        "accepted_events": 0,
+        "cancelled_events": 0
+      }
+    ],
+    "base_preservation_after_both_runs": {
+      "full_sha256_recomputed": true,
+      "all_match_prepared_inputs": true,
+      "outputs": {
+        "harmattan-pr1.3.raw": {
+          "sha256": "cc0d89ab159b890b0031b8fdfc91f387f1ae5952806ca0196ced536f00e411d8",
+          "matches_prepared_base": true,
+          "bytes": 34359738368
+        },
+        "zImage-2.6.32.26-qemu": {
+          "sha256": "4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e",
+          "matches_prepared_base": true,
+          "bytes": 2730104
+        },
+        "pr1.3-rootfs-qemu-rescue.ext4": {
+          "sha256": "6e79df1f8fe3cc6ffe85cb0a8fb7c1fa4b2d5a4ec1d7a342e1974fd427c79189",
+          "matches_prepared_base": true,
+          "bytes": 4294967296
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Two bounded native sessions; no long-duration, arbitrary-layout or complete phone acceptance",
+    "No macOS runtime rerun; default Cocoa path unchanged",
+    "No new performance claim, persistent profile, distribution package or device services",
+    "No firmware, kernels, disks or third-party binaries included"
+  ],
+  "implementation_commit": "0dfaf046339ea2551d4025eea789822de083ff77"
+}

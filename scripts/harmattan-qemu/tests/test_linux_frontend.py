@@ -104,6 +104,15 @@ class LinuxFrontendTests(unittest.TestCase):
     def test_explicit_metrics_preserve_ordering_and_omit_text(self):
         self.assert_probe(metrics=True)
 
+    def test_supervised_exit_requires_fresh_success_and_preserves_manual_default(self):
+        result = self.run_godot(['--session', str(self.session), '--exit-with-controller'], 'probe_controller_exit.gd')
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertNotIn('SCRIPT ERROR', output)
+        self.assertNotIn('FAILED:', output)
+        reports = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
+        self.assertEqual(reports, [{'checks': 38, 'result': 'passed'}])
+
     def test_existing_private_session_starts_without_metrics(self):
         result = self.run_godot(['--session', str(self.session)])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -120,6 +129,7 @@ class LinuxFrontendTests(unittest.TestCase):
                  (['--session', str(self.session), '--session', str(self.session)], 'Pass --session once'),
                  (['--session', '', '--session', str(self.session)], 'Pass --session once'),
                  (['--session', str(self.session), '--metrics', '--metrics'], 'at most once'),
+                 (['--session', str(self.session), '--exit-with-controller', '--exit-with-controller'], 'at most once'),
                  (['--session', str(self.session), '--unknown'], 'Unknown frontend argument'),
                  (['--session', str(self.session) + '/../private session'], 'normalized absolute')]
         for arguments, message in cases:

@@ -208,8 +208,6 @@
       "comparison": "Default macOS reporter output byte-for-byte equal to baseline; Linux readiness-first polling is enabled only by N00_UI_POLL_READINESS_FIRST=1",
       "scope": "Report-output compatibility only; not a macOS runtime regression"
     },
-    "shell_syntax": "passed for interim tree",
-    "diff_check": "passed for interim tree",
     "ci": {
       "status": "passed for implementation commit",
       "commit": "22ad7d40e435388ac810413d323bc5d657de31a7",
