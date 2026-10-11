@@ -24,6 +24,8 @@ var acknowledged := 0
 var quit_sequence := 0
 var frame_counter := -1
 var frame_texture: ImageTexture
+var frame_pixels := PackedByteArray()
+var texture_frame_counter := -1
 var status: Dictionary = {}
 var status_seen := false
 var connected := false
@@ -52,6 +54,8 @@ var pending_frame_observation: Dictionary = {}
 var drawn_frame_counter := -1
 var observed_frame_counter := -1
 var loaded_frame_count := 0
+var uploaded_frame_count := 0
+var reused_frame_count := 0
 var observed_frame_count := 0
 var skipped_before_load_total := 0
 var superseded_before_draw_total := 0
@@ -67,6 +71,8 @@ var resource_previous_usec := 0
 func _ready() -> void:
 	# Bound the native software renderer independently of guest capture cadence.
 	Engine.max_fps = FRONTEND_MAX_FPS
+	# Keep processing/input at the same cap while drawing only visual changes.
+	OS.low_processor_usage_mode = true
 	get_tree().auto_accept_quit = false
 	get_window().min_size = Vector2i(320, 560)
 	get_window().close_requested.connect(_request_quit)
@@ -269,8 +275,11 @@ func _accept_status(incoming: Dictionary) -> void:
 		acknowledged = 0
 		frame_counter = -1
 		frame_texture = null
+		frame_pixels = PackedByteArray()
+		texture_frame_counter = -1
 		frame_error = ""
 		_begin_telemetry()
+		queue_redraw()
 	status = incoming
 	status_seen = true
 	if str(status.get("event_client_id", "")) == client_id:
@@ -308,28 +317,44 @@ func _load_frame(candidate: int) -> void:
 	var decode_end_usec := Time.get_ticks_usec()
 	image.convert(Image.FORMAT_RGB8)
 	var convert_end_usec := Time.get_ticks_usec()
-	if frame_texture == null:
-		frame_texture = ImageTexture.create_from_image(image)
-	else:
-		frame_texture.update(image)
+	# Compare decoded pixels, not controller metadata. Every capture still passes
+	# path, decode and dimension checks before it can refresh input readiness.
+	var pixels := image.get_data()
+	var reused := frame_texture != null and pixels == frame_pixels
+	var compare_end_usec := Time.get_ticks_usec()
+	if not reused:
+		if frame_texture == null:
+			frame_texture = ImageTexture.create_from_image(image)
+		else:
+			frame_texture.update(image)
+		frame_pixels = pixels
+		texture_frame_counter = candidate
 	var load_end_usec := Time.get_ticks_usec()
 	if metrics_enabled:
-		_record_frame_load(candidate, load_start_usec, load_start_unix_ms, decode_end_usec, convert_end_usec, load_end_usec)
+		_record_frame_load(candidate, load_start_usec, load_start_unix_ms, decode_end_usec, convert_end_usec, compare_end_usec, load_end_usec, reused)
 	frame_counter = candidate
 	frame_error = ""
-	queue_redraw()
+	if not reused:
+		queue_redraw()
 
 
-func _record_frame_load(candidate: int, load_start_usec: int, load_start_unix_ms: int, decode_end_usec: int, convert_end_usec: int, load_end_usec: int) -> void:
+func _record_frame_load(candidate: int, load_start_usec: int, load_start_unix_ms: int, decode_end_usec: int, convert_end_usec: int, compare_end_usec: int, load_end_usec: int, reused: bool) -> void:
 	var skipped := maxi(0, candidate - frame_counter - 1) if frame_counter >= 0 else 0
 	skipped_before_load_total += skipped
-	if not pending_frame_observation.is_empty():
+	if not reused and not pending_frame_observation.is_empty():
 		superseded_before_draw_total += 1
 	loaded_frame_count += 1
-	pending_frame_observation = {
+	if reused:
+		reused_frame_count += 1
+	else:
+		uploaded_frame_count += 1
+	var record := {
 		"frame_counter": candidate,
+		"texture_frame_counter": texture_frame_counter,
 		"previous_loaded_frame_counter": frame_counter,
 		"loaded_frame_count": loaded_frame_count,
+		"uploaded_frame_count": uploaded_frame_count,
+		"reused_frame_count": reused_frame_count,
 		"skipped_before_load": skipped,
 		"skipped_before_load_total": skipped_before_load_total,
 		"superseded_before_draw_total": superseded_before_draw_total,
@@ -341,9 +366,15 @@ func _record_frame_load(candidate: int, load_start_usec: int, load_start_unix_ms
 		"load_duration_usec": load_end_usec - load_start_usec,
 		"decode_usec": decode_end_usec - load_start_usec,
 		"convert_usec": convert_end_usec - decode_end_usec,
-		"texture_update_usec": load_end_usec - convert_end_usec,
+		"compare_usec": compare_end_usec - convert_end_usec,
+		"texture_update_usec": 0 if reused else load_end_usec - compare_end_usec,
 		"event_ack_at_load": acknowledged,
 	}
+	if reused:
+		# Reusing pixels is not a new draw and must not replace a pending upload.
+		_telemetry("frame_reused", record)
+	else:
+		pending_frame_observation = record
 
 
 func _fresh(timestamp: Variant, now_ms: int) -> bool:
@@ -373,9 +404,12 @@ func _refresh_storage_notice() -> void:
 				line = "Persistent files · Previous exit unclean\nCurrent disk retained; no rollback"
 				details = "Previous exit was unclean.\nCurrent disk and prior checkpoint\nwere kept without rollback.\nThis does not confirm recovery\nof every file.\nNo checkpoint restore command\nis provided. Back up the whole\nclosed profile; keep diagnostics\nif startup fails."
 				color = Color(0.96, 0.77, 0.40)
-	storage_label.text = line
-	storage_label.tooltip_text = details
-	storage_label.add_theme_color_override("font_color", color)
+	if storage_label.text != line:
+		storage_label.text = line
+	if storage_label.tooltip_text != details:
+		storage_label.tooltip_text = details
+	if storage_label.get_theme_color("font_color") != color:
+		storage_label.add_theme_color_override("font_color", color)
 
 
 func _refresh_state() -> void:
@@ -406,7 +440,7 @@ func _refresh_state() -> void:
 	elif not state_error.is_empty():
 		line = "Controller · " + state_error
 	elif live:
-		line = "Live · frame %d · input ack %d/%d" % [frame_counter, acknowledged, sequence]
+		line = "Live · input ack %d/%d" % [acknowledged, sequence]
 		color = Color(0.50, 0.88, 0.68)
 	elif controller_ready and not frame_fresh:
 		line = "Disconnected · framebuffer is stale"
@@ -478,7 +512,7 @@ func _draw() -> void:
 	draw_rect(frame_rect, Color.BLACK)
 	if frame_texture != null:
 		draw_texture_rect(frame_texture, frame_rect, false, Color.WHITE if live else Color(0.55, 0.55, 0.55))
-		drawn_frame_counter = frame_counter
+		drawn_frame_counter = texture_frame_counter
 	if not live:
 		var text := "Waiting for real framebuffer" if frame_texture == null else "Display paused · last captured frame"
 		if not configuration_error.is_empty():
@@ -706,6 +740,8 @@ func _begin_telemetry() -> void:
 	drawn_frame_counter = -1
 	observed_frame_counter = -1
 	loaded_frame_count = 0
+	uploaded_frame_count = 0
+	reused_frame_count = 0
 	observed_frame_count = 0
 	skipped_before_load_total = 0
 	superseded_before_draw_total = 0
@@ -722,6 +758,7 @@ func _begin_telemetry() -> void:
 		"poll_seconds": POLL_SECONDS,
 		"move_interval_usec": MOVE_INTERVAL_USEC,
 		"engine_max_fps": Engine.max_fps,
+		"low_processor_usage_mode": OS.low_processor_usage_mode,
 		"cpu_clock_ticks_per_second": cpu_clock_ticks,
 	})
 	_sample_process_resources()
@@ -745,7 +782,7 @@ func _telemetry(kind: String, fields: Dictionary) -> void:
 
 
 func _on_frame_post_draw() -> void:
-	if pending_frame_observation.is_empty() or drawn_frame_counter != frame_counter:
+	if pending_frame_observation.is_empty() or drawn_frame_counter != int(pending_frame_observation["frame_counter"]):
 		return
 	# The headless renderer is a dummy and cannot establish a presentation sample.
 	if DisplayServer.get_name() == "headless":
@@ -760,7 +797,8 @@ func _on_frame_post_draw() -> void:
 	record["load_to_post_draw_usec"] = now_usec - int(record["load_end_usec"])
 	record["publish_to_post_draw_ms"] = now_unix_ms - int(record["frame_updated_ms"])
 	record["previous_observed_frame_counter"] = observed_frame_counter
-	record["skipped_since_previous_post_draw"] = maxi(0, frame_counter - observed_frame_counter - 1) if observed_frame_counter >= 0 else 0
+	# Capture-counter gaps include deliberately reused pixels, not just loss.
+	record["capture_counter_gap_since_previous_post_draw"] = maxi(0, int(record["frame_counter"]) - observed_frame_counter - 1) if observed_frame_counter >= 0 else 0
 	record["observed_frame_count"] = observed_frame_count
 	record["event_ack_seen"] = acknowledged
 	record["event_sequence"] = sequence
@@ -771,7 +809,7 @@ func _on_frame_post_draw() -> void:
 	record["window_visible"] = get_window().visible
 	record["window_mode"] = get_window().mode
 	record["live"] = live
-	observed_frame_counter = frame_counter
+	observed_frame_counter = int(record["frame_counter"])
 	_telemetry("frame_post_draw", record)
 
 
