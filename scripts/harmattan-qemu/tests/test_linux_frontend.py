@@ -128,6 +128,17 @@ class LinuxFrontendTests(unittest.TestCase):
         self.assertNotIn('SCRIPT ERROR', result.stderr)
         self.assertEqual(list(self.session.iterdir()), [self.session / 'events'])
 
+    def test_duplicate_pixels_preserve_freshness_warnings_and_draw_identity(self):
+        result = self.run_godot(['--session', str(self.session), '--metrics'], 'probe_frame_reuse.gd')
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertNotIn('SCRIPT ERROR', output)
+        self.assertNotIn('FAILED:', output)
+        reports = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
+        self.assertEqual(len(reports), 1, output)
+        self.assertEqual(reports[0]['result'], 'passed')
+        self.assertGreaterEqual(reports[0]['checks'], 35)
+
     def test_bad_arguments_fail_closed_without_creating_session(self):
         missing = self.base / 'must not be created'
         cases = [([], 'Required:'), (['--metrics'], 'Required:'),
