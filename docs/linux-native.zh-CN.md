@@ -4,6 +4,8 @@
 
 此显式启用的源码路径在 Linux x86_64 上通过 Godot 4.6.3 原生窗口显示原版 480×864 Harmattan 界面。QEMU 9.1.3 仍通过 TCG 执行 ARM32 代码，DGLES 与 Mesa OSMesa 渲染原版 Home、Calculator、Notes 和 Maliit。它扩展了[有界 Linux 移植](linux.zh-CN.md)；此前的设计、构建与局部板级/渲染结果已回应 [issue #3](https://github.com/YZune/harmattan-qemu/issues/3) 的初步调查目标。它不是 Linux 发行包，也不是完整手机模拟器。
 
+[原版应用实测](linux-applications.zh-CN.md)记录日历持久保存、Clock 已验证的有限行为、Gallery 阻碍和原版任务卡片流程，并给出普通离线复现步骤。
+
 ## 设计与范围
 
 - `ports/linux-native-ui/` 负责 Godot 窗口、按比例显示 framebuffer、鼠标/键盘事件，以及可见的连接/错误状态，不重写客体应用。

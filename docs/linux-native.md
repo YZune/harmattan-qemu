@@ -4,6 +4,8 @@
 
 This opt-in source path presents the original 480×864 Harmattan UI in a Godot 4.6.3 native window on Linux x86_64. QEMU 9.1.3 still runs ARM32 code under TCG; DGLES and Mesa OSMesa render the original Home, Calculator, Notes and Maliit. It extends the [bounded Linux port](linux.md), whose design, build and scoped board/render results addressed the initial investigation in [issue #3](https://github.com/YZune/harmattan-qemu/issues/3). It is not a Linux release package or a complete phone emulator.
 
+See [original application checks](linux-applications.md) for Calendar persistence, Clock's limited verified behavior, the Gallery blocker and original task-card workflows, with safe offline reproduction steps.
+
 ## Design and scope
 
 - `ports/linux-native-ui/` owns the Godot window, scaled framebuffer view, mouse/keyboard events and visible connection/error state. It does not recreate the guest applications.

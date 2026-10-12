@@ -1,0 +1,126 @@
+{
+  "date": "2026-10-11",
+  "base_commit": "3537ae96371b8ba2f550bbd54aee91eedc65502b",
+  "source_tree": "a35ab71f7d1be64313d8d6d5f7ebe6b510fffc60",
+  "scope": "Bounded offline original-application checks through native Godot desktop input; no production changes.",
+  "host": {
+    "architecture": "x86_64",
+    "os": "Linux",
+    "qemu": "9.1.3",
+    "godot": "4.6.3",
+    "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)"
+  },
+  "guest_network": "off",
+  "guest_audio": "off",
+  "qemu_sha256": "db061a5b31e4cd2829f7a8652ce6aef99ce48354db09eeaf7335f14ed65fbe46",
+  "source_sha256": {
+    "scripts/harmattan-qemu/run-linux-ui.py": "854c49909c7895b09edf604d1e5c9c8b0cf5133fb5b6487e488d29a1d4da586e",
+    "scripts/harmattan-qemu/diagnose-arm64-shell.py": "9de3a9f0162841ccdb49330c58c7a6f5ffed301918441777ae2221e2b9bbedb1",
+    "scripts/harmattan-qemu/diagnose-shell-guest.sh": "5b82e025ecacb400ac9b850b9b34a586cde85ce17453b1c8c86d0c090d3a607f",
+    "ports/linux-native-ui/main.gd": "362e907283ffb556a2222b0cce00160efce0693958aafcc84bec28d1f3e911ea"
+  },
+  "input_sha256": {
+    "Qt_SDK_Win_offline_v1_1_2_en.exe": "ce16cbd7c99e607f51789d857fe8573852a999053a79af1fa20d645457044e30",
+    "DFL61_HARMATTAN_40.2012.21-3_PR_LEGACY_001-OEM1-958_ARM.bin": "9614f29594f77f50dbd34d0f921c69a4e3511fc1373dfb7467d1b0e073ea3d51",
+    "harmattan-pr1.3.raw": "96103a1ef4c9d927643f31a51bccf1b392d16f5af7cf8165c896a9e9070ceb96",
+    "zImage-2.6.32.26-qemu": "4eade6a330b7e01d6dafe8cf22ad5b3c5024c09776036f5329604c03b302546e",
+    "pr1.3-rootfs-qemu-rescue.ext4": "5f5e0672261d6961283dcdd3bdad156a91af83532b04f1fc4354fc9e616b9645"
+  },
+  "original_application_sha256": {
+    "organiser": "3ace0645929ce85afa0151485a196f71f2cec8dae77ac995dd1aff595cea00df",
+    "clock": "6dfba92f9e6bc92df62202191c9145bd3dd90cf68509ef837da4d892c9b6d6f1",
+    "gallery": "c7ae6fe9613affd78408497990e55a7e42cb2bc07be081ef833fd08bce550135"
+  },
+  "calendar": {
+    "result": "pass_with_input_limitations",
+    "input": "original on-screen keys; Done layout not recognised by merged host guard",
+    "initial_event": "Calendar alpha; 2026-10-15",
+    "final_event": "Calendar alpha revised; 2026-10-16; all-day; Personal; no repeat; no reminder",
+    "ui_reopened": true,
+    "old_date_empty": true,
+    "fresh_qemu_same_profile_event_retained": true,
+    "guest_sessions": 2,
+    "storage": "persistent; both sessions synced and clean",
+    "limits": [
+      "rapid screen taps could omit letters",
+      "no organiser PID lifecycle proof",
+      "no recurrence, reminder, audio, account or sync acceptance",
+      "known rapid-backspace case issue not retested or fixed"
+    ]
+  },
+  "clock": {
+    "result": "limited_inspection",
+    "observed": [
+      "local face/status time advanced 14:49 to 14:51",
+      "alarm editor opened, then Cancel returned to empty list"
+    ],
+    "alarm_saved": false,
+    "multi_city_entry_found": false,
+    "multi_city_absence_scope": "Only this version and bounded inspection; not a universal absence or emulator-fault claim.",
+    "guest_sessions": 1,
+    "storage": "persistent; synced and clean; no created city/alarm state to retest",
+    "not_established": [
+      "city add/delete/persistence",
+      "alarm trigger, sound or wakeup",
+      "timed service availability"
+    ]
+  },
+  "gallery": {
+    "result": "blocked",
+    "synthetic_images_imported": 2,
+    "observed": "Original UI opens; both inspected views remain No items.",
+    "tracker_error": "D-Bus AccessDenied owning org.freedesktop.Tracker1",
+    "not_passed": [
+      "discovery",
+      "two thumbnails",
+      "open image",
+      "previous/next",
+      "access after guest restart"
+    ],
+    "guest_sessions": 1,
+    "storage": "persistent; synced and clean",
+    "frontend_limit": "Five XServer BadValue messages and initial drawing corruption; normal resize restored display; cause unresolved."
+  },
+  "task_cards": {
+    "result": "functional_pass_with_thumbnail_defect",
+    "initial_note": "Multitask alpha",
+    "calculator_before_close": "5",
+    "card_resume_both": true,
+    "calculator_card_x_removed_ui": true,
+    "final_note": "Multitask alpha saved",
+    "calculator_after_icon_reopen": "0",
+    "thumbnail_limit": "Notes card dimmed with upper-right bright rectangle after card editing; normal after restoring, editing/saving and returning.",
+    "guest_sessions": 1,
+    "storage": "disposable; guest_synced=false; no restart/persistence claim",
+    "application_pid_lifecycle_measured": false
+  },
+  "ordinary_run_cleanup": {
+    "qemu_controller_frontend_exit_codes": 0,
+    "counted_renderer_faults": 0,
+    "counted_render_rejects": 0,
+    "workers_joined": true,
+    "separate_known_guest_api_defect": "Original repeated eglTerminate(NULL) correctly rejected; not an entirely error-free log."
+  },
+  "preservation": {
+    "original_media_and_prepared_full_hashes_match": true,
+    "previous_profiles_preserved": true,
+    "task_card_existing_profile_check": "12 files hashed; three base.raw files compared by metadata; all 15 unchanged.",
+    "raw_private_evidence_in_repository": false
+  },
+  "separate_unmerged_research": {
+    "done_layout_candidate_in_acceptance": false,
+    "security_observer_in_ordinary_ui_runs": false,
+    "latest_login_chain_diagnostic_tracker_activation_requests": 0,
+    "latest_login_chain_diagnostic_result": "Stopped on new platsec-device warning before accepted bus identity/Tracker activation.",
+    "warning_proves_complete_login_failure": false,
+    "working_gallery_fix_established": false,
+    "reproduction_instructions_included": false
+  },
+  "not_claimed": [
+    "all applications or full retail service graph",
+    "power-loss durability or CPU/RAM save-state",
+    "macOS guest rerun",
+    "new full host-suite run for this QA",
+    "physical input latency or long-term stability"
+  ]
+}
