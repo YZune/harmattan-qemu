@@ -190,6 +190,49 @@ class ProfileTests(unittest.TestCase):
                     self.assertEqual(self.source.read_bytes(), b'untouched source')
                     shutil.rmtree(self.profile)
 
+    def test_unclean_linux_reopen_requires_reserve_without_copying_or_mutating(self):
+        with patch.object(STORAGE.sys, 'platform', 'linux'):
+            profile = self.open()
+            profile.disk.write_bytes(b'unclean user data')
+            profile.close()
+            saved = {name: (self.profile / name).read_bytes() for name in
+                     ('profile.json', 'base.raw', 'disk.qcow2', 'checkpoint.qcow2')}
+            sessions = json.loads(saved['profile.json'])['sessions']
+            for available in (0, STORAGE.COPY_RESERVE - 1):
+                with self.subTest(free=available):
+                    self.disk_usage.return_value.free = available
+                    self.run.reset_mock()
+                    with self.assertRaisesRegex(ValueError, 'insufficient free space'):
+                        self.open().close()
+                    for name, content in saved.items():
+                        self.assertEqual((self.profile / name).read_bytes(), content)
+                    self.assertEqual(list(self.profile.glob('.checkpoint-*')), [])
+                    self.assertFalse(any(call.args[0][0] == '/bin/cp'
+                                         for call in self.run.call_args_list))
+            # Exact reserve suffices even though disk blocks would require more
+            # for a copy. Retrying also proves failed opens released their lock.
+            self.disk_usage.return_value.free = STORAGE.COPY_RESERVE
+            self.disk_usage.reset_mock()
+            self.run.reset_mock()
+            reopened = self.open()
+            self.disk_usage.assert_called_once_with(self.profile.resolve())
+            self.assertTrue(reopened.previous_exit_unclean)
+            self.assertEqual(reopened.state['sessions'], sessions + 1)
+            self.assertEqual(reopened.state['state'], 'active')
+            for name in ('base.raw', 'disk.qcow2', 'checkpoint.qcow2'):
+                self.assertEqual((self.profile / name).read_bytes(), saved[name])
+            self.assertFalse(any(call.args[0][0] == '/bin/cp'
+                                 for call in self.run.call_args_list))
+
+    def test_unclean_macos_reopen_does_not_apply_linux_reserve(self):
+        with patch.object(STORAGE.sys, 'platform', 'darwin'):
+            profile = self.open()
+            profile.close()
+            self.disk_usage.reset_mock()
+            self.disk_usage.return_value.free = 0
+            self.assertTrue(self.open().previous_exit_unclean)
+            self.disk_usage.assert_not_called()
+
     def test_failed_checkpoint_preserves_existing_disk_state_and_checkpoint(self):
         with patch.object(STORAGE.sys, 'platform', 'linux'):
             profile = self.open()

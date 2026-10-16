@@ -120,6 +120,11 @@ class Profile:
                     if os.path.exists(temporary):
                         os.unlink(temporary)
             if self.state['state'] != 'clean':
+                # Recovery keeps the current disk and checkpoint, so no copy
+                # budget applies. Still retain the same best-effort write
+                # headroom as the Linux copy path before publishing a session.
+                if sys.platform == 'linux' and shutil.disk_usage(self.path).free < COPY_RESERVE:
+                    raise ValueError('insufficient free space for profile recovery and 256 MiB reserve')
                 print('Previous profile exit was unclean; retaining its disk and checkpoint for guest journal recovery.', flush=True)
             # Publish a new profile only after both copies and validation succeed.
             self.state.update(state='active', sessions=self.state['sessions'] + 1)
