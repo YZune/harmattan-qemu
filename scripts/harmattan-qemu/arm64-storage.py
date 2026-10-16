@@ -199,4 +199,3 @@ def shutdown_requested(path):
     if path.is_symlink() or not stat.S_ISREG(path.stat().st_mode) or path.stat().st_size > 5:
         raise ValueError('invalid native shutdown request')
     return path.read_bytes() == b'sync\n'
-
