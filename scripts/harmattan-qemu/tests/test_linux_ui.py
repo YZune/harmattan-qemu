@@ -202,6 +202,13 @@ report_systemui() {
 
 
 class LinuxLauncherTests(unittest.TestCase):
+    def setUp(self):
+        # Command/lifecycle fixtures never compile helpers. Tool discovery has
+        # its own positive and negative coverage in test_linux_helper_tools.
+        helper_tools = patch.object(LAUNCHER, 'require_helper_tools')
+        helper_tools.start()
+        self.addCleanup(helper_tools.stop)
+
     def fixture(self, root):
         # macOS temporary directories may use /var -> /private/var aliases.
         # Compare the same canonical paths that the public launcher selects.
