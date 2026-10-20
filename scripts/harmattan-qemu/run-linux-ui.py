@@ -36,6 +36,59 @@ native_supervisor = importlib.util.module_from_spec(NATIVE_SPEC)
 NATIVE_SPEC.loader.exec_module(native_supervisor)
 
 
+HELPER_LINK_INPUTS = {
+    'orientation-guest': ('libcontextprovider.so.0', 'libglib-2.0.so.0', 'libc.so.6'),
+    'compositor-guest': ('libc.so.6', 'libdl.so.2', 'libmcompositor.so.1.1.3'),
+}
+
+
+def require_helper_tools(workspace, *, exercise_keyboard=False):
+    """Discover tools without building helpers or changing their selection.
+
+    The source builders always compile, but orientation/compositor only extract
+    missing link inputs. Their original hash checks still validate cached files.
+    The keyboard probe always extracts, including during --prepare-only.
+    """
+    required = [('HARMATTAN_ARMEL_CLANG', 'clang')]
+    if exercise_keyboard or any(
+            not (workspace / helper / 'link-inputs' / name).exists()
+            for helper, names in HELPER_LINK_INPUTS.items() for name in names):
+        required.append(('HARMATTAN_DEBUGFS', 'debugfs'))
+    search_path = os.environ.get('PATH')
+    if search_path is None:
+        # A shell can supply a different default PATH from Python's os.defpath.
+        # Ask the same `sh` used by the builders; execute only its printf builtin.
+        try:
+            search_path = subprocess.run(['sh', '-c', 'printf "%s" "$PATH"'],
+                                         check=True, capture_output=True, text=True,
+                                         timeout=5).stdout
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ValueError(f'cannot discover the helper shell search path: {error}') from error
+    # POSIX shells search the current directory for an explicitly empty PATH;
+    # shutil.which otherwise treats the empty string as no search at all.
+    if search_path == '':
+        search_path = os.curdir
+    missing = []
+    for variable, default in required:
+        # Match ${VARIABLE:-default} in the builders, including empty overrides.
+        selected = os.environ.get(variable) or default
+        if variable == 'HARMATTAN_DEBUGFS' and not os.path.isabs(selected):
+            # debugfs runs after cd into a new extraction directory. Its relative
+            # selection/search path cannot be checked from the launch directory;
+            # leave those cases to the original builders instead of rejecting a
+            # selection that may be valid there.
+            if os.path.dirname(selected) or any(
+                    not os.path.isabs(entry) for entry in search_path.split(os.pathsep)):
+                continue
+        if shutil.which(selected, path=search_path) is None:
+            missing.append(f'{variable}={selected!r}')
+    if missing:
+        raise ValueError('guest helper tool not found or not executable: '
+                         + ', '.join(missing)
+                         + '; select executable tools with these environment variables '
+                         '(see docs/linux.md, Host dependencies)')
+
+
 def fingerprint(path):
     st = path.stat()
     return {'size': st.st_size, 'blocks': st.st_blocks, 'mtime_ns': st.st_mtime_ns,
@@ -158,6 +211,10 @@ def main(argv=None):
                 parser.error(f'Linux ELF executable required: {tool}')
     if not 0 < raw.stat().st_size <= 32 * 1024**3:
         parser.error('raw guest must be nonempty and at most 32 GiB')
+    try:
+        require_helper_tools(helpers, exercise_keyboard=args.prepare_only or args.mode == 'usability')
+    except ValueError as error:
+        parser.error(str(error))
     env = os.environ.copy()
     env.update(HARMATTAN_PORT_WORKSPACE=str(helpers),
                HARMATTAN_PUBLIC_ROOTFS=str(rootfs),

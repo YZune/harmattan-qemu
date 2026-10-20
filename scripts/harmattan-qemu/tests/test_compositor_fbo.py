@@ -137,6 +137,7 @@ class CompositorFBOTests(unittest.TestCase):
                 digest = hashlib.sha256((prepared / 'zImage-2.6.32.26-qemu').read_bytes()).hexdigest()
                 with patch.dict(os.environ, {}, clear=True), patch.object(launcher.sys, 'platform', 'linux'), \
                         patch.object(launcher, 'KERNEL_SHA256', digest), \
+                        patch.object(launcher, 'require_helper_tools'), \
                         patch.object(launcher.linux_offscreen, 'require_pillow'), \
                         patch.object(launcher.subprocess, 'run') as build:
                     self.assertEqual(launcher.main(args), 0)

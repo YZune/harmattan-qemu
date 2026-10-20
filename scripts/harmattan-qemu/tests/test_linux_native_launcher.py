@@ -337,6 +337,11 @@ class NativeSupervisorTests(unittest.TestCase):
 
 
 class NativeLauncherCommandTests(unittest.TestCase):
+    def setUp(self):
+        helper_tools = patch.object(LAUNCHER, 'require_helper_tools')
+        helper_tools.start()
+        self.addCleanup(helper_tools.stop)
+
     def test_supervised_command_defaults_fresh_session_and_isolates_environments(self):
         for metrics in (False, True):
             with self.subTest(metrics=metrics), tempfile.TemporaryDirectory() as tmp:

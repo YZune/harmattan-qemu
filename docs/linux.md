@@ -27,6 +27,8 @@ export HARMATTAN_DEBUGFS=/usr/sbin/debugfs
 
 Pillow must be importable by the Python used for the launcher. It only exports diagnostic PPM captures as lossless PNGs and verifies the decoded RGB bytes. Compiler/linker and shared-library search paths may instead point at a private dependency installation. The recorded run used private official Debian packages; it did not replace system libraries.
 
+Before creating run output or starting helper preparation, the Linux launcher checks discovery of `HARMATTAN_ARMEL_CLANG` (default `clang`) and, when link inputs need extraction, `HARMATTAN_DEBUGFS` (default `debugfs`). Empty overrides also use these defaults. Missing or non-executable selections produce an error naming the variable and selected command; correct the selection and retry. Because `debugfs` runs from a fresh extraction directory, relative `debugfs` paths or command searches containing relative/empty `PATH` entries are left to the original builders, not rejected from the launch directory. Complete orientation/compositor link-input caches do not require `debugfs` for startup/live mode, but usability and `--prepare-only` always extract keyboard-probe inputs. Cached inputs still undergo the builders' original hash checks. This preflight does not run either tool, verify ARM/lld capability or shared-library loading, install dependencies, or establish guest readiness.
+
 ## 2. Obtain the pinned public sources
 
 Run from the repository root. The source kit supplies DGLES sources, not a guest disk.
