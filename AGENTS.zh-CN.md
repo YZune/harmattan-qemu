@@ -17,7 +17,7 @@
 | QEMU/DGLES 补丁 | 所选支持的宿主/后端、工具和固定源码归档；干净源码构建与相关图形/生命周期检查 |
 | 客体行为或交互 UI | 上述条件，再加支持 ARM 的 LLVM/lld、debugfs 和准备好的客体输入；macOS 需要 APFS/图形会话，Linux 使用独立离屏或 Godot 前提；运行相关客体诊断 |
 
-Linux 可运行可移植主机测试，并跳过 AppKit 测试。[Linux x86_64 指南](docs/linux.zh-CN.md)说明独立构建与客体路径；显式 [Godot 原生窗口](docs/linux-native.zh-CN.md)增加本地文件桥接和有界输入。macOS Cocoa 默认行为不变。`check-environment.py` 是完整构建的前提检查，其中缺少 Mac 或归档的结果不妨碍 Linux 上的纯源码贡献。它只检查文件存在及工具发现，不验证摘要、盘内内容、APFS 行为或编译器能力。
+Linux 可运行可移植主机测试，并跳过 AppKit 测试。[Linux x86_64 指南](docs/linux.zh-CN.md)说明独立构建与客体路径；显式 [Godot 原生窗口](docs/linux-native.zh-CN.md)增加本地文件桥接和有界输入。macOS Cocoa 默认行为不变。`check-environment.py --linux-build` 显式检查 Linux 源码构建前提；默认命令及 `--guest` 保留 macOS 路径。这些检查仅确认工具发现和文件存在，不验证归档摘要、编译器能力或运行行为。缺少构建前提或归档不妨碍独立的纯源码贡献。
 
 ## 无需镜像的检查
 
@@ -38,7 +38,7 @@ git diff --check
 
 按[构建说明](docs/building.zh-CN.md)准备工具和准确输入布局，[inputs.json](docs/inputs.json)标识归档和客体文件。先运行 `python3 scripts/check-environment.py`，需要客体运行时加 `--guest`。不要通过修改固定版本或摘要来绕过缺失或不匹配的输入。
 
-Linux 使用 [Linux 指南](docs/linux.zh-CN.md)与[原生窗口指南](docs/linux-native.zh-CN.md)的显式命令。不得复用 live 会话目录，也不能将历史私有运行证据当作最终整合验证。macOS 前提满足后，如需一次原生干净构建：
+Linux 先运行 `python3 -B scripts/check-environment.py --linux-build`，不加 `--guest`，再按 [Linux 指南](docs/linux.zh-CN.md)与[原生窗口指南](docs/linux-native.zh-CN.md)使用显式命令。不得复用 live 会话目录，也不能将历史私有运行证据当作最终整合验证。macOS 前提满足后，如需一次原生干净构建：
 
 ```sh
 mkdir -p extracted

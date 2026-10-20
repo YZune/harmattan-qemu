@@ -17,7 +17,7 @@ This is the repository-wide agent entry point. `AGENTS.zh-CN.md` is its Chinese 
 | QEMU/DGLES patches | The selected supported host/backend, required tools and pinned archives; fresh source build and affected graphics/lifecycle checks |
 | Guest behavior or interactive UI | Above, plus ARM-capable LLVM/lld, debugfs and prepared guest inputs; macOS needs APFS/a graphics session, Linux uses its separate offscreen or Godot prerequisites; run affected guest diagnostics |
 
-Linux runs portable host tests and skips AppKit tests. The [Linux x86_64 guide](docs/linux.md) documents its separate build/guest path; the opt-in [Godot native window](docs/linux-native.md) adds a local file bridge and scoped input. macOS Cocoa defaults remain unchanged. `check-environment.py` is a full-build prerequisite probe: its missing Mac/archive checks do not prevent source-only contribution on Linux. It checks presence/tool discovery, not hashes, guest contents, APFS behavior or compiler capabilities.
+Linux runs portable host tests and skips AppKit tests. The [Linux x86_64 guide](docs/linux.md) documents its separate build/guest path; the opt-in [Godot native window](docs/linux-native.md) adds a local file bridge and scoped input. macOS Cocoa defaults remain unchanged. `check-environment.py --linux-build` explicitly checks Linux source-build prerequisites; the default and `--guest` retain the macOS path. These are discovery/presence checks, not archive hashes, compiler capabilities or runtime validation. Missing build prerequisites or archives do not prevent independent source-only contribution.
 
 ## Source-only checks
 
@@ -38,7 +38,7 @@ The publication check uses Git-listed paths and reads their current worktree con
 
 Follow [building.md](docs/building.md) for tools and exact input layout. [inputs.json](docs/inputs.json) identifies the archives and guest files. Diagnose first with `python3 scripts/check-environment.py`, adding `--guest` when guest execution is needed. Do not change pinned versions or hashes to work around a missing/mismatched input.
 
-For Linux use the explicit commands in [the Linux guide](docs/linux.md) and [native window guide](docs/linux-native.md). Never reuse a live session directory or treat historical private-run evidence as final integration validation. For a fresh macOS native build, after the prerequisites are available:
+For Linux start with `python3 -B scripts/check-environment.py --linux-build`, without `--guest`, then use the explicit commands in [the Linux guide](docs/linux.md) and [native window guide](docs/linux-native.md). Never reuse a live session directory or treat historical private-run evidence as final integration validation. For a fresh macOS native build, after the prerequisites are available:
 
 ```sh
 mkdir -p extracted

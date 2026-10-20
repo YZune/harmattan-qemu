@@ -27,6 +27,16 @@ export HARMATTAN_DEBUGFS=/usr/sbin/debugfs
 
 Pillow must be importable by the Python used for the launcher. It only exports diagnostic PPM captures as lossless PNGs and verifies the decoded RGB bytes. Compiler/linker and shared-library search paths may instead point at a private dependency installation. The recorded run used private official Debian packages; it did not replace system libraries.
 
+Before downloading or building, inspect the source-build prerequisites:
+
+```sh
+python3 -B scripts/check-environment.py --linux-build
+```
+
+This explicit mode checks Linux x86_64, the running Python version, discovery of selected build tools, the QEMU builder's `glib-2.0`, `pixman-1` and `slirp` pkg-config metadata, and presence of the two source archives. Missing archives are expected before step 2 and are reported separately; missing prerequisites or archives give exit 1. It performs bounded pkg-config queries but no downloads, installs, compilation or guest checks. The default command and `--guest` remain macOS-oriented; do not combine `--linux-build` with `--guest`.
+
+Tool selection follows the builders: empty overrides use defaults, `HARMATTAN_CC` selects the DGLES compiler (default `cc`), and `HARMATTAN_NINJA`/`HARMATTAN_PYTHON` select QEMU's Ninja/Python. The QEMU probe accounts for the builder prepending Ninja's directory to `PATH`. Discovery does not verify selected-tool versions or later execution after a directory change. This is not a complete configure check: QEMU compiler capabilities, archive hashes, OSMesa linking/loading, free space and graphics remain separate checks. Follow the build/smoke commands below and the preparation-space guidance in step 4. Missing OSMesa pkg-config metadata is not an error because the builders do not require it. No guest or native-window readiness is established.
+
 Before creating run output or starting helper preparation, the Linux launcher checks discovery of `HARMATTAN_ARMEL_CLANG` (default `clang`) and, when link inputs need extraction, `HARMATTAN_DEBUGFS` (default `debugfs`). Empty overrides also use these defaults. Missing or non-executable selections produce an error naming the variable and selected command; correct the selection and retry. Because `debugfs` runs from a fresh extraction directory, relative `debugfs` paths or command searches containing relative/empty `PATH` entries are left to the original builders, not rejected from the launch directory. Complete orientation/compositor link-input caches do not require `debugfs` for startup/live mode, but usability and `--prepare-only` always extract keyboard-probe inputs. Cached inputs still undergo the builders' original hash checks. This preflight does not run either tool, verify ARM/lld capability or shared-library loading, install dependencies, or establish guest readiness.
 
 ## 2. Obtain the pinned public sources

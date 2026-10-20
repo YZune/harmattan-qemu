@@ -27,6 +27,16 @@ export HARMATTAN_DEBUGFS=/usr/sbin/debugfs
 
 启动器所用 Python 必须能够导入 Pillow。它只把诊断 PPM 无损导出为 PNG，并检查解码后的 RGB 字节一致。也可以通过编译器、链接器和动态库搜索路径使用私有依赖目录。记录中的运行使用单独解包的 Debian 官方软件包，未替换系统库。
 
+下载或构建前，可以先检查源码构建前提：
+
+```sh
+python3 -B scripts/check-environment.py --linux-build
+```
+
+此显式模式检查 Linux x86_64、当前 Python 版本、所选构建工具能否找到、QEMU 构建器要求的 `glib-2.0`、`pixman-1`、`slirp` pkg-config 元数据，以及两份源码归档是否存在。第 2 步之前缺少归档是正常的，会单独列出；缺少前提或归档时退出码为 1。它只执行有超时限制的 pkg-config 查询，不下载、安装、编译或检查客体。默认命令及 `--guest` 仍面向 macOS，不要把 `--linux-build` 与 `--guest` 合用。
+
+工具选择遵循构建脚本：覆盖变量为空时使用默认值，`HARMATTAN_CC` 选择 DGLES 编译器（默认 `cc`），`HARMATTAN_NINJA`/`HARMATTAN_PYTHON` 选择 QEMU 的 Ninja/Python。QEMU 检查会考虑构建器把 Ninja 所在目录放到 `PATH` 首位的行为。找到工具不代表验证了其版本，或改变工作目录后仍能执行。这不是完整的 configure 检查：QEMU 编译器能力、归档摘要、OSMesa 链接/加载、空间和图形仍须分别检查，请继续执行下方构建/smoke 命令，并遵循第 4 步的准备空间要求。构建器不要求 OSMesa 的 pkg-config 元数据，因此缺少该元数据不会报错。检查通过不代表客体或原生窗口已就绪。
+
 Linux 启动器在创建运行输出或开始准备辅助程序前，检查能否找到 `HARMATTAN_ARMEL_CLANG`（默认 `clang`），以及需要提取链接输入时的 `HARMATTAN_DEBUGFS`（默认 `debugfs`）。覆盖变量为空时也使用默认值。缺失或不可执行的选择会产生包含变量名和所选命令的错误；修正选择后重试。由于 `debugfs` 从新建的提取目录运行，使用相对 `debugfs` 路径，或命令搜索的 `PATH` 含相对/空目录项时，仍交给原构建脚本处理，不会根据启动目录提前拒绝。若方向和合成器的链接输入缓存完整，startup/live 模式不要求 `debugfs`，但 usability 和 `--prepare-only` 始终需要提取键盘探针的输入。缓存输入仍由原构建脚本进行哈希检查。此预检不执行这些工具，不验证 ARM/lld 能力或动态库加载，不安装依赖，也不代表客体已就绪。
 
 ## 2. 获取固定公共源码
